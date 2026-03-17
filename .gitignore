@@ -1,0 +1,9 @@
+.idea
+profile.json
+**/.DS_Store
+
+.zig-cache
+zig-out
+
+.vscode
+codex-notes
