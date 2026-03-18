@@ -321,6 +321,31 @@ test "parser treats top-level op_return tail as raw data like go-sdk" {
     try std.testing.expectEqualSlices(u8, script.bytes, serialized);
 }
 
+test "parser preserves malformed top-level op_return tail bytes verbatim" {
+    const allocator = std.testing.allocator;
+    const script = Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_RETURN),
+        @intFromEnum(Opcode.OP_PUSHDATA4),
+        0x01,
+        0x00,
+    });
+
+    const chunks = try parseAlloc(allocator, script);
+    defer allocator.free(chunks);
+
+    try std.testing.expectEqual(@as(usize, 1), chunks.len);
+    try std.testing.expect(chunks[0] == .op_return_data);
+    try std.testing.expectEqualSlices(u8, &[_]u8{
+        @intFromEnum(Opcode.OP_PUSHDATA4),
+        0x01,
+        0x00,
+    }, chunks[0].op_return_data);
+
+    const serialized = try serializeAlloc(allocator, chunks);
+    defer allocator.free(serialized);
+    try std.testing.expectEqualSlices(u8, script.bytes, serialized);
+}
+
 test "parser still validates malformed pushdata before op_return" {
     const allocator = std.testing.allocator;
 
@@ -328,6 +353,20 @@ test "parser still validates malformed pushdata before op_return" {
         @intFromEnum(Opcode.OP_PUSHDATA1),
         0x02,
         0xaa,
+    })));
+}
+
+test "parser does not short-circuit nested op_return before malformed pushdata" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.InvalidPushData, parseAlloc(allocator, Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_1),
+        @intFromEnum(Opcode.OP_IF),
+        @intFromEnum(Opcode.OP_RETURN),
+        @intFromEnum(Opcode.OP_PUSHDATA1),
+        0x03,
+        0xaa,
+        @intFromEnum(Opcode.OP_ENDIF),
     })));
 }
 
@@ -343,6 +382,14 @@ test "isPushOnly stops at top-level op_return like go-sdk parsing" {
         @intFromEnum(Opcode.OP_DUP),
         @intFromEnum(Opcode.OP_CODESEPARATOR),
         @intFromEnum(Opcode.OP_PUSHDATA1),
+    })));
+}
+
+test "isPushOnly ignores malformed pushdata tails after top-level op_return" {
+    try std.testing.expect(try isPushOnly(Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_RETURN),
+        @intFromEnum(Opcode.OP_PUSHDATA2),
+        0x01,
     })));
 }
 
@@ -364,6 +411,16 @@ test "hasCodeSeparator ignores trailing bytes after top-level op_return" {
     }))));
 }
 
+test "hasCodeSeparator ignores malformed pushdata tails after top-level op_return" {
+    try std.testing.expect(!(try hasCodeSeparator(Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_RETURN),
+        @intFromEnum(Opcode.OP_PUSHDATA4),
+        0x01,
+        0x00,
+        0x00,
+    }))));
+}
+
 test "parser rejects malformed pushdata length prefixes" {
     const allocator = std.testing.allocator;
 
@@ -378,6 +435,34 @@ test "parser rejects malformed pushdata length prefixes" {
         @intFromEnum(Opcode.OP_PUSHDATA4),
         0x01, 0x00, 0x00,
     })));
+}
+
+test "parser roundtrips pushdata boundary encodings" {
+    const allocator = std.testing.allocator;
+
+    const direct_75 = &[_]u8{0x11} ** 75;
+    const pushdata1_76 = &[_]u8{0x22} ** 76;
+    const pushdata1_255 = &[_]u8{0x33} ** 255;
+    const pushdata2_256 = &[_]u8{0x44} ** 256;
+
+    const script = Script.init(
+        &[_]u8{75} ++ direct_75 ++
+        [_]u8{ @intFromEnum(Opcode.OP_PUSHDATA1), 76 } ++ pushdata1_76 ++
+        [_]u8{ @intFromEnum(Opcode.OP_PUSHDATA1), 255 } ++ pushdata1_255 ++
+        [_]u8{ @intFromEnum(Opcode.OP_PUSHDATA2), 0x00, 0x01 } ++ pushdata2_256,
+    );
+
+    const chunks = try parseAlloc(allocator, script);
+    defer allocator.free(chunks);
+    try std.testing.expectEqual(@as(usize, 4), chunks.len);
+    try std.testing.expectEqual(chunk.PushEncoding.direct, chunks[0].push_data.encoding);
+    try std.testing.expectEqual(chunk.PushEncoding.OP_PUSHDATA1, chunks[1].push_data.encoding);
+    try std.testing.expectEqual(chunk.PushEncoding.OP_PUSHDATA1, chunks[2].push_data.encoding);
+    try std.testing.expectEqual(chunk.PushEncoding.OP_PUSHDATA2, chunks[3].push_data.encoding);
+
+    const serialized = try serializeAlloc(allocator, chunks);
+    defer allocator.free(serialized);
+    try std.testing.expectEqualSlices(u8, script.bytes, serialized);
 }
 
 test "parser rejects malformed pushdata payload truncation" {
