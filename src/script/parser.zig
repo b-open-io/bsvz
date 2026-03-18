@@ -276,3 +276,39 @@ test "hasCodeSeparator detects separators and malformed pushdata" {
     try std.testing.expect(!(try hasCodeSeparator(Script.init(&[_]u8{@intFromEnum(Opcode.OP_DUP)}))));
     try std.testing.expectError(error.InvalidPushData, hasCodeSeparator(Script.init(&[_]u8{ 0x02, 0xaa })));
 }
+
+test "parser rejects malformed pushdata length prefixes" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.InvalidPushData, parseAlloc(allocator, Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_PUSHDATA1),
+    })));
+    try std.testing.expectError(error.InvalidPushData, parseAlloc(allocator, Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_PUSHDATA2),
+        0x01,
+    })));
+    try std.testing.expectError(error.InvalidPushData, parseAlloc(allocator, Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_PUSHDATA4),
+        0x01, 0x00, 0x00,
+    })));
+}
+
+test "parser rejects malformed pushdata payload truncation" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.InvalidPushData, parseAlloc(allocator, Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_PUSHDATA1),
+        0x02,
+        0xaa,
+    })));
+    try std.testing.expectError(error.InvalidPushData, parseAlloc(allocator, Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_PUSHDATA2),
+        0x02, 0x00,
+        0xaa,
+    })));
+    try std.testing.expectError(error.InvalidPushData, parseAlloc(allocator, Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_PUSHDATA4),
+        0x02, 0x00, 0x00, 0x00,
+        0xaa,
+    })));
+}

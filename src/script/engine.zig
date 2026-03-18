@@ -1201,6 +1201,37 @@ fn buildMultisigUnlockingScript(
     return Script.init(bytes);
 }
 
+fn buildChecksigUnlockingScript(
+    allocator: std.mem.Allocator,
+    signatures: []const crypto.TxSignature,
+) !Script {
+    var total_len: usize = 0;
+    var encoded_sigs: std.ArrayListUnmanaged([]u8) = .empty;
+    defer {
+        for (encoded_sigs.items) |encoded| allocator.free(encoded);
+        encoded_sigs.deinit(allocator);
+    }
+
+    for (signatures) |signature| {
+        const encoded = try signature.toChecksigFormat(allocator);
+        errdefer allocator.free(encoded);
+        try encoded_sigs.append(allocator, encoded);
+        total_len += 1 + encoded.len;
+    }
+
+    var bytes = try allocator.alloc(u8, total_len);
+    var cursor: usize = 0;
+    for (encoded_sigs.items) |encoded| {
+        if (encoded.len > 75) return error.InvalidPushData;
+        bytes[cursor] = @intCast(encoded.len);
+        cursor += 1;
+        @memcpy(bytes[cursor .. cursor + encoded.len], encoded);
+        cursor += encoded.len;
+    }
+
+    return Script.init(bytes);
+}
+
 test "engine executes arithmetic and boolean flow" {
     const allocator = std.testing.allocator;
     const script = Script.init(&[_]u8{
@@ -1912,6 +1943,174 @@ test "engine enforces NULLDUMMY for checkmultisig when enabled" {
     }, unlocking_script, locking_script));
 }
 
+test "engine multisig nullfail only trips on non-empty failing signatures" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x91} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = .{ .bytes = &[_]u8{0x6a} },
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const p2pkh_spend = @import("../transaction/templates/p2pkh_spend.zig");
+    const tx_signature = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_000,
+        private_key,
+        p2pkh_spend.default_scope,
+    );
+    const checksig_bytes = try tx_signature.toChecksigFormat(allocator);
+    defer allocator.free(checksig_bytes);
+
+    var failing_unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer failing_unlocking_bytes.deinit(allocator);
+    try failing_unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    const sig_push = try encodePushDataElement(allocator, checksig_bytes);
+    defer allocator.free(sig_push);
+    try failing_unlocking_bytes.appendSlice(allocator, sig_push);
+    const failing_unlocking_script = Script.init(try failing_unlocking_bytes.toOwnedSlice(allocator));
+    defer allocator.free(failing_unlocking_script.bytes);
+
+    try std.testing.expect(!(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 999,
+        .flags = .{ .null_fail = false },
+    }, failing_unlocking_script, locking_script)));
+
+    try std.testing.expectError(error.NullFail, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 999,
+        .flags = .{ .null_fail = true },
+    }, failing_unlocking_script, locking_script));
+
+    const empty_unlocking_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_0),
+    });
+
+    try std.testing.expect(!(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 999,
+        .flags = .{ .null_fail = true },
+    }, empty_unlocking_script, locking_script)));
+}
+
+test "engine multisig nulldummy takes precedence over nullfail" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x92} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = .{ .bytes = &[_]u8{0x6a} },
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const p2pkh_spend = @import("../transaction/templates/p2pkh_spend.zig");
+    const tx_signature = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_000,
+        private_key,
+        p2pkh_spend.default_scope,
+    );
+    const checksig_bytes = try tx_signature.toChecksigFormat(allocator);
+    defer allocator.free(checksig_bytes);
+
+    var unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer unlocking_bytes.deinit(allocator);
+    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_1));
+    const sig_push = try encodePushDataElement(allocator, checksig_bytes);
+    defer allocator.free(sig_push);
+    try unlocking_bytes.appendSlice(allocator, sig_push);
+    const unlocking_script = Script.init(try unlocking_bytes.toOwnedSlice(allocator));
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expectError(error.NullDummy, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 999,
+        .flags = .{
+            .null_dummy = true,
+            .null_fail = true,
+        },
+    }, unlocking_script, locking_script));
+}
+
 test "engine allows more than 20 multisig pubkeys after genesis" {
     const allocator = std.testing.allocator;
 
@@ -2484,6 +2683,239 @@ test "engine honors op_codeseparator in checksig subscript" {
     }, unlocking_script, locking_script));
 }
 
+test "engine ignores codeseparator in an unexecuted legacy branch" {
+    const allocator = std.testing.allocator;
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_IF),
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const signing_subscript_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_IF),
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    };
+    const signing_subscript = Script.init(&signing_subscript_bytes);
+
+    var tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x54} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 500,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const legacy_scope: u32 = sighash.SigHashType.all;
+    const tx_signature = try @import("../transaction/templates/p2pkh_spend.zig").signInput(
+        allocator,
+        &tx,
+        0,
+        signing_subscript,
+        700,
+        private_key,
+        legacy_scope,
+    );
+    const unlocking_script = try buildChecksigUnlockingScript(allocator, &[_]crypto.TxSignature{tx_signature});
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 700,
+        .flags = .{
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+        },
+    }, unlocking_script, locking_script));
+}
+
+test "engine honors chained legacy codeseparator signing boundaries" {
+    const allocator = std.testing.allocator;
+    var key_bytes_a = [_]u8{0} ** 32;
+    var key_bytes_b = [_]u8{0} ** 32;
+    var key_bytes_c = [_]u8{0} ** 32;
+    key_bytes_a[31] = 1;
+    key_bytes_b[31] = 2;
+    key_bytes_c[31] = 3;
+
+    const private_key_a = try crypto.PrivateKey.fromBytes(key_bytes_a);
+    const private_key_b = try crypto.PrivateKey.fromBytes(key_bytes_b);
+    const private_key_c = try crypto.PrivateKey.fromBytes(key_bytes_c);
+    const public_key_a = try private_key_a.publicKey();
+    const public_key_b = try private_key_b.publicKey();
+    const public_key_c = try private_key_c.publicKey();
+
+    const locking_script_bytes = [_]u8{
+        33,
+    } ++ public_key_a.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIGVERIFY),
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
+        33,
+    } ++ public_key_b.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIGVERIFY),
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
+        33,
+    } ++ public_key_c.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const subscript_a_bytes = [_]u8{
+        33,
+    } ++ public_key_a.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIGVERIFY),
+        33,
+    } ++ public_key_b.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIGVERIFY),
+        33,
+    } ++ public_key_c.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    };
+    const subscript_b_bytes = [_]u8{
+        33,
+    } ++ public_key_b.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIGVERIFY),
+        33,
+    } ++ public_key_c.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    };
+    const subscript_c_bytes = [_]u8{
+        33,
+    } ++ public_key_c.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    };
+    const subscript_a = Script.init(&subscript_a_bytes);
+    const subscript_b = Script.init(&subscript_b_bytes);
+    const subscript_c = Script.init(&subscript_c_bytes);
+
+    var tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x63} ** 32 },
+                    .index = 1,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 500,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const legacy_scope: u32 = sighash.SigHashType.all;
+    const sig_a = try @import("../transaction/templates/p2pkh_spend.zig").signInput(
+        allocator,
+        &tx,
+        0,
+        subscript_a,
+        700,
+        private_key_a,
+        legacy_scope,
+    );
+    const sig_b = try @import("../transaction/templates/p2pkh_spend.zig").signInput(
+        allocator,
+        &tx,
+        0,
+        subscript_b,
+        700,
+        private_key_b,
+        legacy_scope,
+    );
+    const sig_c = try @import("../transaction/templates/p2pkh_spend.zig").signInput(
+        allocator,
+        &tx,
+        0,
+        subscript_c,
+        700,
+        private_key_c,
+        legacy_scope,
+    );
+
+    const unlocking_script = try buildChecksigUnlockingScript(allocator, &[_]crypto.TxSignature{
+        sig_c,
+        sig_b,
+        sig_a,
+    });
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 700,
+        .flags = .{
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+        },
+    }, unlocking_script, locking_script));
+
+    const wrong_sig_b = try @import("../transaction/templates/p2pkh_spend.zig").signInput(
+        allocator,
+        &tx,
+        0,
+        subscript_a,
+        700,
+        private_key_b,
+        legacy_scope,
+    );
+    const wrong_unlocking_script = try buildChecksigUnlockingScript(allocator, &[_]crypto.TxSignature{
+        sig_c,
+        wrong_sig_b,
+        sig_a,
+    });
+    defer allocator.free(wrong_unlocking_script.bytes);
+
+    try std.testing.expect(!(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 700,
+        .flags = .{
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+        },
+    }, wrong_unlocking_script, locking_script)));
+}
+
 test "legacy scriptCode strips remaining op_codeseparators after the active boundary" {
     const allocator = std.testing.allocator;
     const script = Script.init(&[_]u8{
@@ -2525,4 +2957,54 @@ test "forkid scriptCode preserves later op_codeseparators after the active bound
         @intFromEnum(opcode.Opcode.OP_3),
         @intFromEnum(opcode.Opcode.OP_CHECKSIG),
     }, script_code.bytes);
+}
+
+test "engine treats equivalent pushdata forms equally at 75-byte and 255-byte boundaries" {
+    const allocator = std.testing.allocator;
+
+    var data_75 = [_]u8{0x11} ** 75;
+    var script_75 = try allocator.alloc(u8, 1 + 1 + data_75.len + 1 + data_75.len + 1);
+    defer allocator.free(script_75);
+    var cursor_75: usize = 0;
+    script_75[cursor_75] = @intFromEnum(opcode.Opcode.OP_PUSHDATA1);
+    cursor_75 += 1;
+    script_75[cursor_75] = data_75.len;
+    cursor_75 += 1;
+    @memcpy(script_75[cursor_75 .. cursor_75 + data_75.len], &data_75);
+    cursor_75 += data_75.len;
+    script_75[cursor_75] = @intCast(data_75.len);
+    cursor_75 += 1;
+    @memcpy(script_75[cursor_75 .. cursor_75 + data_75.len], &data_75);
+    cursor_75 += data_75.len;
+    script_75[cursor_75] = @intFromEnum(opcode.Opcode.OP_EQUAL);
+
+    var result_75 = try executeScript(.{
+        .allocator = allocator,
+    }, Script.init(script_75));
+    defer result_75.deinit(allocator);
+    try std.testing.expect(result_75.success);
+
+    var data_255 = [_]u8{0x22} ** 255;
+    var script_255 = try allocator.alloc(u8, 3 + data_255.len + 2 + data_255.len + 1);
+    defer allocator.free(script_255);
+    var cursor_255: usize = 0;
+    script_255[cursor_255] = @intFromEnum(opcode.Opcode.OP_PUSHDATA2);
+    cursor_255 += 1;
+    std.mem.writeInt(u16, script_255[cursor_255..][0..2], @intCast(data_255.len), .little);
+    cursor_255 += 2;
+    @memcpy(script_255[cursor_255 .. cursor_255 + data_255.len], &data_255);
+    cursor_255 += data_255.len;
+    script_255[cursor_255] = @intFromEnum(opcode.Opcode.OP_PUSHDATA1);
+    cursor_255 += 1;
+    script_255[cursor_255] = @intCast(data_255.len);
+    cursor_255 += 1;
+    @memcpy(script_255[cursor_255 .. cursor_255 + data_255.len], &data_255);
+    cursor_255 += data_255.len;
+    script_255[cursor_255] = @intFromEnum(opcode.Opcode.OP_EQUAL);
+
+    var result_255 = try executeScript(.{
+        .allocator = allocator,
+    }, Script.init(script_255));
+    defer result_255.deinit(allocator);
+    try std.testing.expect(result_255.success);
 }
