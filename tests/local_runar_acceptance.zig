@@ -130,6 +130,12 @@ const SpendFixtureJson = struct {
     call_tx_hex: []const u8,
 };
 
+const ThreeTxFixtureJson = struct {
+    deploy_tx_hex: []const u8,
+    first_call_tx_hex: []const u8,
+    second_call_tx_hex: []const u8,
+};
+
 fn buildStatefulCounterFixture(allocator: std.mem.Allocator) !std.json.Parsed(SpendFixtureJson) {
     const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
         runar_root,
@@ -370,30 +376,219 @@ fn buildCovenantVaultFixture(allocator: std.mem.Allocator) !std.json.Parsed(Spen
     });
 }
 
-fn verifyFirstInputAgainstFirstOutput(
+fn buildAuctionBidFixture(allocator: std.mem.Allocator) !std.json.Parsed(SpendFixtureJson) {
+    const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "examples/ts/auction/Auction.runar.ts",
+    });
+    defer allocator.free(source_abs_rel);
+    try accessOrSkip(source_abs_rel);
+
+    const sdk_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "packages/runar-sdk/dist/index.js",
+    });
+    defer allocator.free(sdk_abs_rel);
+    try accessOrSkip(sdk_abs_rel);
+
+    const code =
+        \\(async () => {
+        \\  const fs = require('fs');
+        \\  const { compile } = await import('./packages/runar-compiler/dist/index.js');
+        \\  const { RunarContract, MockProvider, LocalSigner } = await import('./packages/runar-sdk/dist/index.js');
+        \\  const source = fs.readFileSync('examples/ts/auction/Auction.runar.ts', 'utf-8');
+        \\  const result = compile(source, { fileName: 'Auction.runar.ts' });
+        \\  if (!result.artifact) {
+        \\    console.error(JSON.stringify(result));
+        \\    process.exit(1);
+        \\  }
+        \\  const provider = new MockProvider();
+        \\  const auctioneerSigner = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000001');
+        \\  const bidderSigner = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000002');
+        \\  const auctioneerAddress = await auctioneerSigner.getAddress();
+        \\  const auctioneerPubKey = await auctioneerSigner.getPublicKey();
+        \\  const bidderAddress = await bidderSigner.getAddress();
+        \\  const bidderPubKey = await bidderSigner.getPublicKey();
+        \\  provider.addUtxo(auctioneerAddress, {
+        \\    txid: 'dd'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  provider.addUtxo(bidderAddress, {
+        \\    txid: 'ee'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  const contract = new RunarContract(result.artifact, [
+        \\    auctioneerPubKey,
+        \\    auctioneerPubKey,
+        \\    100n,
+        \\    999999999n,
+        \\  ]);
+        \\  await contract.deploy(provider, auctioneerSigner, { satoshis: 50000 });
+        \\  await contract.call('bid', [null, bidderPubKey, 200n], provider, bidderSigner);
+        \\  const txs = provider.getBroadcastedTxs();
+        \\  process.stdout.write(JSON.stringify({
+        \\    deploy_tx_hex: txs[0],
+        \\    call_tx_hex: txs[1],
+        \\  }));
+        \\})();
+    ;
+
+    const run_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "node", "-e", code },
+        .cwd = runar_root,
+        .max_output_bytes = 512 * 1024,
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.CurrentWorkingDirectoryUnlinked => return error.SkipZigTest,
+        else => return err,
+    };
+    defer allocator.free(run_result.stderr);
+    defer allocator.free(run_result.stdout);
+
+    switch (run_result.term) {
+        .Exited => |code_value| {
+            if (code_value != 0) {
+                std.log.err("auction bid fixture build failed: {s}", .{run_result.stderr});
+                return error.RunarCompileFailed;
+            }
+        },
+        else => return error.RunarCompileFailed,
+    }
+
+    return std.json.parseFromSlice(SpendFixtureJson, allocator, run_result.stdout, .{
+        .allocate = .alloc_always,
+    });
+}
+
+fn buildAuctionTwoBidFixture(allocator: std.mem.Allocator) !std.json.Parsed(ThreeTxFixtureJson) {
+    const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "examples/ts/auction/Auction.runar.ts",
+    });
+    defer allocator.free(source_abs_rel);
+    try accessOrSkip(source_abs_rel);
+
+    const sdk_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "packages/runar-sdk/dist/index.js",
+    });
+    defer allocator.free(sdk_abs_rel);
+    try accessOrSkip(sdk_abs_rel);
+
+    const code =
+        \\(async () => {
+        \\  const fs = require('fs');
+        \\  const { compile } = await import('./packages/runar-compiler/dist/index.js');
+        \\  const { RunarContract, MockProvider, LocalSigner } = await import('./packages/runar-sdk/dist/index.js');
+        \\  const source = fs.readFileSync('examples/ts/auction/Auction.runar.ts', 'utf-8');
+        \\  const result = compile(source, { fileName: 'Auction.runar.ts' });
+        \\  if (!result.artifact) {
+        \\    console.error(JSON.stringify(result));
+        \\    process.exit(1);
+        \\  }
+        \\  const provider = new MockProvider();
+        \\  const auctioneerSigner = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000001');
+        \\  const bidderOneSigner = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000002');
+        \\  const bidderTwoSigner = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000003');
+        \\  const auctioneerAddress = await auctioneerSigner.getAddress();
+        \\  const auctioneerPubKey = await auctioneerSigner.getPublicKey();
+        \\  const bidderOneAddress = await bidderOneSigner.getAddress();
+        \\  const bidderOnePubKey = await bidderOneSigner.getPublicKey();
+        \\  const bidderTwoAddress = await bidderTwoSigner.getAddress();
+        \\  const bidderTwoPubKey = await bidderTwoSigner.getPublicKey();
+        \\  provider.addUtxo(auctioneerAddress, {
+        \\    txid: 'f0'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  provider.addUtxo(bidderOneAddress, {
+        \\    txid: 'f1'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  provider.addUtxo(bidderTwoAddress, {
+        \\    txid: 'f2'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  const contract = new RunarContract(result.artifact, [
+        \\    auctioneerPubKey,
+        \\    auctioneerPubKey,
+        \\    100n,
+        \\    999999999n,
+        \\  ]);
+        \\  await contract.deploy(provider, auctioneerSigner, { satoshis: 50000 });
+        \\  await contract.call('bid', [null, bidderOnePubKey, 200n], provider, bidderOneSigner);
+        \\  await contract.call('bid', [null, bidderTwoPubKey, 300n], provider, bidderTwoSigner);
+        \\  const txs = provider.getBroadcastedTxs();
+        \\  process.stdout.write(JSON.stringify({
+        \\    deploy_tx_hex: txs[0],
+        \\    first_call_tx_hex: txs[1],
+        \\    second_call_tx_hex: txs[2],
+        \\  }));
+        \\})();
+    ;
+
+    const run_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "node", "-e", code },
+        .cwd = runar_root,
+        .max_output_bytes = 1024 * 1024,
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.CurrentWorkingDirectoryUnlinked => return error.SkipZigTest,
+        else => return err,
+    };
+    defer allocator.free(run_result.stderr);
+    defer allocator.free(run_result.stdout);
+
+    switch (run_result.term) {
+        .Exited => |code_value| {
+            if (code_value != 0) {
+                std.log.err("auction two-bid fixture build failed: {s}", .{run_result.stderr});
+                return error.RunarCompileFailed;
+            }
+        },
+        else => return error.RunarCompileFailed,
+    }
+
+    return std.json.parseFromSlice(ThreeTxFixtureJson, allocator, run_result.stdout, .{
+        .allocate = .alloc_always,
+    });
+}
+
+fn verifyInputAgainstOutput(
     allocator: std.mem.Allocator,
-    deploy_tx_hex: []const u8,
-    call_tx_hex: []const u8,
+    previous_tx_hex: []const u8,
+    previous_output_index: usize,
+    spend_tx_hex: []const u8,
+    spend_input_index: usize,
 ) !bool {
-    const deploy_tx_bytes = try bsvz.primitives.hex.decode(allocator, deploy_tx_hex);
-    defer allocator.free(deploy_tx_bytes);
-    var deploy_tx = try Transaction.parse(allocator, deploy_tx_bytes);
-    defer deploy_tx.deinit(allocator);
+    const previous_tx_bytes = try bsvz.primitives.hex.decode(allocator, previous_tx_hex);
+    defer allocator.free(previous_tx_bytes);
+    var previous_tx = try Transaction.parse(allocator, previous_tx_bytes);
+    defer previous_tx.deinit(allocator);
 
-    const call_tx_bytes = try bsvz.primitives.hex.decode(allocator, call_tx_hex);
-    defer allocator.free(call_tx_bytes);
-    var call_tx = try Transaction.parse(allocator, call_tx_bytes);
-    defer call_tx.deinit(allocator);
+    const spend_tx_bytes = try bsvz.primitives.hex.decode(allocator, spend_tx_hex);
+    defer allocator.free(spend_tx_bytes);
+    var spend_tx = try Transaction.parse(allocator, spend_tx_bytes);
+    defer spend_tx.deinit(allocator);
 
-    const previous_output = deploy_tx.outputs[0];
-    const unlocking_script = call_tx.inputs[0].unlocking_script;
+    const previous_output = previous_tx.outputs[previous_output_index];
+    const unlocking_script = spend_tx.inputs[spend_input_index].unlocking_script;
     const locking_script = previous_output.locking_script;
     const executable_locking_script = try bsvz.script.executableCodePart(locking_script);
 
     const exec_ctx: bsvz.script.engine.ExecutionContext = .{
         .allocator = allocator,
-        .tx = &call_tx,
-        .input_index = 0,
+        .tx = &spend_tx,
+        .input_index = spend_input_index,
         .previous_locking_script = locking_script,
         .previous_satoshis = previous_output.satoshis,
     };
@@ -411,6 +606,14 @@ fn verifyFirstInputAgainstFirstOutput(
     return state.condition_stack.items.len == 0 and
         state.stack.items.len > 0 and
         bsvz.script.engine.isTruthy(state.stack.items[state.stack.items.len - 1]);
+}
+
+fn verifyFirstInputAgainstFirstOutput(
+    allocator: std.mem.Allocator,
+    deploy_tx_hex: []const u8,
+    call_tx_hex: []const u8,
+) !bool {
+    return verifyInputAgainstOutput(allocator, deploy_tx_hex, 0, call_tx_hex, 0);
 }
 
 test "local runar ec-primitives acceptance cases execute through bsvz when fixtures are present" {
@@ -642,5 +845,39 @@ test "local runar covenant vault spend verifies through bsvz" {
         allocator,
         fixture.value.deploy_tx_hex,
         fixture.value.call_tx_hex,
+    ));
+}
+
+test "local runar auction bid spend verifies through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildAuctionBidFixture(allocator);
+    defer fixture.deinit();
+
+    try std.testing.expect(try verifyFirstInputAgainstFirstOutput(
+        allocator,
+        fixture.value.deploy_tx_hex,
+        fixture.value.call_tx_hex,
+    ));
+}
+
+test "local runar auction sequential bids verify through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildAuctionTwoBidFixture(allocator);
+    defer fixture.deinit();
+
+    try std.testing.expect(try verifyInputAgainstOutput(
+        allocator,
+        fixture.value.deploy_tx_hex,
+        0,
+        fixture.value.first_call_tx_hex,
+        0,
+    ));
+
+    try std.testing.expect(try verifyInputAgainstOutput(
+        allocator,
+        fixture.value.first_call_tx_hex,
+        0,
+        fixture.value.second_call_tx_hex,
+        0,
     ));
 }

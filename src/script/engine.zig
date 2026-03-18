@@ -8,6 +8,7 @@ const opcode = @import("opcode.zig");
 const parser = @import("parser.zig");
 const chunk = @import("chunk.zig");
 const Script = @import("script.zig").Script;
+const script_helpers = @import("bytes.zig");
 const sighash = @import("../transaction/sighash.zig");
 
 pub const Error = errors.ScriptError || sighash.Error || num.Error || error{
@@ -795,19 +796,33 @@ fn buildScriptCode(
 ) Error!Script {
     if (last_code_separator > current_script.bytes.len) return error.InvalidPushData;
 
-    var script_bytes = try allocator.dupe(u8, current_script.bytes[last_code_separator..]);
-    errdefer allocator.free(script_bytes);
+    const sliced = current_script.bytes[last_code_separator..];
+    const state_separator_offset = try script_helpers.findStateSeparatorOpReturnOffset(sliced);
+    const executable_end = state_separator_offset orelse sliced.len;
+    const executable_prefix = sliced[0..executable_end];
+    const raw_state_suffix = if (state_separator_offset) |offset| sliced[offset..] else "";
+
+    var normalized_prefix = try allocator.dupe(u8, executable_prefix);
+    errdefer allocator.free(normalized_prefix);
 
     for (signatures_to_remove) |signature_bytes| {
         const target_push = try encodePushDataElement(allocator, signature_bytes);
         defer allocator.free(target_push);
 
-        const next_script_bytes = try findAndDeletePushData(allocator, script_bytes, target_push);
-        allocator.free(script_bytes);
-        script_bytes = next_script_bytes;
+        const next_prefix = try findAndDeletePushData(allocator, normalized_prefix, target_push);
+        allocator.free(normalized_prefix);
+        normalized_prefix = next_prefix;
     }
 
-    return Script.init(script_bytes);
+    if (raw_state_suffix.len == 0) {
+        return Script.init(normalized_prefix);
+    }
+
+    const out = try allocator.alloc(u8, normalized_prefix.len + raw_state_suffix.len);
+    @memcpy(out[0..normalized_prefix.len], normalized_prefix);
+    @memcpy(out[normalized_prefix.len..], raw_state_suffix);
+    allocator.free(normalized_prefix);
+    return Script.init(out);
 }
 
 fn encodePushDataElement(allocator: std.mem.Allocator, data: []const u8) Error![]u8 {
