@@ -1586,6 +1586,35 @@ test "go direct script rows: pick parity" {
     });
 }
 
+test "go direct script rows: roll parity" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 612, .name = "roll with minimally encoded index succeeds", .unlocking_hex = "51020000", .locking_hex = "7a7551", .expected = .{ .success = true } },
+    });
+
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.minimal_data = true;
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 1263, .name = "roll rejects non-minimally encoded index under minimaldata", .unlocking_hex = "51020000", .locking_hex = "7a7551", .expected = .{ .err = error.MinimalData } },
+    });
+}
+
+test "go direct script rows: swap cat sha256 parity" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{
+            .row = 298,
+            .name = "swap cat sha256 matches known hello-world digest",
+            .unlocking_hex = "0568656c6c6f05776f726c64",
+            .locking_hex = "7c7ea8208376118fc0230e6054e782fb31ae52ebcfd551342d8d026c209997e0127b6f7487",
+            .expected = .{ .success = true },
+        },
+    });
+}
+
 test "go direct script rows: bitwise or parity" {
     const allocator = std.testing.allocator;
     var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
