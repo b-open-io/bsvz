@@ -2193,6 +2193,83 @@ test "engine checkmultisig rejects illegal forkid under legacy strict policy" {
     }, unlocking_script, locking_script));
 }
 
+test "engine checkmultisig not accepts a forkid signature when forkid mode is enabled" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+        @intFromEnum(opcode.Opcode.OP_NOT),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x5c} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 1_200,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const forkid_invalid_signature = [_]u8{ 0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01, 0x41 };
+
+    var unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer unlocking_bytes.deinit(allocator);
+    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    const sig_push = try encodePushDataElement(allocator, &forkid_invalid_signature);
+    defer allocator.free(sig_push);
+    try unlocking_bytes.appendSlice(allocator, sig_push);
+    const unlocking_script = Script.init(try unlocking_bytes.toOwnedSlice(allocator));
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expectError(error.IllegalForkId, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{
+            .strict_encoding = true,
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+        },
+    }, unlocking_script, locking_script));
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{
+            .enable_sighash_forkid = true,
+            .verify_bip143_sighash = true,
+        },
+    }, unlocking_script, locking_script));
+}
+
 test "engine checkmultisig surfaces malformed signature before ordinary 2-of-3 failure" {
     const allocator = std.testing.allocator;
 
@@ -2892,6 +2969,20 @@ test "engine can require a clean final stack" {
         .flags = .{ .clean_stack = true },
     }, Script.init(&[_]u8{}), Script.init(&[_]u8{
         @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_1),
+    })));
+}
+
+test "engine matches the go-sdk nop/codeseparator sanity row" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .flags = .{ .strict_encoding = true },
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_NOP),
+    }), Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
         @intFromEnum(opcode.Opcode.OP_1),
     })));
 }
