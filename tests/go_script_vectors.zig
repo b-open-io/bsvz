@@ -261,3 +261,48 @@ test "go direct checkmultisig rows: nullfail and nulldummy matrix" {
         .expected = .{ .err = error.NullFail },
     });
 }
+
+test "go direct script rows: minimaldata push forms" {
+    const allocator = std.testing.allocator;
+
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.minimal_data = true;
+
+    try harness.runCase(allocator, .{
+        .name = "empty vector minimally represented by op_0",
+        .unlocking_hex = "4c00",
+        .locking_hex = "7551",
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "negative one minimally represented by op_1negate",
+        .unlocking_hex = "0181",
+        .locking_hex = "7551",
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "one minimally represented by op_1",
+        .unlocking_hex = "0101",
+        .locking_hex = "7551",
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    const push_72 = try std.mem.concat(allocator, u8, &[_][]const u8{
+        "4c48",
+        "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+    });
+    defer allocator.free(push_72);
+
+    try harness.runCase(allocator, .{
+        .name = "pushdata1 of 72 bytes is non-minimal",
+        .unlocking_hex = push_72,
+        .locking_hex = "7551",
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+}
