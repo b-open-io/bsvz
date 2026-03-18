@@ -1719,6 +1719,10 @@ test "engine verifies 2-of-2 checksig ordering with checkmultisig" {
         .input_index = 0,
         .previous_locking_script = locking_script,
         .previous_satoshis = 1_500,
+        .flags = .{
+            .strict_encoding = false,
+            .der_signatures = false,
+        },
     }, unlocking_script, locking_script));
 
     const wrong_unlocking_script = try buildMultisigUnlockingScript(allocator, &[_]crypto.TxSignature{ sig_b, sig_a });
@@ -1970,6 +1974,146 @@ test "engine checkmultisig errors on the first checked malformed signature under
         .previous_satoshis = 1_500,
         .flags = .{
             .strict_encoding = false,
+            .der_signatures = true,
+        },
+    }, unlocking_script, locking_script));
+}
+
+test "engine checkmultisig not turns a malformed signature into true without dersig" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+        @intFromEnum(opcode.Opcode.OP_NOT),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x58} ** 32 },
+                    .index = 1,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 1_200,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const invalid_sig_bytes = [_]u8{@intCast(@import("../transaction/templates/p2pkh_spend.zig").default_scope)};
+
+    var unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer unlocking_bytes.deinit(allocator);
+    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    const invalid_push = try encodePushDataElement(allocator, &invalid_sig_bytes);
+    defer allocator.free(invalid_push);
+    try unlocking_bytes.appendSlice(allocator, invalid_push);
+    const unlocking_script = Script.init(try unlocking_bytes.toOwnedSlice(allocator));
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{
+            .strict_encoding = false,
+            .der_signatures = false,
+        },
+    }, unlocking_script, locking_script));
+
+    try std.testing.expectError(error.InvalidSignatureEncoding, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{
+            .der_signatures = true,
+        },
+    }, unlocking_script, locking_script));
+}
+
+test "engine checkmultisig not treats an empty signature as false even with dersig" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+        @intFromEnum(opcode.Opcode.OP_NOT),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x59} ** 32 },
+                    .index = 1,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 1_200,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const unlocking_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_0),
+    });
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+    }, unlocking_script, locking_script));
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{
             .der_signatures = true,
         },
     }, unlocking_script, locking_script));

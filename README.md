@@ -73,7 +73,7 @@ This is the current interpreter map for `bsvz.script`.
 | Policy flags | broad coverage | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if` |
 | Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding are both enforced where Go applies `MINIMALDATA` |
 | `CODESEPARATOR` parity | broad coverage | legacy and ForkID scriptCode behavior, chained separator result-shape tests, parser/scanner coverage |
-| Go parity vectors | broad but incomplete | many direct parser, policy, multisig, and `CODESEPARATOR` reference vectors are in place, but not the full Go corpus |
+| Go parity vectors | broad but incomplete | many direct parser, policy, multisig, `CODESEPARATOR`, and BIP66-style reference/result-shape vectors are in place, but not the full Go corpus |
 | Runar local acceptance | broad but incomplete | real local acceptance covers stateless, stateful, covenant, NFT, fungible-token, and math/crypto-heavy contracts, but the full Runar corpus is not yet green |
 | SPV / script-adjacent proof tooling | construction zone | not part of the interpreter core yet |
 
