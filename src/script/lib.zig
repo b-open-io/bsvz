@@ -6,6 +6,7 @@ pub const context = @import("context.zig");
 pub const errors = @import("errors.zig");
 pub const limits = @import("limits.zig");
 pub const engine = @import("engine.zig");
+pub const thread = @import("thread.zig");
 pub const interpreter = @import("interpreter.zig");
 
 pub const Script = @import("script.zig").Script;

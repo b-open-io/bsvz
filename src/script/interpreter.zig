@@ -1,10 +1,10 @@
 const std = @import("std");
 const bytes = @import("bytes.zig");
-const engine = @import("engine.zig");
+const thread = @import("thread.zig");
 const Script = @import("script.zig").Script;
 const Transaction = @import("../transaction/transaction.zig").Transaction;
 
-pub const Error = engine.Error;
+pub const Error = thread.Error;
 
 pub const P2pkhSpendContext = struct {
     allocator: std.mem.Allocator,
@@ -17,7 +17,7 @@ pub const P2pkhSpendContext = struct {
 
 pub fn verify(ctx: P2pkhSpendContext) Error!bool {
     const executable_locking_script = try bytes.executableCodePart(ctx.locking_script);
-    return engine.verifyScripts(.{
+    return thread.verifyScripts(.{
         .allocator = ctx.allocator,
         .tx = ctx.tx,
         .input_index = ctx.input_index,

@@ -51,7 +51,7 @@ pub fn runCase(allocator: std.mem.Allocator, case: Case) !void {
         .lock_time = 0,
     };
 
-    const result = bsvz.script.engine.verifyScripts(.{
+    const result = bsvz.script.thread.verifyScripts(.{
         .allocator = allocator,
         .tx = &tx,
         .input_index = 0,

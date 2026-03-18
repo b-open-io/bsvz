@@ -77,7 +77,7 @@ pub fn runCase(allocator: std.mem.Allocator, case: Case) !bool {
 
     const unlocking_script = try buildUnlockingScript(arena, case.args, case.method_selector, signature_bytes);
 
-    return bsvz.script.engine.verifyScripts(.{
+    return bsvz.script.thread.verifyScripts(.{
         .allocator = allocator,
         .tx = if (case.spend != null) &tx else null,
         .input_index = 0,
