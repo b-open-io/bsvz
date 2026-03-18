@@ -226,3 +226,14 @@ test "go direct script rows: boolean and minmaxwithin parity" {
         .{ .row = 647, .name = "within with non-minimal false tested value still drops to true tail", .unlocking_hex = "0000020000", .locking_hex = "a57551", .expected = .{ .success = true } },
     });
 }
+
+test "go direct script rows: boolean underflow parity" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 1430, .name = "not underflows with empty stack", .unlocking_hex = "", .locking_hex = "91", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1431, .name = "zeronotequal underflows with empty stack", .unlocking_hex = "", .locking_hex = "92", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1435, .name = "booland underflows with one stack item", .unlocking_hex = "51", .locking_hex = "9a", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1436, .name = "boolor underflows with one stack item", .unlocking_hex = "51", .locking_hex = "9b", .expected = .{ .err = error.StackUnderflow } },
+    });
+}
