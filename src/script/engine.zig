@@ -3895,6 +3895,76 @@ test "engine rejects missing forkid when forkid mode is enabled" {
     }, @intCast(sighash.SigHashType.all | sighash.SigHashType.forkid));
 }
 
+test "engine checksig not accepts a forkid signature when forkid mode is enabled" {
+    const allocator = std.testing.allocator;
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+    const previous_locking_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+        @intFromEnum(opcode.Opcode.OP_NOT),
+    });
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x26} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = previous_locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const forkid_invalid_signature = [_]u8{ 0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01, 0x41 };
+    const sig_push = try encodePushDataElement(allocator, &forkid_invalid_signature);
+    defer allocator.free(sig_push);
+    const pubkey_push = try encodePushDataElement(allocator, &public_key.bytes);
+    defer allocator.free(pubkey_push);
+
+    var unlocking = try allocator.alloc(u8, sig_push.len + pubkey_push.len);
+    defer allocator.free(unlocking);
+    @memcpy(unlocking[0..sig_push.len], sig_push);
+    @memcpy(unlocking[sig_push.len..], pubkey_push);
+
+    try std.testing.expectError(error.IllegalForkId, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{
+            .strict_encoding = true,
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+        },
+    }, Script.init(unlocking), previous_locking_script));
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{
+            .enable_sighash_forkid = true,
+            .verify_bip143_sighash = true,
+        },
+    }, Script.init(unlocking), previous_locking_script));
+}
+
 test "engine rejects reserved sighash bits under strict encoding" {
     const allocator = std.testing.allocator;
 
