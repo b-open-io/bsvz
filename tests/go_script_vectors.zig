@@ -644,6 +644,64 @@ test "go direct script rows: checkmultisig zero count parity" {
         .{ .row = 567, .name = "checkmultisig ignores keys when zero sigs are required", .unlocking_hex = "", .locking_hex = "00000051ae69740087", .expected = .{ .success = true } },
         .{ .row = 568, .name = "checkmultisigverify ignores keys when zero sigs are required", .unlocking_hex = "", .locking_hex = "00000051af740087", .expected = .{ .success = true } },
     });
+
+    const cases = [_]struct {
+        row: usize,
+        name: []const u8,
+        key_count: usize,
+        verify: bool,
+    }{
+        .{ .row = 594, .name = "checkmultisigverify with one key and zero sigs succeeds", .key_count = 1, .verify = true },
+        .{ .row = 595, .name = "checkmultisigverify with two keys and zero sigs succeeds", .key_count = 2, .verify = true },
+        .{ .row = 596, .name = "checkmultisigverify with three keys and zero sigs succeeds", .key_count = 3, .verify = true },
+        .{ .row = 613, .name = "checkmultisigverify with twenty keys and zero sigs succeeds", .key_count = 20, .verify = true },
+    };
+
+    for (cases) |case| {
+        var bytes: std.ArrayListUnmanaged(u8) = .empty;
+        defer bytes.deinit(allocator);
+
+        try bytes.append(allocator, @intFromEnum(bsvz.script.opcode.Opcode.OP_0));
+        try bytes.append(allocator, @intFromEnum(bsvz.script.opcode.Opcode.OP_0));
+
+        for (0..case.key_count) |index| {
+            const key_byte: u8 = @intCast('a' + index);
+            try bytes.append(allocator, 0x01);
+            try bytes.append(allocator, key_byte);
+        }
+
+        if (case.key_count >= 1 and case.key_count <= 16) {
+            try bytes.append(allocator, @intFromEnum(@as(bsvz.script.opcode.Opcode, @enumFromInt(
+                @intFromEnum(bsvz.script.opcode.Opcode.OP_1) + @as(u8, @intCast(case.key_count - 1)),
+            ))));
+        } else {
+            const count_num = try bsvz.script.ScriptNum.encode(allocator, @as(i64, @intCast(case.key_count)));
+            defer allocator.free(count_num);
+            try appendPushData(&bytes, allocator, count_num);
+        }
+
+        try bytes.append(allocator, if (case.verify)
+            @intFromEnum(bsvz.script.opcode.Opcode.OP_CHECKMULTISIGVERIFY)
+        else
+            @intFromEnum(bsvz.script.opcode.Opcode.OP_CHECKMULTISIG));
+        if (!case.verify) {
+            try bytes.append(allocator, @intFromEnum(bsvz.script.opcode.Opcode.OP_VERIFY));
+        }
+        try bytes.append(allocator, @intFromEnum(bsvz.script.opcode.Opcode.OP_DEPTH));
+        try bytes.append(allocator, @intFromEnum(bsvz.script.opcode.Opcode.OP_0));
+        try bytes.append(allocator, @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL));
+
+        const locking_hex = try scriptHexFromBytes(allocator, bytes.items);
+        defer allocator.free(locking_hex);
+
+        try harness.runCase(allocator, .{
+            .name = case.name,
+            .unlocking_hex = "",
+            .locking_hex = locking_hex,
+            .flags = bsvz.script.engine.ExecutionFlags.legacyReference(),
+            .expected = .{ .success = true },
+        });
+    }
 }
 
 test "go direct script rows: minimaldata push forms" {
