@@ -170,6 +170,14 @@ test "go direct checksig rows: additional bip66 result shapes" {
     dersig_flags.der_signatures = true;
 
     try harness.runCase(allocator, .{
+        .name = "bip66 example 1 with dersig",
+        .unlocking_hex = "4730440220d7a0417c3f6d1a15094d1cf2a3378ca0503eb8a57630953a9e2987e21ddd0a6502207a6266d686c99090920249991d3d42065b6d43eb70187b219c0db82e4f94d1a201",
+        .locking_hex = locking_hex,
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+
+    try harness.runCase(allocator, .{
         .name = "bip66 example 2 with dersig",
         .unlocking_hex = "47304402208e43c0b91f7c1e5bc58e41c8185f8a6086e111b0090187968a86f2822462d3c902200a58f4076b1133b18ff1dc83ee51676e44c60cc608d9534e0df5ace0424fc0be01",
         .locking_hex = locking_hex ++ "91",
@@ -244,6 +252,28 @@ test "go direct checksig rows: padding-related dersig policy rows" {
     try harness.runCase(allocator, .{
         .name = "p2pk checksig too little r padding with dersig",
         .unlocking_hex = "4730440220d7a0417c3f6d1a15094d1cf2a3378ca0503eb8a57630953a9e2987e21ddd0a6502207a6266d686c99090920249991d3d42065b6d43eb70187b219c0db82e4f94d1a201",
+        .locking_hex =
+            "21"
+            ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
+            ++ "ac",
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "p2pk checksig too much r padding with dersig",
+        .unlocking_hex = "47304402200060558477337b9022e70534f1fea71a318caf836812465a2509931c5e7c4987022078ec32bd50ac9e03a349ba953dfd9fe1c8d2dd8bdb1d38ddca844d3d5c78c11801",
+        .locking_hex =
+            "21"
+            ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
+            ++ "ac",
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "p2pk checksig too much s padding with dersig",
+        .unlocking_hex = "48304502202de8c03fc525285c9c535631019a5f2af7c6454fa9eb392a3756a4917c420edd02210046130bf2baf7cfc065067c8b9e33a066d9c15edcea9feb0ca2d233e3597925b401",
         .locking_hex =
             "21"
             ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
