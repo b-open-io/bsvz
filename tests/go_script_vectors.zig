@@ -545,6 +545,22 @@ test "go direct script rows: minimaldata numeric arguments" {
         .flags = flags,
         .expected = .{ .err = error.MinimalData },
     });
+
+    try harness.runCase(allocator, .{
+        .name = "within rejects non-minimal middle operand",
+        .unlocking_hex = "0002000000",
+        .locking_hex = locking_within_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "within rejects non-minimal top operand",
+        .unlocking_hex = "0000020000",
+        .locking_hex = locking_within_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
 }
 
 test "go direct script rows: minimaldata multisig counts" {
@@ -571,6 +587,14 @@ test "go direct script rows: minimaldata multisig counts" {
     try harness.runCase(allocator, .{
         .name = "checkmultisig rejects non-minimal signature count",
         .unlocking_hex = "0002000000",
+        .locking_hex = checkmultisig_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "checkmultisig rejects non-minimal signature count with one pubkey",
+        .unlocking_hex = "000200000051",
         .locking_hex = checkmultisig_drop_1,
         .flags = flags,
         .expected = .{ .err = error.MinimalData },
