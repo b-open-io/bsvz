@@ -82,6 +82,12 @@ test "go direct stack rows: safe underflow subset" {
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
+            .name = "row 1401 fromaltstack underflows on empty alt stack",
+            .unlocking_hex = "51",
+            .locking_hex = "6c",
+            .expected = .{ .err = error.AltStackUnderflow },
+        },
+        .{
             .name = "row 1159 twodrop on one item errors",
             .unlocking_hex = "51",
             .locking_hex = "6d51",

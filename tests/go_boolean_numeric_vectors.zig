@@ -231,9 +231,15 @@ test "go direct script rows: boolean underflow parity" {
     const allocator = std.testing.allocator;
 
     try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 1428, .name = "negate underflows with empty stack", .unlocking_hex = "61", .locking_hex = "8f51", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1429, .name = "abs underflows with empty stack", .unlocking_hex = "61", .locking_hex = "9051", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1430, .name = "not underflows with empty stack", .unlocking_hex = "", .locking_hex = "91", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1431, .name = "zeronotequal underflows with empty stack", .unlocking_hex = "", .locking_hex = "92", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1432, .name = "add underflows with one stack item", .unlocking_hex = "51", .locking_hex = "93", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1433, .name = "sub underflows with one stack item", .unlocking_hex = "51", .locking_hex = "94", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1435, .name = "booland underflows with one stack item", .unlocking_hex = "51", .locking_hex = "9a", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1436, .name = "boolor underflows with one stack item", .unlocking_hex = "51", .locking_hex = "9b", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1437, .name = "numequal underflows with one stack item", .unlocking_hex = "51", .locking_hex = "9c", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1438, .name = "numequalverify underflows with one stack item", .unlocking_hex = "51", .locking_hex = "9d51", .expected = .{ .err = error.StackUnderflow } },
     });
 }
