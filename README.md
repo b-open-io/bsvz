@@ -43,14 +43,14 @@ Current implemented areas:
 - crypto: sha256, hash256, ripemd160, hash160, secp256k1 private/public keys, DER signatures, tx-signature helpers
 - compat: legacy P2PKH address and WIF encode/decode
 - transaction: legacy transaction parse/serialize, txid, replay-protected sighash/preimage helpers, P2PKH spend helpers
-- script: ScriptNum, byte helpers, script parser/chunks, broad opcode set, general execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, P2PKH and OP_RETURN templates
+- script: ScriptNum, byte helpers, script parser/chunks, broad opcode set, general execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, Go-shaped policy enforcement, P2PKH and OP_RETURN templates
 
 Current construction zones:
 
 - SPV is not yet real beyond placeholders and type stubs
 - broadcast is not yet real beyond namespace scaffolding
-- the script interpreter is now general enough for real progress, but it is not yet at full Go/TS SDK parity
-- native execution coverage for compiled Runar contracts is still in progress
+- the script interpreter is materially closer to Go parity, but the full Go reference corpus is not yet imported
+- native execution coverage for compiled Runar contracts is broad and growing, but not complete
 
 ## Script Interpreter Coverage
 
@@ -68,11 +68,13 @@ This is the current interpreter map for `bsvz.script`.
 | Numeric and boolean ops | broad coverage | `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, comparisons, min/max, within, boolean logic |
 | Hash ops | implemented | `RIPEMD160`, `SHA1`, `SHA256`, `HASH160`, `HASH256` |
 | `ScriptNum` | implemented | small-or-big numeric core using Zig stdlib bigint for promoted values |
-| `CHECKSIG` | implemented | transaction-aware, BSV-only, legacy and ForkID paths, `CODESEPARATOR` handling |
-| `CHECKMULTISIG` | implemented | transaction-aware, post-Genesis behavior, `NULLDUMMY` / `NULLFAIL` policy coverage |
-| Policy flags | partial parity | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if` |
-| Go parity vectors | partial | many direct interpreter parity tests are in place, but not the full Go vector corpus |
-| Runar local acceptance | partial | broad real-contract coverage exists, but native execution parity is still expanding |
+| `CHECKSIG` | implemented | transaction-aware, BSV-only, legacy and ForkID paths, `CODESEPARATOR` handling, scriptCode normalization |
+| `CHECKMULTISIG` | implemented | transaction-aware, post-Genesis behavior, early-exit behavior, `NULLDUMMY` / `NULLFAIL` / ForkID policy coverage |
+| Policy flags | broad coverage | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if` |
+| Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding are both enforced where Go applies `MINIMALDATA` |
+| `CODESEPARATOR` parity | broad coverage | legacy and ForkID scriptCode behavior, chained separator result-shape tests, parser/scanner coverage |
+| Go parity vectors | broad but incomplete | many direct parser, policy, multisig, and `CODESEPARATOR` reference vectors are in place, but not the full Go corpus |
+| Runar local acceptance | broad but incomplete | real local acceptance covers stateless, stateful, covenant, NFT, fungible-token, and math/crypto-heavy contracts, but the full Runar corpus is not yet green |
 | SPV / script-adjacent proof tooling | construction zone | not part of the interpreter core yet |
 
 BSV-specific scope rules:
