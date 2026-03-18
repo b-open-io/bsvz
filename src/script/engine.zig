@@ -725,11 +725,19 @@ fn verifyChecksig(
     pubkey_bytes: []const u8,
 ) Error!bool {
     const signing_script = ctx.previous_locking_script orelse current_script;
+    const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch return error.InvalidSignatureEncoding;
+    const legacy_normalization = !sighash.SigHashType.hasForkId(tx_signature.sighash_type);
 
-    const script_code = try buildScriptCode(ctx.allocator, signing_script, last_code_separator, &[_][]const u8{sig_bytes});
+    const script_code = try buildScriptCode(
+        ctx.allocator,
+        signing_script,
+        last_code_separator,
+        if (legacy_normalization) &[_][]const u8{sig_bytes} else &.{},
+        legacy_normalization,
+    );
     defer ctx.allocator.free(script_code.bytes);
 
-    return verifyChecksigWithScriptCode(ctx, script_code, sig_bytes, pubkey_bytes);
+    return verifyChecksigWithScriptCode(ctx, script_code, tx_signature, pubkey_bytes);
 }
 
 fn verifyCheckmultisig(
@@ -767,14 +775,15 @@ fn verifyCheckmultisig(
     defer ctx.allocator.free(dummy);
     if (ctx.flags.strict_encoding and dummy.len != 0) return error.NullDummy;
 
-    const script_code = try buildScriptCode(ctx.allocator, signing_script, state.last_code_separator, signatures);
+    const script_code = try buildScriptCode(ctx.allocator, signing_script, state.last_code_separator, signatures, true);
     defer ctx.allocator.free(script_code.bytes);
 
     var key_index: usize = 0;
     for (signatures) |sig_bytes| {
         var matched = false;
         while (key_index < pubkeys.len) : (key_index += 1) {
-            if (try verifyChecksigWithScriptCode(ctx, script_code, sig_bytes, pubkeys[key_index])) {
+            const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch return error.InvalidSignatureEncoding;
+            if (try verifyChecksigWithScriptCode(ctx, script_code, tx_signature, pubkeys[key_index])) {
                 matched = true;
                 key_index += 1;
                 break;
@@ -789,11 +798,10 @@ fn verifyCheckmultisig(
 fn verifyChecksigWithScriptCode(
     ctx: ExecutionContext,
     script_code: Script,
-    sig_bytes: []const u8,
+    tx_signature: crypto.TxSignature,
     pubkey_bytes: []const u8,
 ) Error!bool {
     const tx = ctx.tx orelse return error.MissingChecksigContext;
-    const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch return error.InvalidSignatureEncoding;
     const public_key = crypto.PublicKey.fromSec1(pubkey_bytes) catch return error.InvalidPublicKeyEncoding;
 
     const digest = try sighash.digest(
@@ -812,6 +820,7 @@ fn buildScriptCode(
     current_script: Script,
     last_code_separator: usize,
     signatures_to_remove: []const []const u8,
+    strip_remaining_code_separators: bool,
 ) Error!Script {
     if (last_code_separator > current_script.bytes.len) return error.InvalidPushData;
 
@@ -833,6 +842,12 @@ fn buildScriptCode(
         normalized_prefix = next_prefix;
     }
 
+    if (strip_remaining_code_separators) {
+        const stripped_prefix = try stripCodeSeparatorsAlloc(allocator, normalized_prefix);
+        allocator.free(normalized_prefix);
+        normalized_prefix = stripped_prefix;
+    }
+
     if (raw_state_suffix.len == 0) {
         return Script.init(normalized_prefix);
     }
@@ -842,6 +857,64 @@ fn buildScriptCode(
     @memcpy(out[normalized_prefix.len..], raw_state_suffix);
     allocator.free(normalized_prefix);
     return Script.init(out);
+}
+
+fn stripCodeSeparatorsAlloc(allocator: std.mem.Allocator, script_bytes: []const u8) Error![]u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    defer out.deinit(allocator);
+
+    var cursor: usize = 0;
+    while (cursor < script_bytes.len) {
+        const byte = script_bytes[cursor];
+        cursor += 1;
+
+        if (byte >= 0x01 and byte <= 0x4b) {
+            if (script_bytes.len < cursor + byte) return error.InvalidPushData;
+            try out.append(allocator, byte);
+            try out.appendSlice(allocator, script_bytes[cursor .. cursor + byte]);
+            cursor += byte;
+            continue;
+        }
+
+        if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA1)) {
+            if (script_bytes.len < cursor + 1) return error.InvalidPushData;
+            const len = script_bytes[cursor];
+            if (script_bytes.len < cursor + 1 + len) return error.InvalidPushData;
+            try out.append(allocator, byte);
+            try out.append(allocator, script_bytes[cursor]);
+            try out.appendSlice(allocator, script_bytes[cursor + 1 .. cursor + 1 + len]);
+            cursor += 1 + len;
+            continue;
+        }
+
+        if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA2)) {
+            if (script_bytes.len < cursor + 2) return error.InvalidPushData;
+            const len = std.mem.readInt(u16, script_bytes[cursor..][0..2], .little);
+            if (script_bytes.len < cursor + 2 + len) return error.InvalidPushData;
+            try out.append(allocator, byte);
+            try out.appendSlice(allocator, script_bytes[cursor..][0..2]);
+            try out.appendSlice(allocator, script_bytes[cursor + 2 .. cursor + 2 + len]);
+            cursor += 2 + len;
+            continue;
+        }
+
+        if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA4)) {
+            if (script_bytes.len < cursor + 4) return error.InvalidPushData;
+            const len = std.mem.readInt(u32, script_bytes[cursor..][0..4], .little);
+            if (script_bytes.len < cursor + 4 + len) return error.InvalidPushData;
+            try out.append(allocator, byte);
+            try out.appendSlice(allocator, script_bytes[cursor..][0..4]);
+            try out.appendSlice(allocator, script_bytes[cursor + 4 .. cursor + 4 + len]);
+            cursor += 4 + len;
+            continue;
+        }
+
+        if (byte != @intFromEnum(opcode.Opcode.OP_CODESEPARATOR)) {
+            try out.append(allocator, byte);
+        }
+    }
+
+    return out.toOwnedSlice(allocator);
 }
 
 fn encodePushDataElement(allocator: std.mem.Allocator, data: []const u8) Error![]u8 {
@@ -1314,7 +1387,7 @@ test "engine verifies 2-of-2 checksig ordering with checkmultisig" {
     }, wrong_unlocking_script, locking_script)));
 }
 
-test "engine find-and-delete removes pushed signature copies from checksig script code" {
+test "engine legacy checksig removes pushed signature copies from script code" {
     const allocator = std.testing.allocator;
 
     var key_bytes = [_]u8{0} ** 32;
@@ -1352,7 +1425,7 @@ test "engine find-and-delete removes pushed signature copies from checksig scrip
         .lock_time = 0,
     };
 
-    const scope = sighash.SigHashType.forkid | sighash.SigHashType.all;
+    const scope = sighash.SigHashType.all;
     const digest = try sighash.digest(allocator, &tx, 0, script_code, 1_000, scope);
 
     const tx_signature = crypto.TxSignature{
@@ -1638,4 +1711,47 @@ test "engine honors op_codeseparator in checksig subscript" {
         .previous_locking_script = locking_script,
         .previous_satoshis = 700,
     }, unlocking_script, locking_script));
+}
+
+test "legacy scriptCode strips remaining op_codeseparators after the active boundary" {
+    const allocator = std.testing.allocator;
+    const script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    });
+
+    const script_code = try buildScriptCode(allocator, script, 2, &.{}, true);
+    defer allocator.free(script_code.bytes);
+
+    try std.testing.expectEqualSlices(u8, &[_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    }, script_code.bytes);
+}
+
+test "forkid scriptCode preserves later op_codeseparators after the active boundary" {
+    const allocator = std.testing.allocator;
+    const script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    });
+
+    const script_code = try buildScriptCode(allocator, script, 2, &.{}, false);
+    defer allocator.free(script_code.bytes);
+
+    try std.testing.expectEqualSlices(u8, &[_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    }, script_code.bytes);
 }
