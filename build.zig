@@ -42,4 +42,21 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_integration_tests.step);
+
+    const bench_module = b.createModule(.{
+        .root_source_file = b.path("benchmarks/script_engine.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    bench_module.addImport("bsvz", root_module);
+
+    const bench_exe = b.addExecutable(.{
+        .name = "bench-script-engine",
+        .root_module = bench_module,
+    });
+    b.installArtifact(bench_exe);
+
+    const run_bench = b.addRunArtifact(bench_exe);
+    const bench_step = b.step("bench", "Run script engine benchmarks");
+    bench_step.dependOn(&run_bench.step);
 }
