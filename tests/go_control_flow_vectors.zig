@@ -158,3 +158,33 @@ test "go direct script rows: op_return in different branches" {
         .{ .name = "post-genesis branch-selected op_return keeps success when else branch pushes one first", .unlocking_hex = "00", .locking_hex = "636a05646174613167516a05646174613268", .flags = post_genesis_flags, .expected = .{ .success = true } },
     });
 }
+
+test "go direct script rows: untaken if branch ignores opcode bytes across the reserved tail" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    var row_index: usize = 321;
+    while (row_index <= 372) : (row_index += 1) {
+        const opcode_byte: u8 = @intCast(0xcc + (row_index - 321));
+        var locking_bytes = [_]u8{
+            @intFromEnum(bsvz.script.opcode.Opcode.OP_IF),
+            opcode_byte,
+            @intFromEnum(bsvz.script.opcode.Opcode.OP_ELSE),
+            @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+            @intFromEnum(bsvz.script.opcode.Opcode.OP_ENDIF),
+        };
+        const locking_hex_storage = try allocator.alloc(u8, locking_bytes.len * 2);
+        defer allocator.free(locking_hex_storage);
+        const locking_hex = try bsvz.primitives.hex.encodeLower(&locking_bytes, locking_hex_storage);
+        const name = try std.fmt.allocPrint(allocator, "go row {d}: untaken if branch ignores opcode 0x{x:0>2}", .{ row_index, opcode_byte });
+        defer allocator.free(name);
+
+        try harness.runCase(allocator, .{
+            .name = name,
+            .unlocking_hex = "00",
+            .locking_hex = locking_hex,
+            .flags = flags,
+            .expected = .{ .success = true },
+        });
+    }
+}
