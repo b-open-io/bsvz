@@ -140,6 +140,77 @@ test "go direct script rows: bin2num parity" {
     });
 }
 
+test "go direct script rows: bin2num canonical rows" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.strict_encoding = true;
+
+    const neg_forty_two = try scriptNumBytes(allocator, -42);
+    defer allocator.free(neg_forty_two);
+    const max_i32 = try scriptNumBytes(allocator, 2_147_483_647);
+    defer allocator.free(max_i32);
+    const neg_max_i32 = try scriptNumBytes(allocator, -2_147_483_647);
+    defer allocator.free(neg_max_i32);
+
+    const zero_case = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        &[_]u8{},
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(zero_case);
+    const one_case = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        &[_]u8{0x01},
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(one_case);
+    const neg42_case = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        neg_forty_two,
+        &[_]u8{0x2a, 0x80},
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(neg42_case);
+    const noncanonical_zero_case = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        &[_]u8{ 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(noncanonical_zero_case);
+    const max_i32_case = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        max_i32,
+        &[_]u8{ 0xff, 0xff, 0xff, 0x7f },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(max_i32_case);
+    const neg_max_i32_case = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        neg_max_i32,
+        &[_]u8{ 0xff, 0xff, 0xff, 0xff },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(neg_max_i32_case);
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .name = "bin2num canonical empty argument stays zero", .unlocking_hex = zero_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "bin2num canonical one-byte positive stays one", .unlocking_hex = one_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "bin2num canonical negative forty-two stays negative forty-two", .unlocking_hex = neg42_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "bin2num non-canonical zero still decodes to zero", .unlocking_hex = noncanonical_zero_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "bin2num canonical max int32 stays max int32", .unlocking_hex = max_i32_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "bin2num canonical negative max int32 stays negative max int32", .unlocking_hex = neg_max_i32_case, .locking_hex = "", .expected = .{ .success = true } },
+    });
+}
+
 test "go direct script rows: num2bin parity" {
     const allocator = std.testing.allocator;
     var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
