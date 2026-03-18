@@ -1617,6 +1617,32 @@ test "engine matches go multiple else legacy and post-genesis behavior" {
         .allocator = allocator,
         .flags = ExecutionFlags.postGenesisBsv(),
     }, multiple_else_true));
+
+    const multiple_else_add = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_IF),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_ELSE),
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_ELSE),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+        @intFromEnum(opcode.Opcode.OP_ADD),
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_EQUAL),
+    });
+
+    var legacy_add_result = try executeScript(.{
+        .allocator = allocator,
+        .flags = ExecutionFlags.legacyReference(),
+    }, multiple_else_add);
+    defer legacy_add_result.deinit(allocator);
+    try std.testing.expect(legacy_add_result.success);
+
+    try std.testing.expectError(error.UnbalancedConditionals, executeScript(.{
+        .allocator = allocator,
+        .flags = ExecutionFlags.postGenesisBsv(),
+    }, multiple_else_add));
 }
 
 test "engine supports skipped nested branches without executing side effects" {

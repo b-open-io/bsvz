@@ -944,12 +944,14 @@ test "go direct script-pair rows: control flow cannot span scripts" {
 
 test "go direct script-pair rows: op_return seam behavior" {
     const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
 
     try harness.runCase(allocator, .{
         .name = "pre-genesis unlocking op_return is still an op_return error",
         .unlocking_hex = "6a",
         .locking_hex = "51",
-        .flags = bsvz.script.engine.ExecutionFlags.legacyReference(),
+        .flags = legacy_flags,
         .expected = .{ .err = error.ReturnEncountered },
     });
 
@@ -957,7 +959,7 @@ test "go direct script-pair rows: op_return seam behavior" {
         .name = "post-genesis unlocking op_return can still satisfy a simple lock",
         .unlocking_hex = "6a",
         .locking_hex = "51",
-        .flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv(),
+        .flags = post_genesis_flags,
         .expected = .{ .success = true },
     });
 
@@ -970,5 +972,37 @@ test "go direct script-pair rows: op_return seam behavior" {
         .locking_hex = "51",
         .flags = push_only_flags,
         .expected = .{ .err = error.SigPushOnly },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis locking op_return still errors with true unlocking stack top",
+        .unlocking_hex = "51",
+        .locking_hex = "6a",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis locking op_return still errors with false unlocking stack top",
+        .unlocking_hex = "00",
+        .locking_hex = "6a",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis locking op_return preserves a true unlocking stack top",
+        .unlocking_hex = "51",
+        .locking_hex = "6a",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis locking op_return preserves a false unlocking stack top",
+        .unlocking_hex = "00",
+        .locking_hex = "6a",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = false },
     });
 }
