@@ -326,6 +326,45 @@ test "go direct checkmultisig rows: nullfail and nulldummy matrix" {
     });
 }
 
+test "go direct checkmultisig rows: strict evaluation order" {
+    const allocator = std.testing.allocator;
+
+    var strict_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    strict_flags.strict_encoding = true;
+
+    try harness.runCase(allocator, .{
+        .name = "2-of-2 checkmultisig not errors on first checked invalid pubkey",
+        .unlocking_hex =
+            "00"
+            ++ "09" ++ "300602010102010101"
+            ++ "09" ++ "300602010102010101",
+        .locking_hex =
+            "52"
+            ++ "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
+            ++ "00"
+            ++ "52"
+            ++ "ae91",
+        .flags = strict_flags,
+        .expected = .{ .err = error.InvalidPublicKeyEncoding },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "2-of-2 checkmultisig not errors on first checked malformed signature",
+        .unlocking_hex =
+            "00"
+            ++ "09" ++ "300602010102010101"
+            ++ "51",
+        .locking_hex =
+            "52"
+            ++ "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
+            ++ "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
+            ++ "52"
+            ++ "ae91",
+        .flags = strict_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+}
+
 test "go direct script rows: minimaldata push forms" {
     const allocator = std.testing.allocator;
 
