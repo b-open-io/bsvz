@@ -83,23 +83,30 @@ pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_sc
 
     if (ctx.flags.sig_push_only and !(try isPushOnly(unlocking_script))) return error.SigPushOnly;
 
-    executeIntoState(ctx, &state, .unlocking, unlocking_script) catch |err| switch (err) {
-        error.VerifyFailed => return false,
-        error.ReturnEncountered => if (ctx.flags.utxo_after_genesis) return false else return err,
-        else => return err,
-    };
-    if (state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
+    if (!(try executeVerificationPhase(ctx, &state, .unlocking, unlocking_script))) return false;
     state.clearAltStack(ctx.allocator);
-    executeIntoState(ctx, &state, .locking, locking_script) catch |err| switch (err) {
+    if (!(try executeVerificationPhase(ctx, &state, .locking, locking_script))) return false;
+
+    if (state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
+    if (state.stack.items.len == 0) return false;
+    if (ctx.flags.clean_stack and state.stack.items.len != 1) return error.CleanStack;
+    return isTruthy(state.stack.items[state.stack.items.len - 1]);
+}
+
+fn executeVerificationPhase(
+    ctx: ExecutionContext,
+    state: *ExecutionState,
+    active_script: ActiveScript,
+    script: Script,
+) Error!bool {
+    executeIntoState(ctx, state, active_script, script) catch |err| switch (err) {
         error.VerifyFailed => return false,
         error.ReturnEncountered => if (ctx.flags.utxo_after_genesis) return false else return err,
         else => return err,
     };
 
     if (state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
-    if (state.stack.items.len == 0) return false;
-    if (ctx.flags.clean_stack and state.stack.items.len != 1) return error.CleanStack;
-    return isTruthy(state.stack.items[state.stack.items.len - 1]);
+    return true;
 }
 
 fn executeIntoState(
