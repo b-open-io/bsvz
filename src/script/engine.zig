@@ -4077,6 +4077,98 @@ test "engine checksig not matches go malformed-signature dersig matrix" {
     }
 }
 
+test "engine checksig not matches go invalid sighash-type row in legacy mode" {
+    const allocator = std.testing.allocator;
+    const previous_locking_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+        @intFromEnum(opcode.Opcode.OP_NOT),
+    });
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x28} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = previous_locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const invalid_sighash_signature = [_]u8{
+        0x30, 0x44,
+        0x02, 0x20,
+        0x74, 0x09, 0xb5, 0xb3, 0x20, 0x29, 0x6e, 0x5e,
+        0x21, 0x36, 0xa7, 0xb2, 0x81, 0xa7, 0xf8, 0x03,
+        0x02, 0x8c, 0xa4, 0xca, 0x44, 0xe2, 0xb8, 0x3e,
+        0xeb, 0xd4, 0x69, 0x32, 0x67, 0x77, 0x25, 0xde,
+        0x02, 0x20,
+        0x2d, 0x4e, 0xea, 0x1c, 0x8d, 0x3c, 0x98, 0xe6,
+        0xf4, 0x26, 0x14, 0xf5, 0x47, 0x64, 0xe6, 0xe5,
+        0xe6, 0x54, 0x2e, 0x21, 0x3e, 0xb4, 0xd0, 0x79,
+        0x73, 0x7e, 0x9a, 0x8b, 0x6e, 0x98, 0x12, 0xec,
+        0x05,
+    };
+    const uncompressed_pubkey = [_]u8{
+        0x04,
+        0x82, 0x82, 0x26, 0x32, 0x12, 0xc6, 0x09, 0xd9,
+        0xea, 0x2a, 0x6e, 0x3e, 0x17, 0x2d, 0xe2, 0x38,
+        0xd8, 0xc3, 0x9c, 0xab, 0xd5, 0xac, 0x1c, 0xa1,
+        0x06, 0x46, 0xe2, 0x3f, 0xd5, 0xf5, 0x15, 0x08,
+        0x11, 0xf8, 0xa8, 0x09, 0x85, 0x57, 0xdf, 0xe4,
+        0x5e, 0x82, 0x56, 0xe8, 0x30, 0xb6, 0x0a, 0xce,
+        0x62, 0xd6, 0x13, 0xac, 0x2f, 0x7b, 0x17, 0xbe,
+        0xd3, 0x1b, 0x6e, 0xaf, 0xf6, 0xe2, 0x6c, 0xaf,
+    };
+
+    const sig_push = try encodePushDataElement(allocator, &invalid_sighash_signature);
+    defer allocator.free(sig_push);
+    const pubkey_push = try encodePushDataElement(allocator, &uncompressed_pubkey);
+    defer allocator.free(pubkey_push);
+
+    var unlocking = try allocator.alloc(u8, sig_push.len + pubkey_push.len);
+    defer allocator.free(unlocking);
+    @memcpy(unlocking[0..sig_push.len], sig_push);
+    @memcpy(unlocking[sig_push.len..], pubkey_push);
+    const unlocking_script = Script.init(unlocking);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{
+            .strict_encoding = false,
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+        },
+    }, unlocking_script, previous_locking_script));
+
+    try std.testing.expectError(error.InvalidSigHashType, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{
+            .strict_encoding = true,
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+        },
+    }, unlocking_script, previous_locking_script));
+}
+
 test "engine rejects reserved sighash bits under strict encoding" {
     const allocator = std.testing.allocator;
 
