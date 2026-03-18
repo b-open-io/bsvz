@@ -1546,3 +1546,79 @@ test "go direct script rows: minimaldata not parity" {
         .expected = .{ .err = error.MinimalData },
     });
 }
+
+test "go direct script rows: size parity" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.strict_encoding = true;
+
+    try harness.runCase(allocator, .{
+        .name = "size of one-byte canonical positive number is one",
+        .unlocking_hex = "51",
+        .locking_hex = "825187",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "size of one-byte minimally encoded 127 is one",
+        .unlocking_hex = "017f",
+        .locking_hex = "825187",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "size of one-byte minimally encoded negative one is one",
+        .unlocking_hex = "4f",
+        .locking_hex = "825187",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "size of one-byte minimally encoded negative 127 is one",
+        .unlocking_hex = "01ff",
+        .locking_hex = "825187",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "size does not consume its argument",
+        .unlocking_hex = "012a",
+        .locking_hex = "825188012a87",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "size with one stack item underflows at equal",
+        .unlocking_hex = "61",
+        .locking_hex = "8251",
+        .flags = flags,
+        .expected = .{ .err = error.StackUnderflow },
+    });
+}
+
+test "go direct script rows: skipped disabled opcode exact row" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.strict_encoding = true;
+
+    try harness.runCase(allocator, .{
+        .name = "if disabled opcode in untaken branch remains ok",
+        .unlocking_hex = "00",
+        .locking_hex = "63ec675168",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if disabled 2div in untaken branch remains ok after genesis",
+        .unlocking_hex = "5200",
+        .locking_hex = "639668",
+        .flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv(),
+        .expected = .{ .success = true },
+    });
+}
