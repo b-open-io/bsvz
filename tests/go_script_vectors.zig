@@ -6,6 +6,14 @@ const nonempty_invalid_der_signature = [_]u8{
     0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01, 0x01,
 };
 
+const GoRow = struct {
+    row: ?usize = null,
+    name: []const u8,
+    unlocking_hex: []const u8,
+    locking_hex: []const u8,
+    expected: harness.Expectation,
+};
+
 fn encodeLowerAlloc(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
     const out = try allocator.alloc(u8, bytes.len * 2);
     return try bsvz.primitives.hex.encodeLower(bytes, out);
@@ -136,6 +144,22 @@ fn scriptHexForPushesAndOps(
 
 fn scriptNumBytes(allocator: std.mem.Allocator, value: i64) ![]u8 {
     return bsvz.script.ScriptNum.encode(allocator, value);
+}
+
+fn runRows(
+    allocator: std.mem.Allocator,
+    flags: bsvz.script.engine.ExecutionFlags,
+    rows: []const GoRow,
+) !void {
+    for (rows) |row| {
+        try harness.runCase(allocator, .{
+            .name = row.name,
+            .unlocking_hex = row.unlocking_hex,
+            .locking_hex = row.locking_hex,
+            .flags = flags,
+            .expected = row.expected,
+        });
+    }
 }
 
 test "go direct checksig rows: bip66 example 4 nullfail matrix" {
@@ -1590,52 +1614,13 @@ test "go direct script rows: size parity" {
     var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
     flags.strict_encoding = true;
 
-    try harness.runCase(allocator, .{
-        .name = "size of one-byte canonical positive number is one",
-        .unlocking_hex = "51",
-        .locking_hex = "825187",
-        .flags = flags,
-        .expected = .{ .success = true },
-    });
-
-    try harness.runCase(allocator, .{
-        .name = "size of one-byte minimally encoded 127 is one",
-        .unlocking_hex = "017f",
-        .locking_hex = "825187",
-        .flags = flags,
-        .expected = .{ .success = true },
-    });
-
-    try harness.runCase(allocator, .{
-        .name = "size of one-byte minimally encoded negative one is one",
-        .unlocking_hex = "4f",
-        .locking_hex = "825187",
-        .flags = flags,
-        .expected = .{ .success = true },
-    });
-
-    try harness.runCase(allocator, .{
-        .name = "size of one-byte minimally encoded negative 127 is one",
-        .unlocking_hex = "01ff",
-        .locking_hex = "825187",
-        .flags = flags,
-        .expected = .{ .success = true },
-    });
-
-    try harness.runCase(allocator, .{
-        .name = "size does not consume its argument",
-        .unlocking_hex = "012a",
-        .locking_hex = "825188012a87",
-        .flags = flags,
-        .expected = .{ .success = true },
-    });
-
-    try harness.runCase(allocator, .{
-        .name = "size with one stack item underflows at equal",
-        .unlocking_hex = "61",
-        .locking_hex = "8251",
-        .flags = flags,
-        .expected = .{ .err = error.StackUnderflow },
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 185, .name = "size of one-byte canonical positive number is one", .unlocking_hex = "51", .locking_hex = "825187", .expected = .{ .success = true } },
+        .{ .row = 186, .name = "size of one-byte minimally encoded 127 is one", .unlocking_hex = "017f", .locking_hex = "825187", .expected = .{ .success = true } },
+        .{ .row = 197, .name = "size of one-byte minimally encoded negative one is one", .unlocking_hex = "4f", .locking_hex = "825187", .expected = .{ .success = true } },
+        .{ .row = 198, .name = "size of one-byte minimally encoded negative 127 is one", .unlocking_hex = "01ff", .locking_hex = "825187", .expected = .{ .success = true } },
+        .{ .row = 210, .name = "size does not consume its argument", .unlocking_hex = "012a", .locking_hex = "825188012a87", .expected = .{ .success = true } },
+        .{ .row = 848, .name = "size with one stack item underflows at equal", .unlocking_hex = "61", .locking_hex = "8251", .expected = .{ .err = error.StackUnderflow } },
     });
 }
 
@@ -1644,12 +1629,8 @@ test "go direct script rows: skipped disabled opcode exact row" {
     var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
     flags.strict_encoding = true;
 
-    try harness.runCase(allocator, .{
-        .name = "if disabled opcode in untaken branch remains ok",
-        .unlocking_hex = "00",
-        .locking_hex = "63ec675168",
-        .flags = flags,
-        .expected = .{ .success = true },
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 353, .name = "if disabled opcode in untaken branch remains ok", .unlocking_hex = "00", .locking_hex = "63ec675168", .expected = .{ .success = true } },
     });
 
     try harness.runCase(allocator, .{
