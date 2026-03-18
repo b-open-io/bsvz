@@ -1005,4 +1005,36 @@ test "go direct script-pair rows: op_return seam behavior" {
         .flags = post_genesis_flags,
         .expected = .{ .success = false },
     });
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis return only works if not executed across the script seam",
+        .unlocking_hex = "00",
+        .locking_hex = "636a6851",
+        .flags = legacy_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis return only works if not executed across the script seam",
+        .unlocking_hex = "00",
+        .locking_hex = "636a6851",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis taken branch return still errors across the script seam",
+        .unlocking_hex = "51",
+        .locking_hex = "76636a68",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis taken branch return keeps the true stack top across the script seam",
+        .unlocking_hex = "51",
+        .locking_hex = "76636a68",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
 }

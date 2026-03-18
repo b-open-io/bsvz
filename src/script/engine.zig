@@ -3549,6 +3549,50 @@ test "engine treats OP_RETURN as post-genesis early success at top level" {
     })));
 }
 
+test "engine matches go top-level op_return tail handling rows" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.ReturnEncountered, executeScript(.{
+        .allocator = allocator,
+        .flags = ExecutionFlags.legacyReference(),
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_RETURN),
+        @intFromEnum(opcode.Opcode.OP_IF),
+    })));
+
+    var return_if_result = try executeScript(.{
+        .allocator = allocator,
+        .flags = ExecutionFlags.postGenesisBsv(),
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_RETURN),
+        @intFromEnum(opcode.Opcode.OP_IF),
+    }));
+    defer return_if_result.deinit(allocator);
+    try std.testing.expect(return_if_result.success);
+
+    try std.testing.expectError(error.ReturnEncountered, executeScript(.{
+        .allocator = allocator,
+        .flags = ExecutionFlags.legacyReference(),
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_RETURN),
+        0xba,
+    })));
+
+    var return_bad_opcode_result = try executeScript(.{
+        .allocator = allocator,
+        .flags = ExecutionFlags.postGenesisBsv(),
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_RETURN),
+        0xba,
+    }));
+    defer return_bad_opcode_result.deinit(allocator);
+    try std.testing.expect(return_bad_opcode_result.success);
+}
+
 test "engine enforces op and stack limits" {
     const allocator = std.testing.allocator;
 
