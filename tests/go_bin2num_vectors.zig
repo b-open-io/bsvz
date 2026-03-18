@@ -211,6 +211,152 @@ test "go direct script rows: bin2num canonical rows" {
     });
 }
 
+test "go direct script rows: bin2num exact corpus rows" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.strict_encoding = true;
+
+    const pos_one = try scriptNumBytes(allocator, 1);
+    defer allocator.free(pos_one);
+    const pos_254 = try scriptNumBytes(allocator, 254);
+    defer allocator.free(pos_254);
+    const neg_five = try scriptNumBytes(allocator, -5);
+    defer allocator.free(neg_five);
+    const pos_128 = try scriptNumBytes(allocator, 128);
+    defer allocator.free(pos_128);
+    const neg_128 = try scriptNumBytes(allocator, -128);
+    defer allocator.free(neg_128);
+    const pos_15 = try scriptNumBytes(allocator, 15);
+    defer allocator.free(pos_15);
+    const neg_15 = try scriptNumBytes(allocator, -15);
+    defer allocator.free(neg_15);
+    const pos_8388609 = try scriptNumBytes(allocator, 8_388_609);
+    defer allocator.free(pos_8388609);
+    const neg_8388609 = try scriptNumBytes(allocator, -8_388_609);
+    defer allocator.free(neg_8388609);
+
+    const row833 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        pos_one,
+        &[_]u8{ 0x01, 0x00, 0x00, 0x00, 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row833);
+    const row834 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        pos_254,
+        &[_]u8{ 0xfe, 0x00, 0x00, 0x00, 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row834);
+    const row835 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        neg_five,
+        &[_]u8{ 0x05, 0x00, 0x00, 0x00, 0x80 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row835);
+    const row836 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        pos_128,
+        &[_]u8{ 0x80, 0x00, 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row836);
+    const row837 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        neg_128,
+        &[_]u8{ 0x80, 0x00, 0x80 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row837);
+    const row838 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        pos_128,
+        &[_]u8{ 0x80, 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row838);
+    const row839 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        neg_128,
+        &[_]u8{ 0x80, 0x80 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row839);
+    const row840 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        pos_15,
+        &[_]u8{ 0x0f, 0x00, 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row840);
+    const row841 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        neg_15,
+        &[_]u8{ 0x0f, 0x00, 0x80 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row841);
+    const row842 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        pos_15,
+        &[_]u8{ 0x0f, 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row842);
+    const row843 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        neg_15,
+        &[_]u8{ 0x0f, 0x80 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row843);
+    const row844 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        pos_8388609,
+        &[_]u8{ 0x01, 0x00, 0x80, 0x00, 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row844);
+    const row845 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        neg_8388609,
+        &[_]u8{ 0x01, 0x00, 0x80, 0x00, 0x80 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(row845);
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .name = "go row 833: bin2num normalizes positive one with trailing zeros", .unlocking_hex = row833, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 834: bin2num normalizes positive two hundred fifty four with trailing zeros", .unlocking_hex = row834, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 835: bin2num relocates sign bit for negative five", .unlocking_hex = row835, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 836: bin2num retains padding when msb is set for positive one hundred twenty eight", .unlocking_hex = row836, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 837: bin2num retains padding when msb is set for negative one hundred twenty eight", .unlocking_hex = row837, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 838: bin2num canonical two-byte positive one hundred twenty eight stays positive", .unlocking_hex = row838, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 839: bin2num canonical two-byte negative one hundred twenty eight stays negative", .unlocking_hex = row839, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 840: bin2num trims unnecessary positive padding when msb is not set", .unlocking_hex = row840, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 841: bin2num trims unnecessary negative padding when msb is not set", .unlocking_hex = row841, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 842: bin2num canonical two-byte positive fifteen stays positive", .unlocking_hex = row842, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 843: bin2num canonical two-byte negative fifteen stays negative", .unlocking_hex = row843, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 844: bin2num retains significant zero bytes for large positive values", .unlocking_hex = row844, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 845: bin2num retains significant zero bytes for large negative values", .unlocking_hex = row845, .locking_hex = "", .expected = .{ .success = true } },
+    });
+}
+
 test "go direct script rows: num2bin parity" {
     const allocator = std.testing.allocator;
     var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
