@@ -24,6 +24,7 @@ pub const ScriptError = error{
     NullFail,
     SigPushOnly,
     CleanStack,
+    MinimalIf,
     UnknownOpcode,
     InvalidSignatureEncoding,
     InvalidPublicKeyEncoding,

@@ -10,6 +10,7 @@ pub const ExecutionFlags = struct {
     null_fail: bool = false,
     sig_push_only: bool = false,
     clean_stack: bool = false,
+    minimal_if: bool = false,
 };
 
 pub const ExecutionContext = struct {
@@ -25,6 +26,7 @@ pub const ExecutionState = struct {
     stack: std.ArrayListUnmanaged([]u8) = .empty,
     alt_stack: std.ArrayListUnmanaged([]u8) = .empty,
     condition_stack: std.ArrayListUnmanaged(bool) = .empty,
+    else_seen_stack: std.ArrayListUnmanaged(bool) = .empty,
     ops_executed: usize = 0,
     max_stack_depth: usize = 0,
     last_code_separator: usize = 0,
@@ -35,6 +37,7 @@ pub const ExecutionState = struct {
         self.stack.deinit(allocator);
         self.alt_stack.deinit(allocator);
         self.condition_stack.deinit(allocator);
+        self.else_seen_stack.deinit(allocator);
         self.* = .{};
     }
 

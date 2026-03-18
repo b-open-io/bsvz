@@ -157,23 +157,31 @@ fn executeIntoState(
                 if (shouldExecute(state)) {
                     const cond_bytes = try popOwned(state);
                     defer ctx.allocator.free(cond_bytes);
+                    if (ctx.flags.minimal_if) {
+                        if (cond_bytes.len > 1) return error.MinimalIf;
+                        if (cond_bytes.len == 1 and cond_bytes[0] != 0x01) return error.MinimalIf;
+                    }
                     const cond = isTruthy(cond_bytes);
                     try state.condition_stack.append(ctx.allocator, if (op == .OP_IF) cond else !cond);
                 } else {
                     try state.condition_stack.append(ctx.allocator, false);
                 }
+                try state.else_seen_stack.append(ctx.allocator, false);
                 continue;
             },
             .OP_ELSE => {
                 if (state.condition_stack.items.len == 0) return error.UnexpectedElse;
                 const last_index = state.condition_stack.items.len - 1;
+                if (state.else_seen_stack.items[last_index]) return error.UnexpectedElse;
                 const parent_exec = if (last_index == 0) true else allTrue(state.condition_stack.items[0..last_index]);
                 state.condition_stack.items[last_index] = parent_exec and !state.condition_stack.items[last_index];
+                state.else_seen_stack.items[last_index] = true;
                 continue;
             },
             .OP_ENDIF => {
                 if (state.condition_stack.items.len == 0) return error.UnexpectedEndIf;
                 _ = state.condition_stack.pop();
+                _ = state.else_seen_stack.pop();
                 continue;
             },
             else => {},
@@ -1280,6 +1288,71 @@ test "engine executes runar-style dispatch branches" {
     var second_result = try executeScript(.{ .allocator = allocator }, select_second);
     defer second_result.deinit(allocator);
     try std.testing.expect(second_result.success);
+}
+
+test "engine rejects duplicate else in the same conditional block" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.UnexpectedElse, executeScript(.{
+        .allocator = allocator,
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_IF),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_ELSE),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_ELSE),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+    })));
+}
+
+test "engine supports skipped nested branches without executing side effects" {
+    const allocator = std.testing.allocator;
+    const script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_IF),
+            @intFromEnum(opcode.Opcode.OP_1),
+            @intFromEnum(opcode.Opcode.OP_IF),
+                @intFromEnum(opcode.Opcode.OP_RETURN),
+            @intFromEnum(opcode.Opcode.OP_ENDIF),
+        @intFromEnum(opcode.Opcode.OP_ELSE),
+            @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+    });
+
+    var result = try executeScript(.{ .allocator = allocator }, script);
+    defer result.deinit(allocator);
+    try std.testing.expect(result.success);
+    try std.testing.expectEqual(@as(usize, 1), result.state.stack.items.len);
+    try std.testing.expectEqualSlices(u8, &.{0x01}, result.state.stack.items[0]);
+}
+
+test "engine can enforce minimal-if semantics" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.MinimalIf, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .minimal_if = true },
+    }, Script.init(&[_]u8{
+        0x01,
+        0x02,
+        @intFromEnum(opcode.Opcode.OP_IF),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+    })));
+
+    var true_result = try executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .minimal_if = true },
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_IF),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+    }));
+    defer true_result.deinit(allocator);
+    try std.testing.expect(true_result.success);
 }
 
 test "engine supports altstack and deep stack access opcodes" {

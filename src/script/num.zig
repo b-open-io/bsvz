@@ -508,6 +508,53 @@ test "num2bin rejects undersized non-zero encodings" {
     try std.testing.expectError(error.InvalidEncoding, ScriptNum.num2bin(allocator, -128, 1));
 }
 
+test "num2bin and bin2num match representative go-sdk operation semantics" {
+    const allocator = std.testing.allocator;
+
+    {
+        const encoded = try ScriptNum.num2bin(allocator, 0, 0);
+        defer allocator.free(encoded);
+        try std.testing.expectEqualSlices(u8, &.{}, encoded);
+    }
+
+    {
+        const encoded = try ScriptNum.num2bin(allocator, -1, 2);
+        defer allocator.free(encoded);
+        try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x80 }, encoded);
+    }
+
+    {
+        const encoded = try ScriptNum.num2bin(allocator, 128, 2);
+        defer allocator.free(encoded);
+        try std.testing.expectEqualSlices(u8, &.{ 0x80, 0x00 }, encoded);
+    }
+
+    {
+        var decoded = try ScriptNum.bin2num(allocator, &.{ 0x80 });
+        defer decoded.deinit();
+        try std.testing.expect(decoded.isZero());
+        const reencoded = try decoded.encodeOwned(allocator);
+        defer allocator.free(reencoded);
+        try std.testing.expectEqualSlices(u8, &.{}, reencoded);
+    }
+
+    {
+        var decoded = try ScriptNum.bin2num(allocator, &.{ 0x01, 0x00 });
+        defer decoded.deinit();
+        const reencoded = try decoded.encodeOwned(allocator);
+        defer allocator.free(reencoded);
+        try std.testing.expectEqualSlices(u8, &.{0x01}, reencoded);
+    }
+
+    {
+        var decoded = try ScriptNum.bin2num(allocator, &.{ 0x01, 0x80 });
+        defer decoded.deinit();
+        const reencoded = try decoded.encodeOwned(allocator);
+        defer allocator.free(reencoded);
+        try std.testing.expectEqualSlices(u8, &.{0x81}, reencoded);
+    }
+}
+
 test "script num matches representative go-sdk encode/decode vectors" {
     const allocator = std.testing.allocator;
 
