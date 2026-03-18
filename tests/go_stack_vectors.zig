@@ -93,5 +93,29 @@ test "go direct stack rows: safe underflow subset" {
             .locking_hex = "6e",
             .expected = .{ .err = error.StackUnderflow },
         },
+        .{
+            .name = "row 1405 twoover on three items errors",
+            .unlocking_hex = "515151",
+            .locking_hex = "70",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "row 1406 tworot on five items errors",
+            .unlocking_hex = "5151515151",
+            .locking_hex = "71",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "row 1407 twoswap on three items errors",
+            .unlocking_hex = "515151",
+            .locking_hex = "72",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "row 1418 swap requires two stack items",
+            .unlocking_hex = "51",
+            .locking_hex = "7c",
+            .expected = .{ .err = error.StackUnderflow },
+        },
     });
 }

@@ -407,7 +407,9 @@ fn executeIntoState(
                 if (size > ctx.flags.max_script_element_size) return error.NumberTooBig;
                 const value_bytes = try popOwned(state);
                 defer ctx.allocator.free(value_bytes);
-                var value = try decodeScriptNum(ctx, value_bytes);
+                // Go/BSV NUM2BIN decodes the source value using its current byte length
+                // rather than the general numeric-op width cap.
+                var value = try num.ScriptNum.decodeOwned(ctx.allocator, value_bytes);
                 defer value.deinit();
                 const encoded = try value.num2binOwned(ctx.allocator, size);
                 try pushOwned(ctx, state, encoded);

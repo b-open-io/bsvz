@@ -139,6 +139,77 @@ test "go bitwise rows: or exact rows" {
     });
 }
 
+test "go bitwise rows: and exact rows" {
+    const allocator = std.testing.allocator;
+    const flags = strictReferenceFlags();
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{
+            .row = 1044,
+            .name = "row 1044 and preserves empty operands",
+            .unlocking_hex = "0000",
+            .locking_hex = "840087",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1045,
+            .name = "row 1045 and matches equal one byte operands",
+            .unlocking_hex = "01000100",
+            .locking_hex = "84010087",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1046,
+            .name = "row 1046 and accepts small int on the left",
+            .unlocking_hex = "510100",
+            .locking_hex = "84010087",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1047,
+            .name = "row 1047 and accepts small int on the right",
+            .unlocking_hex = "010051",
+            .locking_hex = "84010087",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1048,
+            .name = "row 1048 and of two small ints stays one",
+            .unlocking_hex = "5151",
+            .locking_hex = "845187",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1049,
+            .name = "row 1049 and underflows with one operand",
+            .unlocking_hex = "00",
+            .locking_hex = "840087",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .row = 1050,
+            .name = "row 1050 and underflows on an empty stack",
+            .unlocking_hex = "",
+            .locking_hex = "840087",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .row = 1051,
+            .name = "row 1051 and rejects mismatched operand lengths",
+            .unlocking_hex = "0051",
+            .locking_hex = "845187",
+            .expected = .{ .err = error.InvalidOperandSize },
+        },
+        .{
+            .row = 1052,
+            .name = "row 1052 and combines bytewise operands",
+            .unlocking_hex = "01ab01cd",
+            .locking_hex = "84018987",
+            .expected = .{ .success = true },
+        },
+    });
+}
+
 test "go bitwise rows: xor exact rows" {
     const allocator = std.testing.allocator;
     const flags = strictReferenceFlags();
