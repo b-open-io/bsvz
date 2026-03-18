@@ -922,12 +922,12 @@ fn verifyInputAgainstOutput(
     const unlocking_script = spend_tx.inputs[spend_input_index].unlocking_script;
     const locking_script = previous_output.locking_script;
 
-    const exec_ctx: bsvz.script.engine.ExecutionContext = .{
-        .allocator = allocator,
-        .tx = &spend_tx,
-        .input_index = spend_input_index,
-        .previous_satoshis = previous_output.satoshis,
-    };
+    const exec_ctx = bsvz.script.engine.ExecutionContext.forSpend(
+        allocator,
+        &spend_tx,
+        spend_input_index,
+        previous_output.satoshis,
+    );
     return bsvz.script.thread.verifyExecutableScripts(
         exec_ctx,
         Script.init(unlocking_script.bytes),

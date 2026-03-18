@@ -25,9 +25,12 @@ pub const ScriptThread = struct {
     pub fn executeScript(self: *ScriptThread, script: Script) Error!ExecutionResult {
         errdefer self.state.deinit(self.ctx.allocator);
         try engine.executeLockingScript(self.ctx, &self.state, script);
+        const success = try finalResult(self.ctx, &self.state);
+        const state = self.state;
+        self.state = .{};
         return .{
-            .success = try finalResult(self.ctx, &self.state),
-            .state = self.state,
+            .success = success,
+            .state = state,
         };
     }
 
@@ -116,4 +119,17 @@ test "thread verifyPair clears altstack between unlocking and locking scripts" {
         @intFromEnum(@import("opcode.zig").Opcode.OP_FROMALTSTACK),
         @intFromEnum(@import("opcode.zig").Opcode.OP_1),
     })));
+}
+
+test "thread executeScript transfers state ownership to result" {
+    const allocator = std.testing.allocator;
+
+    var thread = ScriptThread.init(.{ .allocator = allocator });
+    var result = try thread.executeScript(Script.init(&[_]u8{
+        @intFromEnum(@import("opcode.zig").Opcode.OP_1),
+    }));
+    defer result.deinit(allocator);
+
+    thread.deinit();
+    try std.testing.expect(result.success);
 }

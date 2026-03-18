@@ -119,15 +119,7 @@ fn executeIntoState(
         cursor += 1;
 
         if (byte >= 0x01 and byte <= 0x4b) {
-            if (byte > ctx.flags.max_script_element_size) return error.ElementTooBig;
-            if (!early_return_after_genesis and shouldExecute(state)) {
-                if (script.bytes.len < cursor + byte) return error.InvalidPushData;
-                if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + byte])) return error.MinimalData;
-                try pushCopy(ctx, state, script.bytes[cursor .. cursor + byte]);
-            } else if (script.bytes.len < cursor + byte) {
-                return error.InvalidPushData;
-            }
-            cursor += byte;
+            try handlePushData(ctx, state, script, &cursor, byte, byte, early_return_after_genesis);
             continue;
         }
 
@@ -138,37 +130,19 @@ fn executeIntoState(
 
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA1)) {
             const len = try readPushLength(u8, script.bytes, &cursor);
-            if (len > ctx.flags.max_script_element_size) return error.ElementTooBig;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            if (!early_return_after_genesis and shouldExecute(state)) {
-                if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + len])) return error.MinimalData;
-                try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
-            }
-            cursor += len;
+            try handlePushData(ctx, state, script, &cursor, len, byte, early_return_after_genesis);
             continue;
         }
 
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA2)) {
             const len = try readPushLength(u16, script.bytes, &cursor);
-            if (len > ctx.flags.max_script_element_size) return error.ElementTooBig;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            if (!early_return_after_genesis and shouldExecute(state)) {
-                if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + len])) return error.MinimalData;
-                try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
-            }
-            cursor += len;
+            try handlePushData(ctx, state, script, &cursor, len, byte, early_return_after_genesis);
             continue;
         }
 
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA4)) {
             const len = try readPushLength(u32, script.bytes, &cursor);
-            if (len > ctx.flags.max_script_element_size) return error.ElementTooBig;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            if (!early_return_after_genesis and shouldExecute(state)) {
-                if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + len])) return error.MinimalData;
-                try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
-            }
-            cursor += len;
+            try handlePushData(ctx, state, script, &cursor, len, byte, early_return_after_genesis);
             continue;
         }
 
@@ -621,6 +595,27 @@ fn allTrue(values: []const bool) bool {
     return true;
 }
 
+fn handlePushData(
+    ctx: ExecutionContext,
+    state: *ExecutionState,
+    script: Script,
+    cursor: *usize,
+    len: usize,
+    push_opcode: u8,
+    early_return_after_genesis: bool,
+) Error!void {
+    if (len > ctx.flags.max_script_element_size) return error.ElementTooBig;
+    if (script.bytes.len < cursor.* + len) return error.InvalidPushData;
+
+    if (!early_return_after_genesis and shouldExecute(state)) {
+        const data = script.bytes[cursor.* .. cursor.* + len];
+        if (ctx.flags.minimal_data and !isMinimalPush(push_opcode, data)) return error.MinimalData;
+        try pushCopy(ctx, state, data);
+    }
+
+    cursor.* += len;
+}
+
 fn shouldExecute(state: *const ExecutionState) bool {
     return allTrue(state.condition_stack.items);
 }
@@ -807,7 +802,7 @@ fn verifyChecksig(
     sig_bytes: []const u8,
     pubkey_bytes: []const u8,
 ) Error!bool {
-    const signing_script = ctx.previous_locking_script orelse current_script;
+    const signing_script = resolveSigningScript(ctx, current_script);
     if (sig_bytes.len < 1) return false;
     try checkHashTypeEncoding(ctx, sig_bytes[sig_bytes.len - 1]);
     const legacy_normalization = !sighash.SigHashType.hasForkId(sig_bytes[sig_bytes.len - 1]);
@@ -829,7 +824,7 @@ fn verifyCheckmultisig(
     state: *ExecutionState,
     current_script: Script,
 ) Error!bool {
-    const signing_script = ctx.previous_locking_script orelse current_script;
+    const signing_script = resolveSigningScript(ctx, current_script);
 
     const key_count = try popIndex(ctx, state);
     if (!ctx.flags.utxo_after_genesis and key_count > 20) return error.InvalidMultisigKeyCount;
@@ -871,21 +866,13 @@ fn verifyCheckmultisig(
         key_index += 1;
 
         if (signatures.len - sig_index > pubkeys.len - key_index) {
-            if (ctx.flags.null_fail) {
-                for (signatures) |candidate| {
-                    if (candidate.len != 0) return error.NullFail;
-                }
-            }
+            try enforceNullFail(ctx, signatures);
             return false;
         }
     }
 
     if (sig_index != signatures.len) {
-        if (ctx.flags.null_fail) {
-            for (signatures) |candidate| {
-                if (candidate.len != 0) return error.NullFail;
-            }
-        }
+        try enforceNullFail(ctx, signatures);
         return false;
     }
 
@@ -902,27 +889,29 @@ fn verifyChecksigWithScriptCode(
     if (sig_bytes.len < 1) return false;
     const hash_type = sig_bytes[sig_bytes.len - 1];
     const der_bytes = sig_bytes[0 .. sig_bytes.len - 1];
+    const check_signature_encoding = shouldCheckSignatureEncoding(ctx);
+    const check_pubkey_encoding = shouldCheckPubKeyEncoding(ctx);
 
     try checkHashTypeEncoding(ctx, hash_type);
-    if (shouldCheckSignatureEncoding(ctx)) {
+    if (check_signature_encoding) {
         try checkSignatureEncoding(ctx, der_bytes);
     }
-    if (shouldCheckPubKeyEncoding(ctx)) {
+    if (check_pubkey_encoding) {
         try checkPubKeyEncoding(pubkey_bytes);
     }
 
     const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch |err| switch (err) {
         error.InvalidEncoding => {
-            if (shouldCheckSignatureEncoding(ctx)) return error.InvalidSignatureEncoding;
+            if (check_signature_encoding) return error.InvalidSignatureEncoding;
             return false;
         },
         else => return err,
     };
-    const public_key = (if (shouldCheckPubKeyEncoding(ctx))
+    const public_key = (if (check_pubkey_encoding)
         crypto.PublicKey.fromSec1(pubkey_bytes)
     else
         crypto.PublicKey.fromSec1Relaxed(pubkey_bytes)) catch {
-        if (shouldCheckPubKeyEncoding(ctx)) return error.InvalidPublicKeyEncoding;
+        if (check_pubkey_encoding) return error.InvalidPublicKeyEncoding;
         return false;
     };
 
@@ -934,7 +923,7 @@ fn verifyChecksigWithScriptCode(
         ctx.previous_satoshis,
         tx_signature.sighash_type,
     );
-    if (shouldCheckSignatureEncoding(ctx)) {
+    if (check_signature_encoding) {
         return public_key.verifyDigest256(digest.bytes, tx_signature.der) catch {
             return error.InvalidSignatureEncoding;
         };
@@ -942,6 +931,18 @@ fn verifyChecksigWithScriptCode(
     return public_key.verifyDigest256Relaxed(digest.bytes, tx_signature.der.asSlice()) catch {
         return false;
     };
+}
+
+fn resolveSigningScript(ctx: ExecutionContext, current_script: Script) Script {
+    return ctx.previous_locking_script orelse current_script;
+}
+
+fn enforceNullFail(ctx: ExecutionContext, signatures: []const []const u8) Error!void {
+    if (!ctx.flags.null_fail) return;
+
+    for (signatures) |candidate| {
+        if (candidate.len != 0) return error.NullFail;
+    }
 }
 
 fn shouldCheckSignatureEncoding(ctx: ExecutionContext) bool {

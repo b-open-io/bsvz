@@ -15,10 +15,9 @@ pub const P2pkhSpendContext = struct {
 };
 
 pub fn verify(ctx: P2pkhSpendContext) Error!bool {
-    return thread.verifyExecutableScripts(.{
-        .allocator = ctx.allocator,
-        .tx = ctx.tx,
-        .input_index = ctx.input_index,
-        .previous_satoshis = ctx.previous_satoshis,
-    }, ctx.unlocking_script, ctx.locking_script);
+    return thread.verifyExecutableScripts(
+        .forSpend(ctx.allocator, ctx.tx, ctx.input_index, ctx.previous_satoshis),
+        ctx.unlocking_script,
+        ctx.locking_script,
+    );
 }

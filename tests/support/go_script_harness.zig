@@ -51,14 +51,16 @@ pub fn runCase(allocator: std.mem.Allocator, case: Case) !void {
         .lock_time = 0,
     };
 
-    const result = bsvz.script.thread.verifyScripts(.{
-        .allocator = allocator,
-        .tx = &tx,
-        .input_index = 0,
-        .previous_locking_script = locking_script,
-        .previous_satoshis = case.previous_satoshis,
-        .flags = case.flags,
-    }, unlocking_script, locking_script);
+    var exec_ctx = bsvz.script.engine.ExecutionContext.forSpend(
+        allocator,
+        &tx,
+        0,
+        case.previous_satoshis,
+    );
+    exec_ctx.previous_locking_script = locking_script;
+    exec_ctx.flags = case.flags;
+
+    const result = bsvz.script.thread.verifyScripts(exec_ctx, unlocking_script, locking_script);
 
     switch (case.expected) {
         .success => |want| try std.testing.expectEqual(want, try result),

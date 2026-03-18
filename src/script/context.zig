@@ -60,6 +60,20 @@ pub const ExecutionContext = struct {
     previous_locking_script: ?Script = null,
     previous_satoshis: i64 = 0,
     flags: ExecutionFlags = .{},
+
+    pub fn forSpend(
+        allocator: std.mem.Allocator,
+        tx: *const Transaction,
+        input_index: usize,
+        previous_satoshis: i64,
+    ) ExecutionContext {
+        return .{
+            .allocator = allocator,
+            .tx = tx,
+            .input_index = input_index,
+            .previous_satoshis = previous_satoshis,
+        };
+    }
 };
 
 pub const ExecutionState = struct {
