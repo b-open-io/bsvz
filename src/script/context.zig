@@ -17,6 +17,7 @@ pub const ExecutionFlags = struct {
     null_fail: bool = false,
     sig_push_only: bool = false,
     clean_stack: bool = false,
+    minimal_data: bool = false,
     minimal_if: bool = false,
 };
 

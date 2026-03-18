@@ -210,7 +210,7 @@ pub const ScriptNum = union(enum) {
     }
 
     pub fn mod(lhs: *const ScriptNum, rhs: *const ScriptNum, allocator: std.mem.Allocator) !ScriptNum {
-        return smallBinaryOp(lhs, rhs, .mod_floor, allocator) orelse try bigBinaryOp(lhs, rhs, .mod_floor, allocator);
+        return smallBinaryOp(lhs, rhs, .mod_trunc, allocator) orelse try bigBinaryOp(lhs, rhs, .mod_trunc, allocator);
     }
 
     fn decodeInternal(allocator: std.mem.Allocator, bytes: []const u8, require_minimal: bool) Error!ScriptNum {
@@ -331,7 +331,7 @@ pub const ScriptNum = union(enum) {
         sub,
         mul,
         div_trunc,
-        mod_floor,
+        mod_trunc,
     };
 
     fn smallBinaryOp(lhs: *const ScriptNum, rhs: *const ScriptNum, op: BinaryOp, allocator: std.mem.Allocator) ?ScriptNum {
@@ -365,9 +365,9 @@ pub const ScriptNum = union(enum) {
                 if (right == 0) return null;
                 break :blk .{ .small = @divTrunc(left, right) };
             },
-            .mod_floor => blk: {
+            .mod_trunc => blk: {
                 if (right == 0) return null;
-                break :blk .{ .small = @mod(left, right) };
+                break :blk .{ .small = @rem(left, right) };
             },
         };
     }
@@ -378,7 +378,7 @@ pub const ScriptNum = union(enum) {
         var right = try rhs.toManaged(allocator);
         defer right.deinit();
 
-        if (right.eqlZero() and (op == .div_trunc or op == .mod_floor)) return error.InvalidEncoding;
+        if (right.eqlZero() and (op == .div_trunc or op == .mod_trunc)) return error.InvalidEncoding;
 
         var result = try big.Managed.init(allocator);
         errdefer result.deinit();
@@ -392,10 +392,10 @@ pub const ScriptNum = union(enum) {
                 defer remainder.deinit();
                 try result.divTrunc(&remainder, &left, &right);
             },
-            .mod_floor => {
+            .mod_trunc => {
                 var quotient = try big.Managed.init(allocator);
                 defer quotient.deinit();
-                try quotient.divFloor(&result, &left, &right);
+                try quotient.divTrunc(&result, &left, &right);
             },
         }
 
@@ -599,5 +599,32 @@ test "script num matches representative go-sdk encode/decode vectors" {
         var decoded_min = try ScriptNum.decodeMinimalOwned(allocator, case.encoded);
         defer decoded_min.deinit();
         try std.testing.expect(decoded_min.eql(&expected));
+    }
+}
+
+test "script num mod matches representative go-sdk negative remainder vectors" {
+    const allocator = std.testing.allocator;
+
+    const Case = struct {
+        left: i64,
+        right: i64,
+        expected: i64,
+    };
+
+    const cases = [_]Case{
+        .{ .left = -71, .right = 13, .expected = -6 },
+        .{ .left = -110, .right = -31, .expected = -17 },
+        .{ .left = 2147483647, .right = -123, .expected = 79 },
+        .{ .left = -2147483647, .right = 123, .expected = -79 },
+    };
+
+    inline for (cases) |case| {
+        var lhs = ScriptNum.fromInt(case.left);
+        defer lhs.deinit();
+        var rhs = ScriptNum.fromInt(case.right);
+        defer rhs.deinit();
+        var out = try lhs.mod(&rhs, allocator);
+        defer out.deinit();
+        try std.testing.expect(out.eql(&ScriptNum.fromInt(case.expected)));
     }
 }

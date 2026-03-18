@@ -116,6 +116,7 @@ fn executeIntoState(
         if (byte >= 0x01 and byte <= 0x4b) {
             if (!early_return_after_genesis and shouldExecute(state)) {
                 if (script.bytes.len < cursor + byte) return error.InvalidPushData;
+                if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + byte])) return error.MinimalData;
                 try pushCopy(ctx, state, script.bytes[cursor .. cursor + byte]);
             } else if (script.bytes.len < cursor + byte) {
                 return error.InvalidPushData;
@@ -132,7 +133,10 @@ fn executeIntoState(
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA1)) {
             const len = try readPushLength(u8, script.bytes, &cursor);
             if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            if (!early_return_after_genesis and shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            if (!early_return_after_genesis and shouldExecute(state)) {
+                if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + len])) return error.MinimalData;
+                try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            }
             cursor += len;
             continue;
         }
@@ -140,7 +144,10 @@ fn executeIntoState(
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA2)) {
             const len = try readPushLength(u16, script.bytes, &cursor);
             if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            if (!early_return_after_genesis and shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            if (!early_return_after_genesis and shouldExecute(state)) {
+                if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + len])) return error.MinimalData;
+                try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            }
             cursor += len;
             continue;
         }
@@ -148,7 +155,10 @@ fn executeIntoState(
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA4)) {
             const len = try readPushLength(u32, script.bytes, &cursor);
             if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            if (!early_return_after_genesis and shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            if (!early_return_after_genesis and shouldExecute(state)) {
+                if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + len])) return error.MinimalData;
+                try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            }
             cursor += len;
             continue;
         }
@@ -726,6 +736,23 @@ fn shiftBytes(allocator: std.mem.Allocator, data: []const u8, shift: usize, left
     return out;
 }
 
+fn isMinimalPush(op_byte: u8, data: []const u8) bool {
+    if (data.len == 0) return op_byte == @intFromEnum(opcode.Opcode.OP_0);
+
+    if (data.len == 1) {
+        const value = data[0];
+        if (value >= 1 and value <= 16) {
+            return op_byte == @intFromEnum(opcode.Opcode.OP_1) - 1 + value;
+        }
+        if (value == 0x81) return op_byte == @intFromEnum(opcode.Opcode.OP_1NEGATE);
+    }
+
+    if (data.len <= 75) return op_byte == data.len;
+    if (data.len <= std.math.maxInt(u8)) return op_byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA1);
+    if (data.len <= std.math.maxInt(u16)) return op_byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA2);
+    return op_byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA4);
+}
+
 fn hashOp(allocator: std.mem.Allocator, op: opcode.Opcode, data: []const u8) Error![]u8 {
     return switch (op) {
         .OP_RIPEMD160 => try allocator.dupe(u8, &hash.ripemd160(data).bytes),
@@ -1233,6 +1260,60 @@ test "engine supports runar critical byte ops" {
     defer result.deinit(allocator);
 
     try std.testing.expect(result.success);
+}
+
+test "engine matches exact empty-input hash opcode vectors" {
+    const allocator = std.testing.allocator;
+
+    const Case = struct {
+        op: opcode.Opcode,
+        expected: []const u8,
+    };
+
+    const cases = [_]Case{
+        .{ .op = .OP_RIPEMD160, .expected = &.{ 0x9c, 0x11, 0x85, 0xa5, 0xc5, 0xe9, 0xfc, 0x54, 0x61, 0x28, 0x08, 0x97, 0x7e, 0xe8, 0xf5, 0x48, 0xb2, 0x25, 0x8d, 0x31 } },
+        .{ .op = .OP_SHA1, .expected = &.{ 0xda, 0x39, 0xa3, 0xee, 0x5e, 0x6b, 0x4b, 0x0d, 0x32, 0x55, 0xbf, 0xef, 0x95, 0x60, 0x18, 0x90, 0xaf, 0xd8, 0x07, 0x09 } },
+        .{ .op = .OP_SHA256, .expected = &.{ 0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8, 0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55 } },
+        .{ .op = .OP_HASH160, .expected = &.{ 0xb4, 0x72, 0xa2, 0x66, 0xd0, 0xbd, 0x89, 0xc1, 0x37, 0x06, 0xa4, 0x13, 0x2c, 0xcf, 0xb1, 0x6f, 0x7c, 0x3b, 0x9f, 0xcb } },
+        .{ .op = .OP_HASH256, .expected = &.{ 0x5d, 0xf6, 0xe0, 0xe2, 0x76, 0x13, 0x59, 0xd3, 0x0a, 0x82, 0x75, 0x05, 0x8e, 0x29, 0x9f, 0xcc, 0x03, 0x81, 0x53, 0x45, 0x45, 0xf5, 0x5c, 0xf4, 0x3e, 0x41, 0x98, 0x3f, 0x5d, 0x4c, 0x94, 0x56 } },
+    };
+
+    inline for (cases) |case| {
+        const expected_push = try encodePushDataElement(allocator, case.expected);
+        defer allocator.free(expected_push);
+
+        var script_bytes: std.ArrayListUnmanaged(u8) = .empty;
+        defer script_bytes.deinit(allocator);
+        try script_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+        try script_bytes.append(allocator, @intFromEnum(case.op));
+        try script_bytes.appendSlice(allocator, expected_push);
+        try script_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_EQUAL));
+
+        const script = Script.init(try script_bytes.toOwnedSlice(allocator));
+        defer allocator.free(script.bytes);
+
+        var result = try executeScript(.{ .allocator = allocator }, script);
+        defer result.deinit(allocator);
+        try std.testing.expect(result.success);
+    }
+}
+
+test "engine hash opcodes require a stack item" {
+    const allocator = std.testing.allocator;
+
+    const ops = [_]opcode.Opcode{
+        .OP_RIPEMD160,
+        .OP_SHA1,
+        .OP_SHA256,
+        .OP_HASH160,
+        .OP_HASH256,
+    };
+
+    inline for (ops) |op| {
+        try std.testing.expectError(error.StackUnderflow, executeScript(.{
+            .allocator = allocator,
+        }, Script.init(&[_]u8{@intFromEnum(op)})));
+    }
 }
 
 test "engine matches go-sdk OP_LSHIFT vectors" {
@@ -1867,6 +1948,33 @@ test "engine can require push-only unlocking scripts" {
         @intFromEnum(opcode.Opcode.OP_1),
         @intFromEnum(opcode.Opcode.OP_EQUAL),
     })));
+}
+
+test "engine can enforce minimal push encodings only on executed branches" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.MinimalData, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .minimal_data = true },
+    }, Script.init(&[_]u8{
+        0x01, 0x01,
+    })));
+
+    var result = try executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .minimal_data = true },
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_IF),
+        @intFromEnum(opcode.Opcode.OP_PUSHDATA1),
+        0x01,
+        0x01,
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+        @intFromEnum(opcode.Opcode.OP_1),
+    }));
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.success);
 }
 
 test "engine can require a clean final stack" {
