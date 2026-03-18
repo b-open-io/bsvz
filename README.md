@@ -35,4 +35,26 @@ Non-goals for the first milestone:
 
 ## Status
 
-This repository is a brand-new standalone BSV library. The current state is an initial library-first skeleton.
+This repository is a standalone BSV library under active development.
+
+Current implemented areas:
+
+- primitives: hex, varint, base58, base58check, network/version-byte helpers
+- crypto: sha256, hash256, ripemd160, hash160, secp256k1 private/public keys, DER signatures, tx-signature helpers
+- compat: legacy P2PKH address and WIF encode/decode
+- transaction: legacy transaction parse/serialize, txid, replay-protected sighash/preimage helpers, P2PKH spend helpers
+- script: ScriptNum, byte helpers, script parser/chunks, broad opcode set, general execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, P2PKH and OP_RETURN templates
+
+Current construction zones:
+
+- SPV is not yet real beyond placeholders and type stubs
+- broadcast is not yet real beyond namespace scaffolding
+- the script interpreter is now general enough for real progress, but it is not yet at full Go/TS SDK parity
+- native execution coverage for compiled Runar contracts is still in progress
+
+Project direction:
+
+- BSV-only, not BTC-compatible
+- no SegWit or Taproot support
+- no HD wallet derivation in core scope
+- prioritize script execution and downstream Runar integration before broadening into secondary areas
