@@ -28,4 +28,5 @@ pub const PushData = struct {
 pub const ScriptChunk = union(enum) {
     opcode: Opcode,
     push_data: PushData,
+    op_return_data: []const u8,
 };

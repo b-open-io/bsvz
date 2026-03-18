@@ -6,14 +6,35 @@ const Script = @import("script.zig").Script;
 
 pub const Error = errors.ScriptError || error{OutOfMemory};
 
+fn updateConditionalDepth(op: Opcode, depth: *usize) bool {
+    switch (op) {
+        .OP_IF, .OP_NOTIF => depth.* += 1,
+        .OP_ENDIF => {
+            if (depth.* > 0) depth.* -= 1;
+        },
+        .OP_RETURN => return depth.* == 0,
+        else => {},
+    }
+    return false;
+}
+
 pub fn parseAlloc(allocator: std.mem.Allocator, script: Script) Error![]chunk.ScriptChunk {
     var chunks: std.ArrayListUnmanaged(chunk.ScriptChunk) = .empty;
     errdefer chunks.deinit(allocator);
 
     var cursor: usize = 0;
+    var conditional_depth: usize = 0;
     while (cursor < script.bytes.len) {
         const opcode_byte = script.bytes[cursor];
         cursor += 1;
+        const op = Opcode.fromByte(opcode_byte);
+
+        if (updateConditionalDepth(op, &conditional_depth)) {
+            try chunks.append(allocator, .{
+                .op_return_data = script.bytes[cursor..],
+            });
+            return try chunks.toOwnedSlice(allocator);
+        }
 
         if (opcode_byte >= 0x01 and opcode_byte <= 0x4b) {
             const len: usize = opcode_byte;
@@ -74,7 +95,7 @@ pub fn parseAlloc(allocator: std.mem.Allocator, script: Script) Error![]chunk.Sc
             continue;
         }
 
-        try chunks.append(allocator, .{ .opcode = Opcode.fromByte(opcode_byte) });
+        try chunks.append(allocator, .{ .opcode = op });
     }
 
     return try chunks.toOwnedSlice(allocator);
@@ -93,6 +114,7 @@ pub fn serializedLen(chunks: []const chunk.ScriptChunk) usize {
                     .OP_PUSHDATA4 => 5 + push.data.len,
                 };
             },
+            .op_return_data => |data| len += 1 + data.len,
         }
     }
     return len;
@@ -134,6 +156,12 @@ pub fn serializeAlloc(allocator: std.mem.Allocator, chunks: []const chunk.Script
 
                 @memcpy(out[cursor..][0..push.data.len], push.data);
                 cursor += push.data.len;
+            },
+            .op_return_data => |data| {
+                out[cursor] = @intFromEnum(Opcode.OP_RETURN);
+                cursor += 1;
+                @memcpy(out[cursor..][0..data.len], data);
+                cursor += data.len;
             },
         }
     }
@@ -260,6 +288,39 @@ test "parser roundtrips mixed push encodings" {
     const serialized = try serializeAlloc(allocator, chunks);
     defer allocator.free(serialized);
     try std.testing.expectEqualSlices(u8, script.bytes, serialized);
+}
+
+test "parser treats top-level op_return tail as raw data like go-sdk" {
+    const allocator = std.testing.allocator;
+    const script = Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_RETURN),
+        @intFromEnum(Opcode.OP_PUSHDATA1),
+        0x01,
+    });
+
+    const chunks = try parseAlloc(allocator, script);
+    defer allocator.free(chunks);
+
+    try std.testing.expectEqual(@as(usize, 1), chunks.len);
+    try std.testing.expect(chunks[0] == .op_return_data);
+    try std.testing.expectEqualSlices(u8, &[_]u8{
+        @intFromEnum(Opcode.OP_PUSHDATA1),
+        0x01,
+    }, chunks[0].op_return_data);
+
+    const serialized = try serializeAlloc(allocator, chunks);
+    defer allocator.free(serialized);
+    try std.testing.expectEqualSlices(u8, script.bytes, serialized);
+}
+
+test "parser still validates malformed pushdata before op_return" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.InvalidPushData, parseAlloc(allocator, Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_PUSHDATA1),
+        0x02,
+        0xaa,
+    })));
 }
 
 test "isPushOnly rejects non-push opcodes and malformed pushes" {

@@ -1787,6 +1787,167 @@ test "engine checkmultisig exits early before touching later invalid pubkeys" {
     }, unlocking_script, locking_script)));
 }
 
+test "engine checkmultisig errors on the first checked invalid pubkey under strict policy" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes_a = [_]u8{0} ** 32;
+    var key_bytes_b = [_]u8{0} ** 32;
+    key_bytes_a[31] = 1;
+    key_bytes_b[31] = 2;
+
+    const private_key_a = try crypto.PrivateKey.fromBytes(key_bytes_a);
+    const private_key_b = try crypto.PrivateKey.fromBytes(key_bytes_b);
+    const public_key_a = try private_key_a.publicKey();
+    _ = try private_key_b.publicKey();
+
+    var invalid_pubkey = [_]u8{0} ** 33;
+    invalid_pubkey[0] = 0x05;
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        33,
+    } ++ public_key_a.bytes ++ [_]u8{
+        33,
+    } ++ invalid_pubkey ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x57} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 1_200,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const p2pkh_spend = @import("../transaction/templates/p2pkh_spend.zig");
+    const sig_a = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_500,
+        private_key_a,
+        p2pkh_spend.default_scope,
+    );
+    const sig_b = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_500,
+        private_key_b,
+        p2pkh_spend.default_scope,
+    );
+
+    const unlocking_script = try buildMultisigUnlockingScript(allocator, &[_]crypto.TxSignature{ sig_a, sig_b });
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expectError(error.InvalidPublicKeyEncoding, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{
+            .strict_encoding = false,
+            .strict_pubkey_encoding = true,
+        },
+    }, unlocking_script, locking_script));
+}
+
+test "engine checkmultisig errors on the first checked malformed signature under strict policy" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes_a = [_]u8{0} ** 32;
+    var key_bytes_b = [_]u8{0} ** 32;
+    key_bytes_a[31] = 1;
+    key_bytes_b[31] = 2;
+
+    const private_key_a = try crypto.PrivateKey.fromBytes(key_bytes_a);
+    const private_key_b = try crypto.PrivateKey.fromBytes(key_bytes_b);
+    const public_key_a = try private_key_a.publicKey();
+    const public_key_b = try private_key_b.publicKey();
+
+    const locking_script_bytes = buildTwoOfTwoLockingScript(public_key_a, public_key_b);
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x58} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 1_200,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const p2pkh_spend = @import("../transaction/templates/p2pkh_spend.zig");
+    const sig_a = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_500,
+        private_key_a,
+        p2pkh_spend.default_scope,
+    );
+
+    const invalid_sig_bytes = [_]u8{@intCast(p2pkh_spend.default_scope)};
+    const valid_sig_bytes = try sig_a.toChecksigFormat(allocator);
+    defer allocator.free(valid_sig_bytes);
+
+    var unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer unlocking_bytes.deinit(allocator);
+    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    const valid_push = try encodePushDataElement(allocator, valid_sig_bytes);
+    defer allocator.free(valid_push);
+    try unlocking_bytes.appendSlice(allocator, valid_push);
+    const invalid_push = try encodePushDataElement(allocator, &invalid_sig_bytes);
+    defer allocator.free(invalid_push);
+    try unlocking_bytes.appendSlice(allocator, invalid_push);
+    const unlocking_script = Script.init(try unlocking_bytes.toOwnedSlice(allocator));
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expectError(error.InvalidSignatureEncoding, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{
+            .strict_encoding = false,
+            .der_signatures = true,
+        },
+    }, unlocking_script, locking_script));
+}
+
 test "engine legacy checksig removes pushed signature copies from script code when legacy mode is enabled" {
     const allocator = std.testing.allocator;
 
