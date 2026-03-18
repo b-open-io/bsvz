@@ -39,6 +39,12 @@ pub const PrivateKey = struct {
         return signature.DerSignature.fromStdSignature(EcdsaSha256d, sig);
     }
 
+    pub fn signDigest256(self: PrivateKey, digest: [32]u8) !signature.DerSignature {
+        const key_pair = try EcdsaSha256d.KeyPair.fromSecretKey(try self.stdSecretKeySha256d());
+        const sig = try key_pair.signPrehashed(digest, null);
+        return signature.DerSignature.fromStdSignature(EcdsaSha256d, sig);
+    }
+
     fn stdSecretKeySha256(self: PrivateKey) !EcdsaSha256.SecretKey {
         return EcdsaSha256.SecretKey.fromBytes(self.bytes);
     }
@@ -74,6 +80,16 @@ pub const PublicKey = struct {
         const public_key = EcdsaSha256d.PublicKey.fromSec1(&self.bytes) catch return error.InvalidEncoding;
         const parsed_sig = sig.toStdSignature(EcdsaSha256d) catch return error.InvalidEncoding;
         parsed_sig.verify(message, public_key) catch |err| switch (err) {
+            error.SignatureVerificationFailed => return false,
+            else => return error.InvalidEncoding,
+        };
+        return true;
+    }
+
+    pub fn verifyDigest256(self: PublicKey, digest: [32]u8, sig: signature.DerSignature) !bool {
+        const public_key = EcdsaSha256d.PublicKey.fromSec1(&self.bytes) catch return error.InvalidEncoding;
+        const parsed_sig = sig.toStdSignature(EcdsaSha256d) catch return error.InvalidEncoding;
+        parsed_sig.verifyPrehashed(digest, public_key) catch |err| switch (err) {
             error.SignatureVerificationFailed => return false,
             else => return error.InvalidEncoding,
         };

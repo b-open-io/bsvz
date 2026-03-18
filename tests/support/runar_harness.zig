@@ -7,6 +7,7 @@ pub const PushValue = union(enum) {
     int: i64,
     boolean: bool,
     hex: []const u8,
+    script_num_hex: []const u8,
     signature: void,
 };
 
@@ -116,6 +117,16 @@ fn appendPushValue(
         .hex => |hex_value| {
             const decoded = try bsvz.primitives.hex.decode(allocator, hex_value);
             try appendPushData(bytes, allocator, decoded);
+        },
+        .script_num_hex => |hex_value| {
+            var managed = try std.math.big.int.Managed.init(allocator);
+            try managed.setString(16, hex_value);
+
+            var script_num = bsvz.script.ScriptNum{ .big = managed };
+            defer script_num.deinit();
+
+            const encoded = try script_num.encodeOwned(allocator);
+            try appendPushData(bytes, allocator, encoded);
         },
         .signature => {
             const checksig_bytes = signature_bytes orelse return error.MissingSignatureMaterial;

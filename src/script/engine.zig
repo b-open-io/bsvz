@@ -362,16 +362,18 @@ fn executeIntoState(
                 const size = try popIndex(ctx, state);
                 const value_bytes = try popOwned(state);
                 defer ctx.allocator.free(value_bytes);
-                const value = try num.ScriptNum.decode(value_bytes);
-                const encoded = try num.ScriptNum.num2bin(ctx.allocator, value, size);
+                var value = try num.ScriptNum.decodeOwned(ctx.allocator, value_bytes);
+                defer value.deinit();
+                const encoded = try value.num2binOwned(ctx.allocator, size);
                 try pushOwned(ctx, state, encoded);
             },
             .OP_BIN2NUM => {
                 try countOp(ctx, state);
                 const value_bytes = try popOwned(state);
                 defer ctx.allocator.free(value_bytes);
-                const value = try num.ScriptNum.bin2num(value_bytes);
-                const minimal = try num.ScriptNum.encode(ctx.allocator, value);
+                var value = try num.ScriptNum.bin2num(ctx.allocator, value_bytes);
+                defer value.deinit();
+                const minimal = try value.encodeOwned(ctx.allocator);
                 try pushOwned(ctx, state, minimal);
             },
             .OP_SIZE => {
@@ -422,41 +424,39 @@ fn executeIntoState(
             },
             .OP_1ADD, .OP_1SUB, .OP_NEGATE, .OP_ABS, .OP_NOT, .OP_0NOTEQUAL => {
                 try countOp(ctx, state);
-                const value = try popNum(ctx, state);
-                const out: i64 = switch (op) {
-                    .OP_1ADD => value + 1,
-                    .OP_1SUB => value - 1,
-                    .OP_NEGATE => -value,
-                    .OP_ABS => if (value < 0) -value else value,
-                    .OP_NOT => if (value == 0) 1 else 0,
-                    .OP_0NOTEQUAL => if (value != 0) 1 else 0,
-                    else => unreachable,
-                };
+                var value = try popNum(ctx, state);
+                defer value.deinit();
                 if (op == .OP_NOT or op == .OP_0NOTEQUAL) {
-                    try pushBool(ctx, state, out != 0);
+                    try pushBool(ctx, state, if (op == .OP_NOT) value.isZero() else !value.isZero());
                 } else {
-                    try pushNum(ctx, state, out);
+                    var out = switch (op) {
+                        .OP_1ADD => try value.add(&num.ScriptNum.fromInt(1), ctx.allocator),
+                        .OP_1SUB => try value.sub(&num.ScriptNum.fromInt(1), ctx.allocator),
+                        .OP_NEGATE => try value.negate(ctx.allocator),
+                        .OP_ABS => try value.abs(ctx.allocator),
+                        else => unreachable,
+                    };
+                    defer out.deinit();
+                    try pushScriptNum(ctx, state, &out);
                 }
             },
             .OP_ADD, .OP_SUB, .OP_MUL, .OP_DIV, .OP_MOD => {
                 try countOp(ctx, state);
-                const right = try popNum(ctx, state);
-                const left = try popNum(ctx, state);
-                const out = switch (op) {
-                    .OP_ADD => left + right,
-                    .OP_SUB => left - right,
-                    .OP_MUL => left * right,
-                    .OP_DIV => blk: {
-                        if (right == 0) return error.DivisionByZero;
-                        break :blk @divTrunc(left, right);
-                    },
-                    .OP_MOD => blk: {
-                        if (right == 0) return error.DivisionByZero;
-                        break :blk @mod(left, right);
-                    },
+                var right = try popNum(ctx, state);
+                defer right.deinit();
+                var left = try popNum(ctx, state);
+                defer left.deinit();
+                if (right.isZero() and (op == .OP_DIV or op == .OP_MOD)) return error.DivisionByZero;
+                var out = switch (op) {
+                    .OP_ADD => try left.add(&right, ctx.allocator),
+                    .OP_SUB => try left.sub(&right, ctx.allocator),
+                    .OP_MUL => try left.mul(&right, ctx.allocator),
+                    .OP_DIV => try left.divTrunc(&right, ctx.allocator),
+                    .OP_MOD => try left.mod(&right, ctx.allocator),
                     else => unreachable,
                 };
-                try pushNum(ctx, state, out);
+                defer out.deinit();
+                try pushScriptNum(ctx, state, &out);
             },
             .OP_LSHIFT, .OP_RSHIFT => {
                 try countOp(ctx, state);
@@ -468,50 +468,62 @@ fn executeIntoState(
             },
             .OP_BOOLAND, .OP_BOOLOR => {
                 try countOp(ctx, state);
-                const right = try popNum(ctx, state);
-                const left = try popNum(ctx, state);
+                var right = try popNum(ctx, state);
+                defer right.deinit();
+                var left = try popNum(ctx, state);
+                defer left.deinit();
                 try pushBool(ctx, state, switch (op) {
-                    .OP_BOOLAND => left != 0 and right != 0,
-                    .OP_BOOLOR => left != 0 or right != 0,
+                    .OP_BOOLAND => !left.isZero() and !right.isZero(),
+                    .OP_BOOLOR => !left.isZero() or !right.isZero(),
                     else => unreachable,
                 });
             },
             .OP_NUMEQUAL, .OP_NUMNOTEQUAL, .OP_LESSTHAN, .OP_GREATERTHAN, .OP_LESSTHANOREQUAL, .OP_GREATERTHANOREQUAL => {
                 try countOp(ctx, state);
-                const right = try popNum(ctx, state);
-                const left = try popNum(ctx, state);
+                var right = try popNum(ctx, state);
+                defer right.deinit();
+                var left = try popNum(ctx, state);
+                defer left.deinit();
+                const ordering = left.order(&right);
                 try pushBool(ctx, state, switch (op) {
-                    .OP_NUMEQUAL => left == right,
-                    .OP_NUMNOTEQUAL => left != right,
-                    .OP_LESSTHAN => left < right,
-                    .OP_GREATERTHAN => left > right,
-                    .OP_LESSTHANOREQUAL => left <= right,
-                    .OP_GREATERTHANOREQUAL => left >= right,
+                    .OP_NUMEQUAL => ordering == .eq,
+                    .OP_NUMNOTEQUAL => ordering != .eq,
+                    .OP_LESSTHAN => ordering == .lt,
+                    .OP_GREATERTHAN => ordering == .gt,
+                    .OP_LESSTHANOREQUAL => ordering != .gt,
+                    .OP_GREATERTHANOREQUAL => ordering != .lt,
                     else => unreachable,
                 });
             },
             .OP_NUMEQUALVERIFY => {
                 try countOp(ctx, state);
-                const right = try popNum(ctx, state);
-                const left = try popNum(ctx, state);
-                if (left != right) return error.VerifyFailed;
+                var right = try popNum(ctx, state);
+                defer right.deinit();
+                var left = try popNum(ctx, state);
+                defer left.deinit();
+                if (!left.eql(&right)) return error.VerifyFailed;
             },
             .OP_MIN, .OP_MAX => {
                 try countOp(ctx, state);
-                const right = try popNum(ctx, state);
-                const left = try popNum(ctx, state);
-                try pushNum(ctx, state, switch (op) {
-                    .OP_MIN => @min(left, right),
-                    .OP_MAX => @max(left, right),
-                    else => unreachable,
-                });
+                var right = try popNum(ctx, state);
+                defer right.deinit();
+                var left = try popNum(ctx, state);
+                defer left.deinit();
+                const chosen = if (op == .OP_MIN)
+                    (if (left.order(&right) == .gt) &right else &left)
+                else
+                    (if (left.order(&right) == .lt) &right else &left);
+                try pushScriptNum(ctx, state, chosen);
             },
             .OP_WITHIN => {
                 try countOp(ctx, state);
-                const max = try popNum(ctx, state);
-                const min = try popNum(ctx, state);
-                const value = try popNum(ctx, state);
-                try pushBool(ctx, state, value >= min and value < max);
+                var max = try popNum(ctx, state);
+                defer max.deinit();
+                var min = try popNum(ctx, state);
+                defer min.deinit();
+                var value = try popNum(ctx, state);
+                defer value.deinit();
+                try pushBool(ctx, state, value.order(&min) != .lt and value.order(&max) == .lt);
             },
             .OP_RIPEMD160, .OP_SHA1, .OP_SHA256, .OP_HASH160, .OP_HASH256 => {
                 try countOp(ctx, state);
@@ -604,6 +616,11 @@ fn pushNum(ctx: ExecutionContext, state: *ExecutionState, value: i64) Error!void
     try pushOwned(ctx, state, encoded);
 }
 
+fn pushScriptNum(ctx: ExecutionContext, state: *ExecutionState, value: *const num.ScriptNum) Error!void {
+    const encoded = try value.encodeOwned(ctx.allocator);
+    try pushOwned(ctx, state, encoded);
+}
+
 fn popOwned(state: *ExecutionState) Error![]u8 {
     if (state.stack.items.len == 0) return error.StackUnderflow;
     return state.stack.pop() orelse unreachable;
@@ -614,16 +631,16 @@ fn peek(state: *const ExecutionState, offset: usize) Error![]const u8 {
     return state.stack.items[state.stack.items.len - 1 - offset];
 }
 
-fn popNum(ctx: ExecutionContext, state: *ExecutionState) Error!i64 {
+fn popNum(ctx: ExecutionContext, state: *ExecutionState) Error!num.ScriptNum {
     const value_bytes = try popOwned(state);
     defer ctx.allocator.free(value_bytes);
-    return num.ScriptNum.decode(value_bytes);
+    return num.ScriptNum.decodeOwned(ctx.allocator, value_bytes);
 }
 
 fn popIndex(ctx: ExecutionContext, state: *ExecutionState) Error!usize {
-    const value = try popNum(ctx, state);
-    if (value < 0) return error.InvalidStackIndex;
-    return std.math.cast(usize, value) orelse error.Overflow;
+    var value = try popNum(ctx, state);
+    defer value.deinit();
+    return value.toIndex() catch error.InvalidStackIndex;
 }
 
 fn shiftBytes(allocator: std.mem.Allocator, data: []const u8, shift: usize, left: bool) Error![]u8 {
@@ -757,7 +774,7 @@ fn verifyChecksigWithScriptCode(
     const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch return error.InvalidSignatureEncoding;
     const public_key = crypto.PublicKey.fromSec1(pubkey_bytes) catch return error.InvalidPublicKeyEncoding;
 
-    const preimage = try sighash.formatPreimage(
+    const digest = try sighash.digest(
         ctx.allocator,
         tx,
         ctx.input_index,
@@ -765,9 +782,7 @@ fn verifyChecksigWithScriptCode(
         ctx.previous_satoshis,
         tx_signature.sighash_type,
     );
-    defer ctx.allocator.free(preimage);
-
-    return public_key.verifyHash256(preimage, tx_signature.der) catch return error.InvalidPublicKeyEncoding;
+    return public_key.verifyDigest256(digest.bytes, tx_signature.der) catch return error.InvalidPublicKeyEncoding;
 }
 
 fn buildScriptCode(
@@ -924,6 +939,43 @@ test "engine executes arithmetic and boolean flow" {
     try std.testing.expect(result.success);
     try std.testing.expectEqual(@as(usize, 1), result.state.stack.items.len);
     try std.testing.expect(isTruthy(result.state.stack.items[0]));
+}
+
+test "engine executes arithmetic over script numbers larger than i64" {
+    const allocator = std.testing.allocator;
+    const left_value: i128 = (@as(i128, 1) << 70) + 5;
+    const right_value: i128 = (@as(i128, 1) << 69) + 7;
+    const sum_value: i128 = left_value + right_value;
+
+    const left = try num.ScriptNum.encode(allocator, left_value);
+    defer allocator.free(left);
+    const right = try num.ScriptNum.encode(allocator, right_value);
+    defer allocator.free(right);
+    const expected = try num.ScriptNum.encode(allocator, sum_value);
+    defer allocator.free(expected);
+
+    const left_push = try encodePushDataElement(allocator, left);
+    defer allocator.free(left_push);
+    const right_push = try encodePushDataElement(allocator, right);
+    defer allocator.free(right_push);
+    const expected_push = try encodePushDataElement(allocator, expected);
+    defer allocator.free(expected_push);
+
+    var script_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer script_bytes.deinit(allocator);
+    try script_bytes.appendSlice(allocator, left_push);
+    try script_bytes.appendSlice(allocator, right_push);
+    try script_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_ADD));
+    try script_bytes.appendSlice(allocator, expected_push);
+    try script_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_NUMEQUAL));
+
+    const script = Script.init(try script_bytes.toOwnedSlice(allocator));
+    defer allocator.free(script.bytes);
+
+    var result = try executeScript(.{ .allocator = allocator }, script);
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.success);
 }
 
 test "engine supports runar critical byte ops" {
@@ -1139,11 +1191,10 @@ test "engine find-and-delete removes pushed signature copies from checksig scrip
     };
 
     const scope = sighash.SigHashType.forkid | sighash.SigHashType.all;
-    const preimage = try sighash.formatPreimage(allocator, &tx, 0, script_code, 1_000, scope);
-    defer allocator.free(preimage);
+    const digest = try sighash.digest(allocator, &tx, 0, script_code, 1_000, scope);
 
     const tx_signature = crypto.TxSignature{
-        .der = try private_key.signHash256(preimage),
+        .der = try private_key.signDigest256(digest.bytes),
         .sighash_type = @truncate(scope),
     };
     const checksig_bytes = try tx_signature.toChecksigFormat(allocator);

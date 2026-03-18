@@ -21,11 +21,10 @@ pub fn signInput(
     scope: u32,
 ) !crypto.TxSignature {
     if (scope > std.math.maxInt(u8)) return error.InvalidSigHashType;
-    const preimage = try sighash.formatPreimage(allocator, tx, input_index, previous_locking_script, previous_satoshis, scope);
-    defer allocator.free(preimage);
+    const digest = try sighash.digest(allocator, tx, input_index, previous_locking_script, previous_satoshis, scope);
 
     return .{
-        .der = try private_key.signHash256(preimage),
+        .der = try private_key.signDigest256(digest.bytes),
         .sighash_type = @truncate(scope),
     };
 }
@@ -74,7 +73,7 @@ pub fn verifyInput(
     public_key: crypto.PublicKey,
     tx_signature: crypto.TxSignature,
 ) !bool {
-    const preimage = try sighash.formatPreimage(
+    const digest = try sighash.digest(
         allocator,
         tx,
         input_index,
@@ -82,9 +81,7 @@ pub fn verifyInput(
         previous_satoshis,
         tx_signature.sighash_type,
     );
-    defer allocator.free(preimage);
-
-    return public_key.verifyHash256(preimage, tx_signature.der);
+    return public_key.verifyDigest256(digest.bytes, tx_signature.der);
 }
 
 test "p2pkh spend signs and verifies a forkid input" {
