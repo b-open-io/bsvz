@@ -61,3 +61,16 @@ test "go direct script rows: roll parity" {
         .{ .row = 1263, .name = "roll rejects non-minimally encoded index under minimaldata", .unlocking_hex = "51020000", .locking_hex = "7a7551", .expected = .{ .err = error.MinimalData } },
     });
 }
+
+test "go direct script rows: stack-index invalid operations" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 1413, .name = "pick rejects out-of-range positive index", .unlocking_hex = "51515153", .locking_hex = "79", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1414, .name = "pick requires an index operand", .unlocking_hex = "00", .locking_hex = "7951", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1415, .name = "roll rejects out-of-range positive index", .unlocking_hex = "51515153", .locking_hex = "7a", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1416, .name = "roll requires an index operand", .unlocking_hex = "00", .locking_hex = "7a51", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1417, .name = "rot requires three stack items", .unlocking_hex = "5151", .locking_hex = "7b", .expected = .{ .err = error.StackUnderflow } },
+    });
+}

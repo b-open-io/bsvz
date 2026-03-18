@@ -353,6 +353,7 @@ fn executeIntoState(
             .OP_ROLL => {
                 try countOp(ctx, state);
                 const n = try popIndex(ctx, state);
+                if (n >= state.stack.items.len) return error.StackUnderflow;
                 const index = state.stack.items.len - 1 - n;
                 const item = state.stack.orderedRemove(index);
                 try state.stack.append(ctx.allocator, item);
