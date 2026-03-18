@@ -7,6 +7,9 @@ pub const ExecutionFlags = struct {
     max_stack_items: usize = 1_000,
     enable_reenabled_opcodes: bool = true,
     strict_encoding: bool = true,
+    null_fail: bool = false,
+    sig_push_only: bool = false,
+    clean_stack: bool = false,
 };
 
 pub const ExecutionContext = struct {

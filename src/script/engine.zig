@@ -74,6 +74,8 @@ pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_sc
     var state: ExecutionState = .{};
     defer state.deinit(ctx.allocator);
 
+    if (ctx.flags.sig_push_only and !(try isPushOnly(unlocking_script))) return error.SigPushOnly;
+
     executeIntoState(ctx, &state, .unlocking, unlocking_script) catch |err| switch (err) {
         error.VerifyFailed, error.ReturnEncountered => return false,
         else => return err,
@@ -86,6 +88,7 @@ pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_sc
 
     if (state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
     if (state.stack.items.len == 0) return false;
+    if (ctx.flags.clean_stack and state.stack.items.len != 1) return error.CleanStack;
     return isTruthy(state.stack.items[state.stack.items.len - 1]);
 }
 
@@ -539,6 +542,7 @@ fn executeIntoState(
                 const sig_bytes = try popOwned(state);
                 defer ctx.allocator.free(sig_bytes);
                 const valid = try verifyChecksig(ctx, script, state.last_code_separator, sig_bytes, pubkey_bytes);
+                if (!valid and ctx.flags.null_fail and sig_bytes.len != 0) return error.NullFail;
                 if (op == .OP_CHECKSIGVERIFY) {
                     if (!valid) return error.VerifyFailed;
                 } else {
@@ -789,7 +793,14 @@ fn verifyCheckmultisig(
                 break;
             }
         }
-        if (!matched) return false;
+        if (!matched) {
+            if (ctx.flags.null_fail) {
+                for (signatures) |candidate| {
+                    if (candidate.len != 0) return error.NullFail;
+                }
+            }
+            return false;
+        }
     }
 
     return true;
@@ -1538,6 +1549,40 @@ test "engine enforces NULLDUMMY for checkmultisig when strict encoding is enable
     }, unlocking_script, locking_script));
 }
 
+test "engine can require push-only unlocking scripts" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.SigPushOnly, verifyScripts(.{
+        .allocator = allocator,
+        .flags = .{ .sig_push_only = true },
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_DUP),
+    }), Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_EQUAL),
+    })));
+}
+
+test "engine can require a clean final stack" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+    }, Script.init(&[_]u8{}), Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_1),
+    })));
+
+    try std.testing.expectError(error.CleanStack, verifyScripts(.{
+        .allocator = allocator,
+        .flags = .{ .clean_stack = true },
+    }, Script.init(&[_]u8{}), Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_1),
+    })));
+}
+
 test "engine surfaces malformed control flow and bounds errors" {
     const allocator = std.testing.allocator;
 
@@ -1654,6 +1699,15 @@ test "engine verifies p2pkh end to end through checksig" {
         .previous_locking_script = previous_locking_script,
         .previous_satoshis = 999,
     }, unlocking_script, previous_locking_script)));
+
+    try std.testing.expectError(error.NullFail, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 999,
+        .flags = .{ .null_fail = true },
+    }, unlocking_script, previous_locking_script));
 }
 
 test "engine honors op_codeseparator in checksig subscript" {
