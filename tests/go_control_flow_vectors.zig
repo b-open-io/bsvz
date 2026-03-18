@@ -94,6 +94,11 @@ test "go direct script rows: false control-flow result shapes" {
     const allocator = std.testing.allocator;
 
     try runRows(allocator, &[_]GoRow{
+        .{ .name = "row 45 dup if endif over one succeeds", .unlocking_hex = "51", .locking_hex = "766368", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = true } },
+        .{ .name = "row 46 if one endif over one succeeds", .unlocking_hex = "51", .locking_hex = "635168", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = true } },
+        .{ .name = "row 47 dup if else endif over one succeeds", .unlocking_hex = "51", .locking_hex = "76636768", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = true } },
+        .{ .name = "row 48 if one else endif over one succeeds", .unlocking_hex = "51", .locking_hex = "63516768", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = true } },
+        .{ .name = "row 49 if else one endif over zero succeeds", .unlocking_hex = "00", .locking_hex = "63675168", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = true } },
         .{ .name = "dup if endif over zero leaves false result", .unlocking_hex = "00", .locking_hex = "766368", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = false } },
         .{ .name = "if true branch guarded by zero leaves false result", .unlocking_hex = "00", .locking_hex = "635168", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = false } },
         .{ .name = "dup if else endif over zero leaves false result", .unlocking_hex = "00", .locking_hex = "76636768", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = false } },

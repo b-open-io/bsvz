@@ -185,6 +185,17 @@ test "go direct parser rows: pushdata equivalence forms" {
     const pushdata1_255_equal = try std.mem.concat(allocator, u8, &[_][]const u8{ "4cff", two_fifty_five, "87" });
     defer allocator.free(pushdata1_255_equal);
 
+    const sixty_four_bytes = try builders.repeatedHexByte(allocator, 64, 0x42);
+    defer allocator.free(sixty_four_bytes);
+    const sixty_four = try builders.encodeLowerAlloc(allocator, sixty_four_bytes);
+    defer allocator.free(sixty_four);
+    const direct_64 = try std.mem.concat(allocator, u8, &[_][]const u8{ "40", sixty_four });
+    defer allocator.free(direct_64);
+    const pushdata1_64 = try std.mem.concat(allocator, u8, &[_][]const u8{ "4c40", sixty_four });
+    defer allocator.free(pushdata1_64);
+    const pushdata2_64_equal = try std.mem.concat(allocator, u8, &[_][]const u8{ "4d4000", sixty_four, "87" });
+    defer allocator.free(pushdata2_64_equal);
+
     try runRows(allocator, flags, &[_]GoRow{
         .{ .row = 27, .name = "row 27 direct one-byte push equals small integer 11", .unlocking_hex = "010b", .locking_hex = "5b87", .expected = .{ .success = true } },
         .{ .row = 28, .name = "row 28 direct two-byte push equals Az", .unlocking_hex = "02417a", .locking_hex = "02417a87", .expected = .{ .success = true } },
@@ -195,7 +206,22 @@ test "go direct parser rows: pushdata equivalence forms" {
         .{ .row = 34, .name = "row 34 pushdata1 zero length equals op_0", .unlocking_hex = "4c00", .locking_hex = "0087", .expected = .{ .success = true } },
         .{ .row = 35, .name = "row 35 pushdata2 zero length equals op_0", .unlocking_hex = "4d0000", .locking_hex = "0087", .expected = .{ .success = true } },
         .{ .row = 36, .name = "row 36 pushdata4 zero length equals op_0", .unlocking_hex = "4e00000000", .locking_hex = "0087", .expected = .{ .success = true } },
+        .{ .row = 637, .name = "row 637 direct 64-byte push equals pushdata2 64-byte push", .unlocking_hex = direct_64, .locking_hex = pushdata2_64_equal, .expected = .{ .success = true } },
+        .{ .row = 641, .name = "row 641 pushdata1 64-byte push equals pushdata2 64-byte push", .unlocking_hex = pushdata1_64, .locking_hex = pushdata2_64_equal, .expected = .{ .success = true } },
         .{ .row = 648, .name = "row 648 pushdata1 of seventy-five bytes equals direct push", .unlocking_hex = pushdata1_75, .locking_hex = direct_75_equal, .expected = .{ .success = true } },
         .{ .row = 649, .name = "row 649 pushdata2 of two-hundred-fifty-five bytes equals pushdata1", .unlocking_hex = pushdata2_255, .locking_hex = pushdata1_255_equal, .expected = .{ .success = true } },
+    });
+}
+
+test "go direct parser rows: untaken non-minimal pushes are ignored under minimaldata" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.minimal_data = true;
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 687, .name = "row 687 untaken pushdata1 zero-length is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "634c006851", .expected = .{ .success = true } },
+        .{ .row = 688, .name = "row 688 untaken pushdata2 zero-length is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "634d00006851", .expected = .{ .success = true } },
+        .{ .row = 689, .name = "row 689 untaken pushdata4 zero-length is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "634e000000006851", .expected = .{ .success = true } },
+        .{ .row = 690, .name = "row 690 untaken non-minimal negative-one encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301816851", .expected = .{ .success = true } },
     });
 }
