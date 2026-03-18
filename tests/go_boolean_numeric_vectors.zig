@@ -227,6 +227,197 @@ test "go direct script rows: boolean and minmaxwithin parity" {
     });
 }
 
+test "go direct script rows: comparison and minmax exact rows" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    const neg_eleven = try scriptNumBytes(allocator, -11);
+    defer allocator.free(neg_eleven);
+    const neg_ten = try scriptNumBytes(allocator, -10);
+    defer allocator.free(neg_ten);
+    const hundred = try scriptNumBytes(allocator, 100);
+    defer allocator.free(hundred);
+    const neg_hundred = try scriptNumBytes(allocator, -100);
+    defer allocator.free(neg_hundred);
+    const max_i32 = try scriptNumBytes(allocator, 2_147_483_647);
+    defer allocator.free(max_i32);
+    const neg_max_i32 = try scriptNumBytes(allocator, -2_147_483_647);
+    defer allocator.free(neg_max_i32);
+
+    const add_chain = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_11),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_10),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_ADD),
+    });
+    defer allocator.free(add_chain);
+
+    const eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
+    });
+    defer allocator.free(eq_lock);
+    const eqverify_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUALVERIFY),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+    });
+    defer allocator.free(eqverify_lock);
+    const notequal_not_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMNOTEQUAL),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NOT),
+    });
+    defer allocator.free(notequal_not_lock);
+    const notequal_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMNOTEQUAL),
+    });
+    defer allocator.free(notequal_lock);
+    const lt_not_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_LESSTHAN),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NOT),
+    });
+    defer allocator.free(lt_not_lock);
+    const lt_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_LESSTHAN),
+    });
+    defer allocator.free(lt_lock);
+    const gt_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_GREATERTHAN),
+    });
+    defer allocator.free(gt_lock);
+    const gt_not_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_GREATERTHAN),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NOT),
+    });
+    defer allocator.free(gt_not_lock);
+    const lte_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_LESSTHANOREQUAL),
+    });
+    defer allocator.free(lte_lock);
+    const lte_not_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_LESSTHANOREQUAL),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NOT),
+    });
+    defer allocator.free(lte_not_lock);
+    const gte_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_GREATERTHANOREQUAL),
+    });
+    defer allocator.free(gte_lock);
+    const gte_not_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_GREATERTHANOREQUAL),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NOT),
+    });
+    defer allocator.free(gte_not_lock);
+    const min_zero_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_MIN),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
+    });
+    defer allocator.free(min_zero_eq_lock);
+    const min_negone_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_MIN),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1NEGATE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
+    });
+    defer allocator.free(min_negone_eq_lock);
+    const min_negmax_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ neg_max_i32 }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_MIN),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
+    });
+    defer allocator.free(min_negmax_eq_lock);
+    const max_maxi32_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ max_i32 }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_MAX),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
+    });
+    defer allocator.free(max_maxi32_eq_lock);
+    const max_100_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ hundred }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_MAX),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
+    });
+    defer allocator.free(max_100_eq_lock);
+    const max_zero_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_MAX),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
+    });
+    defer allocator.free(max_zero_eq_lock);
+    const max_one_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_MAX),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
+    });
+    defer allocator.free(max_one_eq_lock);
+    const within_zero_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_WITHIN),
+    });
+    defer allocator.free(within_zero_lock);
+
+    const neg11_11 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ neg_eleven }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_11),
+    });
+    defer allocator.free(neg11_11);
+    const neg11_neg10 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ neg_eleven, neg_ten }, &[_]u8{});
+    defer allocator.free(neg11_neg10);
+    const zero_negmax = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ neg_max_i32 }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
+    });
+    defer allocator.free(zero_negmax);
+    const maxi32_zero = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ max_i32 }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
+    });
+    defer allocator.free(maxi32_zero);
+    const zero_hundred = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ hundred }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
+    });
+    defer allocator.free(zero_hundred);
+    const neghundred_zero = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ neg_hundred }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
+    });
+    defer allocator.free(neghundred_zero);
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 281, .name = "numequal matches add-chain result", .unlocking_hex = add_chain, .locking_hex = eq_lock, .expected = .{ .success = true } },
+        .{ .row = 282, .name = "numequalverify matches add-chain result", .unlocking_hex = add_chain, .locking_hex = eqverify_lock, .expected = .{ .success = true } },
+        .{ .row = 283, .name = "numnotequal not over equal values becomes true", .unlocking_hex = add_chain, .locking_hex = notequal_not_lock, .expected = .{ .success = true } },
+        .{ .row = 284, .name = "numnotequal over unequal values stays true", .unlocking_hex = "5f5a510193", .locking_hex = notequal_lock, .expected = .{ .success = true } },
+        .{ .row = 285, .name = "lessthan not over greater values becomes true", .unlocking_hex = "5b5a", .locking_hex = lt_not_lock, .expected = .{ .success = true } },
+        .{ .row = 286, .name = "lessthan not over equal values becomes true", .unlocking_hex = "5454", .locking_hex = lt_not_lock, .expected = .{ .success = true } },
+        .{ .row = 287, .name = "lessthan over ascending values stays true", .unlocking_hex = "5a5b", .locking_hex = lt_lock, .expected = .{ .success = true } },
+        .{ .row = 288, .name = "lessthan over negative and positive stays true", .unlocking_hex = neg11_11, .locking_hex = lt_lock, .expected = .{ .success = true } },
+        .{ .row = 289, .name = "lessthan over negative ascending values stays true", .unlocking_hex = neg11_neg10, .locking_hex = lt_lock, .expected = .{ .success = true } },
+        .{ .row = 290, .name = "greaterthan over descending values stays true", .unlocking_hex = "5b5a", .locking_hex = gt_lock, .expected = .{ .success = true } },
+        .{ .row = 291, .name = "greaterthan not over equal values becomes true", .unlocking_hex = "5454", .locking_hex = gt_not_lock, .expected = .{ .success = true } },
+        .{ .row = 292, .name = "greaterthan not over ascending values becomes true", .unlocking_hex = "5a5b", .locking_hex = gt_not_lock, .expected = .{ .success = true } },
+        .{ .row = 293, .name = "greaterthan not over negative and positive becomes true", .unlocking_hex = neg11_11, .locking_hex = gt_not_lock, .expected = .{ .success = true } },
+        .{ .row = 294, .name = "greaterthan not over negative ascending becomes true", .unlocking_hex = neg11_neg10, .locking_hex = gt_not_lock, .expected = .{ .success = true } },
+        .{ .row = 295, .name = "lessthanorequal not over descending becomes true", .unlocking_hex = "5b5a", .locking_hex = lte_not_lock, .expected = .{ .success = true } },
+        .{ .row = 296, .name = "lessthanorequal over equal values stays true", .unlocking_hex = "5454", .locking_hex = lte_lock, .expected = .{ .success = true } },
+        .{ .row = 297, .name = "lessthanorequal over ascending values stays true", .unlocking_hex = "5a5b", .locking_hex = lte_lock, .expected = .{ .success = true } },
+        .{ .row = 298, .name = "lessthanorequal over negative and positive stays true", .unlocking_hex = neg11_11, .locking_hex = lte_lock, .expected = .{ .success = true } },
+        .{ .row = 299, .name = "lessthanorequal over negative ascending stays true", .unlocking_hex = neg11_neg10, .locking_hex = lte_lock, .expected = .{ .success = true } },
+        .{ .row = 300, .name = "greaterthanorequal over descending stays true", .unlocking_hex = "5b5a", .locking_hex = gte_lock, .expected = .{ .success = true } },
+        .{ .row = 301, .name = "greaterthanorequal over equal values stays true", .unlocking_hex = "5454", .locking_hex = gte_lock, .expected = .{ .success = true } },
+        .{ .row = 302, .name = "greaterthanorequal not over ascending becomes true", .unlocking_hex = "5a5b", .locking_hex = gte_not_lock, .expected = .{ .success = true } },
+        .{ .row = 303, .name = "greaterthanorequal not over negative and positive becomes true", .unlocking_hex = neg11_11, .locking_hex = gte_not_lock, .expected = .{ .success = true } },
+        .{ .row = 304, .name = "greaterthanorequal not over negative ascending becomes true", .unlocking_hex = neg11_neg10, .locking_hex = gte_not_lock, .expected = .{ .success = true } },
+        .{ .row = 305, .name = "min of one and zero is zero", .unlocking_hex = "5100", .locking_hex = min_zero_eq_lock, .expected = .{ .success = true } },
+        .{ .row = 306, .name = "min of zero and one is zero", .unlocking_hex = "0051", .locking_hex = min_zero_eq_lock, .expected = .{ .success = true } },
+        .{ .row = 307, .name = "min of negative one and zero is negative one", .unlocking_hex = "4f00", .locking_hex = min_negone_eq_lock, .expected = .{ .success = true } },
+        .{ .row = 308, .name = "min of zero and negative max int32 is negative max int32", .unlocking_hex = zero_negmax, .locking_hex = min_negmax_eq_lock, .expected = .{ .success = true } },
+        .{ .row = 309, .name = "max of int32 max and zero is int32 max", .unlocking_hex = maxi32_zero, .locking_hex = max_maxi32_eq_lock, .expected = .{ .success = true } },
+        .{ .row = 310, .name = "max of zero and hundred is hundred", .unlocking_hex = zero_hundred, .locking_hex = max_100_eq_lock, .expected = .{ .success = true } },
+        .{ .row = 311, .name = "max of negative hundred and zero is zero", .unlocking_hex = neghundred_zero, .locking_hex = max_zero_eq_lock, .expected = .{ .success = true } },
+        .{ .row = 312, .name = "max of zero and negative max int32 is zero", .unlocking_hex = zero_negmax, .locking_hex = max_zero_eq_lock, .expected = .{ .success = true } },
+        .{ .row = 536, .name = "numequal over zero and zero stays true", .unlocking_hex = "0000", .locking_hex = eq_lock, .expected = .{ .success = true } },
+        .{ .row = 537, .name = "numequalverify over zero and zero stays true", .unlocking_hex = "0000", .locking_hex = eqverify_lock, .expected = .{ .success = true } },
+        .{ .row = 538, .name = "numnotequal over negative one and zero stays true", .unlocking_hex = "4f00", .locking_hex = notequal_lock, .expected = .{ .success = true } },
+        .{ .row = 539, .name = "lessthan over negative one and zero stays true", .unlocking_hex = "4f00", .locking_hex = lt_lock, .expected = .{ .success = true } },
+        .{ .row = 540, .name = "greaterthan over one and zero stays true", .unlocking_hex = "5100", .locking_hex = gt_lock, .expected = .{ .success = true } },
+        .{ .row = 541, .name = "lessthanorequal over zero and zero stays true", .unlocking_hex = "0000", .locking_hex = lte_lock, .expected = .{ .success = true } },
+        .{ .row = 542, .name = "greaterthanorequal over zero and zero stays true", .unlocking_hex = "0000", .locking_hex = gte_lock, .expected = .{ .success = true } },
+        .{ .row = 543, .name = "min over negative one and zero stays negative one", .unlocking_hex = "4f00", .locking_hex = min_negone_eq_lock, .expected = .{ .success = true } },
+        .{ .row = 544, .name = "max over one and zero stays one", .unlocking_hex = "5100", .locking_hex = max_one_eq_lock, .expected = .{ .success = true } },
+    });
+}
+
 test "go direct script rows: boolean underflow parity" {
     const allocator = std.testing.allocator;
 
