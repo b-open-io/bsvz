@@ -2181,6 +2181,90 @@ test "engine checkmultisig rejects illegal forkid under legacy strict policy" {
     }, unlocking_script, locking_script));
 }
 
+test "engine checkmultisig surfaces malformed signature before ordinary 2-of-3 failure" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x5c} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 1_200,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const p2pkh_spend = @import("../transaction/templates/p2pkh_spend.zig");
+    const valid_sig = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_500,
+        private_key,
+        p2pkh_spend.default_scope,
+    );
+    const valid_sig_bytes = try valid_sig.toChecksigFormat(allocator);
+    defer allocator.free(valid_sig_bytes);
+
+    var invalid_sig_bytes = try allocator.dupe(u8, valid_sig_bytes);
+    defer allocator.free(invalid_sig_bytes);
+    invalid_sig_bytes[0] = 0x31;
+
+    var unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer unlocking_bytes.deinit(allocator);
+    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    const valid_push = try encodePushDataElement(allocator, valid_sig_bytes);
+    defer allocator.free(valid_push);
+    try unlocking_bytes.appendSlice(allocator, valid_push);
+    const invalid_push = try encodePushDataElement(allocator, invalid_sig_bytes);
+    defer allocator.free(invalid_push);
+    try unlocking_bytes.appendSlice(allocator, invalid_push);
+    const unlocking_script = Script.init(try unlocking_bytes.toOwnedSlice(allocator));
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expectError(error.InvalidSignatureEncoding, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{
+            .strict_encoding = true,
+        },
+    }, unlocking_script, locking_script));
+}
+
 test "engine legacy checksig removes pushed signature copies from script code when legacy mode is enabled" {
     const allocator = std.testing.allocator;
 
