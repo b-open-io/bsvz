@@ -1,4 +1,5 @@
 const context = @import("context.zig");
+const bytes = @import("bytes.zig");
 const engine = @import("engine.zig");
 const Script = @import("script.zig").Script;
 
@@ -61,6 +62,15 @@ pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_sc
     var thread = ScriptThread.init(ctx);
     defer thread.deinit();
     return thread.verifyPair(unlocking_script, locking_script);
+}
+
+pub fn verifyExecutableScripts(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    full_locking_script: Script,
+) Error!bool {
+    const executable_locking_script = try bytes.executableCodePart(full_locking_script);
+    return verifyScripts(ctx, unlocking_script, executable_locking_script);
 }
 
 fn finalResult(ctx: ExecutionContext, state: *ExecutionState) Error!bool {

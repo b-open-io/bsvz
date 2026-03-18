@@ -1,5 +1,4 @@
 const std = @import("std");
-const bytes = @import("bytes.zig");
 const thread = @import("thread.zig");
 const Script = @import("script.zig").Script;
 const Transaction = @import("../transaction/transaction.zig").Transaction;
@@ -16,12 +15,11 @@ pub const P2pkhSpendContext = struct {
 };
 
 pub fn verify(ctx: P2pkhSpendContext) Error!bool {
-    const executable_locking_script = try bytes.executableCodePart(ctx.locking_script);
-    return thread.verifyScripts(.{
+    return thread.verifyExecutableScripts(.{
         .allocator = ctx.allocator,
         .tx = ctx.tx,
         .input_index = ctx.input_index,
         .previous_locking_script = ctx.locking_script,
         .previous_satoshis = ctx.previous_satoshis,
-    }, ctx.unlocking_script, executable_locking_script);
+    }, ctx.unlocking_script, ctx.locking_script);
 }

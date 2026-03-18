@@ -59,6 +59,7 @@ This is the current interpreter map for `bsvz.script`.
 | Area | Coverage | Notes |
 | --- | --- | --- |
 | Script bytes, chunks, parser, serializer | implemented | direct pushes, `PUSHDATA1/2/4`, chunk roundtrip, malformed pushdata rejection |
+| Script thread / seam orchestration | implemented | dedicated script-pair orchestration module separates verification seam behavior from the opcode loop |
 | Push-only and script inspection helpers | implemented | `isPushOnly`, `hasCodeSeparator`, top-level `OP_RETURN` tail handling, and push-only seam behavior |
 | Execution core | implemented | stack, altstack, condition stack, truthiness, op counting, stack limits |
 | Control flow | implemented | `IF`, `NOTIF`, `ELSE`, `ENDIF`, `VERIFY`, legacy vs post-Genesis multi-`ELSE` behavior, post-Genesis `OP_RETURN`, `CODESEPARATOR` |

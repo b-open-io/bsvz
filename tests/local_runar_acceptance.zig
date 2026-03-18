@@ -921,7 +921,6 @@ fn verifyInputAgainstOutput(
     const previous_output = previous_tx.outputs[previous_output_index];
     const unlocking_script = spend_tx.inputs[spend_input_index].unlocking_script;
     const locking_script = previous_output.locking_script;
-    const executable_locking_script = try bsvz.script.executableCodePart(locking_script);
 
     const exec_ctx: bsvz.script.engine.ExecutionContext = .{
         .allocator = allocator,
@@ -930,20 +929,11 @@ fn verifyInputAgainstOutput(
         .previous_locking_script = locking_script,
         .previous_satoshis = previous_output.satoshis,
     };
-
-    var state: bsvz.script.engine.ExecutionState = .{};
-    defer state.deinit(allocator);
-
-    try bsvz.script.engine.executeUnlockingScript(exec_ctx, &state, Script.init(unlocking_script.bytes));
-    state.clearAltStack(allocator);
-
-    bsvz.script.engine.executeLockingScript(exec_ctx, &state, executable_locking_script) catch {
-        return false;
-    };
-
-    return state.condition_stack.items.len == 0 and
-        state.stack.items.len > 0 and
-        bsvz.script.engine.isTruthy(state.stack.items[state.stack.items.len - 1]);
+    return bsvz.script.thread.verifyExecutableScripts(
+        exec_ctx,
+        Script.init(unlocking_script.bytes),
+        locking_script,
+    ) catch false;
 }
 
 fn verifyFirstInputAgainstFirstOutput(
