@@ -1166,3 +1166,57 @@ test "go direct script-pair rows: op_return seam behavior" {
         .expected = .{ .success = true },
     });
 }
+
+test "go direct script rows: legacy versus post-genesis multiple else" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try harness.runCase(allocator, .{
+        .name = "legacy multiple else inverts execution when if branch is false",
+        .unlocking_hex = "00",
+        .locking_hex = "63006751670068",
+        .flags = legacy_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis multiple else is unbalanced when if branch is false",
+        .unlocking_hex = "00",
+        .locking_hex = "63006751670068",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "legacy multiple else inverts execution when if branch is true",
+        .unlocking_hex = "51",
+        .locking_hex = "635167006768",
+        .flags = legacy_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis multiple else is unbalanced when if branch is true",
+        .unlocking_hex = "51",
+        .locking_hex = "635167006768",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "legacy multiple else with empty first branch still reaches final true branch",
+        .unlocking_hex = "51",
+        .locking_hex = "636700675168",
+        .flags = legacy_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis multiple else with empty first branch is unbalanced",
+        .unlocking_hex = "51",
+        .locking_hex = "636700675168",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+}
