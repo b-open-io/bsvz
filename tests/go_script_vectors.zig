@@ -110,6 +110,34 @@ fn scriptHexForOps(allocator: std.mem.Allocator, ops: []const bsvz.script.opcode
     return scriptHexFromBytes(allocator, bytes.items);
 }
 
+fn appendPushData(
+    bytes: *std.ArrayListUnmanaged(u8),
+    allocator: std.mem.Allocator,
+    data: []const u8,
+) !void {
+    if (data.len <= 75) {
+        try bytes.append(allocator, @intCast(data.len));
+    } else unreachable;
+    try bytes.appendSlice(allocator, data);
+}
+
+fn scriptHexForPushesAndOps(
+    allocator: std.mem.Allocator,
+    pushes: []const []const u8,
+    ops: []const u8,
+) ![]u8 {
+    var bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer bytes.deinit(allocator);
+
+    for (pushes) |push| try appendPushData(&bytes, allocator, push);
+    try bytes.appendSlice(allocator, ops);
+    return scriptHexFromBytes(allocator, bytes.items);
+}
+
+fn scriptNumBytes(allocator: std.mem.Allocator, value: i64) ![]u8 {
+    return bsvz.script.ScriptNum.encode(allocator, value);
+}
+
 test "go direct checksig rows: bip66 example 4 nullfail matrix" {
     const allocator = std.testing.allocator;
     const locking_hex =
@@ -1372,5 +1400,149 @@ test "go direct script-pair rows: stack and conditional state do not cross the s
         .locking_hex = "63006a6851",
         .flags = post_genesis_flags,
         .expected = .{ .success = true },
+    });
+}
+
+test "go direct script rows: executed and skipped disabled opcode precedence" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.strict_encoding = true;
+
+    try harness.runCase(allocator, .{
+        .name = "executed vernotif remains a bad opcode",
+        .unlocking_hex = "51",
+        .locking_hex = "6366675168",
+        .flags = flags,
+        .expected = .{ .err = error.UnknownOpcode },
+    });
+
+    var post_genesis_flags = flags;
+    post_genesis_flags.utxo_after_genesis = true;
+
+    try harness.runCase(allocator, .{
+        .name = "multiple else beats later vernotif after genesis",
+        .unlocking_hex = "51",
+        .locking_hex = "636751676668",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "skipped disabled opcode in untaken branch is still ok",
+        .unlocking_hex = "00",
+        .locking_hex = "63ec675168",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+}
+
+test "go direct script rows: bin2num parity" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.strict_encoding = true;
+
+    const max_i32 = try scriptNumBytes(allocator, 2_147_483_647);
+    defer allocator.free(max_i32);
+    const neg_max_i32 = try scriptNumBytes(allocator, -2_147_483_647);
+    defer allocator.free(neg_max_i32);
+    const one = try scriptNumBytes(allocator, 1);
+    defer allocator.free(one);
+    const positive_983041 = try scriptNumBytes(allocator, 983_041);
+    defer allocator.free(positive_983041);
+    const negative_983041 = try scriptNumBytes(allocator, -983_041);
+    defer allocator.free(negative_983041);
+
+    const oversized_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        max_i32,
+        &[_]u8{ 0xff, 0xff, 0xff, 0xff, 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(oversized_hex);
+    try harness.runCase(allocator, .{
+        .name = "bin2num oversized argument is invalid number range",
+        .unlocking_hex = oversized_hex,
+        .locking_hex = "",
+        .flags = flags,
+        .expected = .{ .err = error.NumberTooBig },
+    });
+
+    const noncanonical_max_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        neg_max_i32,
+        &[_]u8{ 0xff, 0xff, 0xff, 0x7f, 0x80 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(noncanonical_max_hex);
+    try harness.runCase(allocator, .{
+        .name = "bin2num noncanonical max size negative argument is ok",
+        .unlocking_hex = noncanonical_max_hex,
+        .locking_hex = "",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+
+    const significant_zero_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        positive_983041,
+        &[_]u8{ 0x01, 0x00, 0x0f, 0x00, 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(significant_zero_hex);
+    try harness.runCase(allocator, .{
+        .name = "bin2num retains significant zero bytes for positive values",
+        .unlocking_hex = significant_zero_hex,
+        .locking_hex = "",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+
+    const significant_zero_negative_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        negative_983041,
+        &[_]u8{ 0x01, 0x00, 0x0f, 0x00, 0x80 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(significant_zero_negative_hex);
+    try harness.runCase(allocator, .{
+        .name = "bin2num retains significant zero bytes for negative values",
+        .unlocking_hex = significant_zero_negative_hex,
+        .locking_hex = "",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+
+    const one_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        one,
+        &[_]u8{ 0x01, 0x00, 0x00, 0x00, 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(one_hex);
+    try harness.runCase(allocator, .{
+        .name = "bin2num normalizes trailing zero bytes down to one",
+        .unlocking_hex = one_hex,
+        .locking_hex = "",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+}
+
+test "go direct script rows: minimaldata not parity" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.minimal_data = true;
+
+    try harness.runCase(allocator, .{
+        .name = "not rejects non-minimally encoded operand",
+        .unlocking_hex = "03ff7f00",
+        .locking_hex = "917551",
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
     });
 }
