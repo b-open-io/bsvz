@@ -339,6 +339,68 @@ test "go direct checksig rows: malformed dersig matrix" {
     }
 }
 
+test "go direct script rows: sighash policy gates" {
+    const allocator = std.testing.allocator;
+
+    const checksig_not_locking_hex =
+        "21"
+        ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
+        ++ "ac91";
+
+    var legacy_strict = bsvz.script.engine.ExecutionFlags.legacyReference();
+    legacy_strict.strict_encoding = true;
+
+    try harness.runCase(allocator, .{
+        .name = "checksig not rejects illegal forkid under legacy strict policy",
+        .unlocking_hex = "09300602010102010141",
+        .locking_hex = checksig_not_locking_hex,
+        .flags = legacy_strict,
+        .expected = .{ .err = error.IllegalForkId },
+    });
+
+    var forkid_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+    forkid_flags.der_signatures = true;
+
+    try harness.runCase(allocator, .{
+        .name = "checksig not accepts forkid under forkid policy",
+        .unlocking_hex = "09300602010102010141",
+        .locking_hex = checksig_not_locking_hex,
+        .flags = forkid_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "checksig not rejects invalid sighash type under legacy strict policy",
+        .unlocking_hex = "09300602010102010105",
+        .locking_hex = checksig_not_locking_hex,
+        .flags = legacy_strict,
+        .expected = .{ .err = error.InvalidSigHashType },
+    });
+
+    const checkmultisig_not_locking_hex =
+        "51"
+        ++ "21"
+        ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
+        ++ "51"
+        ++ "ae91";
+
+    try harness.runCase(allocator, .{
+        .name = "checkmultisig not rejects illegal forkid under legacy strict policy",
+        .unlocking_hex = "0009300602010102010141",
+        .locking_hex = checkmultisig_not_locking_hex,
+        .flags = legacy_strict,
+        .expected = .{ .err = error.IllegalForkId },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "checkmultisig not accepts forkid under forkid policy",
+        .unlocking_hex = "0009300602010102010141",
+        .locking_hex = checkmultisig_not_locking_hex,
+        .flags = forkid_flags,
+        .expected = .{ .success = true },
+    });
+}
+
 test "go direct checkmultisig rows: nullfail and nulldummy matrix" {
     const allocator = std.testing.allocator;
 
