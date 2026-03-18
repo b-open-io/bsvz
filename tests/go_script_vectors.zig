@@ -11,6 +11,10 @@ fn encodeLowerAlloc(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
     return try bsvz.primitives.hex.encodeLower(bytes, out);
 }
 
+fn scriptHexFromBytes(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
+    return encodeLowerAlloc(allocator, bytes);
+}
+
 fn buildSyntheticCheckmultisigNotHexes(
     allocator: std.mem.Allocator,
     dummy_opcode: u8,
@@ -302,6 +306,88 @@ test "go direct script rows: minimaldata push forms" {
         .name = "pushdata1 of 72 bytes is non-minimal",
         .unlocking_hex = push_72,
         .locking_hex = "7551",
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+}
+
+test "go direct script rows: minimaldata numeric arguments" {
+    const allocator = std.testing.allocator;
+
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.minimal_data = true;
+
+    const locking_not_drop_1 = try scriptHexFromBytes(allocator, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NOT),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_DROP),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+    });
+    defer allocator.free(locking_not_drop_1);
+
+    try harness.runCase(allocator, .{
+        .name = "numeric minimaldata rejects direct-pushed zero",
+        .unlocking_hex = "0100",
+        .locking_hex = locking_not_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "numeric minimaldata rejects negative zero",
+        .unlocking_hex = "0180",
+        .locking_hex = locking_not_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    const locking_pick_drop = try scriptHexFromBytes(allocator, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_PICK),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_DROP),
+    });
+    defer allocator.free(locking_pick_drop);
+
+    try harness.runCase(allocator, .{
+        .name = "pick rejects non-minimal numeric index",
+        .unlocking_hex = "51020000",
+        .locking_hex = locking_pick_drop,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    const locking_roll_drop_1 = try scriptHexFromBytes(allocator, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_ROLL),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_DROP),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+    });
+    defer allocator.free(locking_roll_drop_1);
+
+    try harness.runCase(allocator, .{
+        .name = "roll rejects non-minimal numeric index",
+        .unlocking_hex = "51020000",
+        .locking_hex = locking_roll_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    const locking_add_drop_1 = try scriptHexFromBytes(allocator, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_ADD),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_DROP),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+    });
+    defer allocator.free(locking_add_drop_1);
+
+    try harness.runCase(allocator, .{
+        .name = "add rejects non-minimal left operand",
+        .unlocking_hex = "00020000",
+        .locking_hex = locking_add_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "add rejects non-minimal right operand",
+        .unlocking_hex = "02000000",
+        .locking_hex = locking_add_drop_1,
         .flags = flags,
         .expected = .{ .err = error.MinimalData },
     });
