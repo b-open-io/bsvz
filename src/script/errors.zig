@@ -2,6 +2,7 @@ pub const ScriptError = error{
     Overflow,
     UnsupportedLockingScript,
     InvalidPushData,
+    ElementTooBig,
     InvalidUnlockingScript,
     StackUnderflow,
     AltStackUnderflow,
@@ -34,4 +35,5 @@ pub const ScriptError = error{
     InvalidPublicKeyEncoding,
     InvalidEncoding,
     NonMinimalEncoding,
+    NumberTooBig,
 };

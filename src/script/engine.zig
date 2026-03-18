@@ -114,6 +114,7 @@ fn executeIntoState(
         cursor += 1;
 
         if (byte >= 0x01 and byte <= 0x4b) {
+            if (byte > ctx.flags.max_script_element_size) return error.ElementTooBig;
             if (!early_return_after_genesis and shouldExecute(state)) {
                 if (script.bytes.len < cursor + byte) return error.InvalidPushData;
                 if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + byte])) return error.MinimalData;
@@ -132,6 +133,7 @@ fn executeIntoState(
 
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA1)) {
             const len = try readPushLength(u8, script.bytes, &cursor);
+            if (len > ctx.flags.max_script_element_size) return error.ElementTooBig;
             if (script.bytes.len < cursor + len) return error.InvalidPushData;
             if (!early_return_after_genesis and shouldExecute(state)) {
                 if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + len])) return error.MinimalData;
@@ -143,6 +145,7 @@ fn executeIntoState(
 
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA2)) {
             const len = try readPushLength(u16, script.bytes, &cursor);
+            if (len > ctx.flags.max_script_element_size) return error.ElementTooBig;
             if (script.bytes.len < cursor + len) return error.InvalidPushData;
             if (!early_return_after_genesis and shouldExecute(state)) {
                 if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + len])) return error.MinimalData;
@@ -154,6 +157,7 @@ fn executeIntoState(
 
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA4)) {
             const len = try readPushLength(u32, script.bytes, &cursor);
+            if (len > ctx.flags.max_script_element_size) return error.ElementTooBig;
             if (script.bytes.len < cursor + len) return error.InvalidPushData;
             if (!early_return_after_genesis and shouldExecute(state)) {
                 if (ctx.flags.minimal_data and !isMinimalPush(byte, script.bytes[cursor .. cursor + len])) return error.MinimalData;
@@ -394,6 +398,7 @@ fn executeIntoState(
             .OP_NUM2BIN => {
                 try countOp(ctx, state);
                 const size = try popIndex(ctx, state);
+                if (size > ctx.flags.max_script_element_size) return error.NumberTooBig;
                 const value_bytes = try popOwned(state);
                 defer ctx.allocator.free(value_bytes);
                 var value = try num.ScriptNum.decodeOwned(ctx.allocator, value_bytes);
@@ -408,7 +413,9 @@ fn executeIntoState(
                 var value = try num.ScriptNum.bin2num(ctx.allocator, value_bytes);
                 defer value.deinit();
                 const minimal = try value.encodeOwned(ctx.allocator);
-                try pushOwned(ctx, state, minimal);
+                defer ctx.allocator.free(minimal);
+                if (minimal.len > ctx.flags.max_script_number_length) return error.NumberTooBig;
+                try pushCopy(ctx, state, minimal);
             },
             .OP_SIZE => {
                 try countOp(ctx, state);
@@ -630,6 +637,7 @@ fn ensureCanGrow(ctx: ExecutionContext, state: *const ExecutionState, extra_item
 
 fn pushOwned(ctx: ExecutionContext, state: *ExecutionState, item: []u8) Error!void {
     errdefer ctx.allocator.free(item);
+    if (item.len > ctx.flags.max_script_element_size) return error.ElementTooBig;
     try ensureCanGrow(ctx, state, 1);
     try state.stack.append(ctx.allocator, item);
     const depth = state.stack.items.len + state.alt_stack.items.len;
@@ -669,6 +677,7 @@ fn peek(state: *const ExecutionState, offset: usize) Error![]const u8 {
 fn popNum(ctx: ExecutionContext, state: *ExecutionState) Error!num.ScriptNum {
     const value_bytes = try popOwned(state);
     defer ctx.allocator.free(value_bytes);
+    if (value_bytes.len > ctx.flags.max_script_number_length) return error.NumberTooBig;
     return num.ScriptNum.decodeOwned(ctx.allocator, value_bytes);
 }
 
@@ -2073,6 +2082,50 @@ test "engine enforces op and stack limits" {
         @intFromEnum(opcode.Opcode.OP_1),
         @intFromEnum(opcode.Opcode.OP_1),
     })));
+}
+
+test "engine enforces script element and script number length limits" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.ElementTooBig, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .max_script_element_size = 1 },
+    }, Script.init(&[_]u8{
+        0x02, 0xaa, 0xbb,
+    })));
+
+    try std.testing.expectError(error.ElementTooBig, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .max_script_element_size = 1 },
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_IF),
+        0x02,
+        0xaa,
+        0xbb,
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+        @intFromEnum(opcode.Opcode.OP_1),
+    })));
+
+    try std.testing.expectError(error.NumberTooBig, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .max_script_number_length = 4 },
+    }, Script.init(&[_]u8{
+        0x05, 0x00, 0x00, 0x00, 0x80, 0x00,
+        @intFromEnum(opcode.Opcode.OP_1ADD),
+    })));
+
+    var bin2num_result = try executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .max_script_number_length = 1 },
+    }, Script.init(&[_]u8{
+        0x02, 0x01, 0x00,
+        @intFromEnum(opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_EQUAL),
+    }));
+    defer bin2num_result.deinit(allocator);
+    try std.testing.expect(bin2num_result.success);
 }
 
 test "engine can disable re-enabled BSV opcodes through flags" {
