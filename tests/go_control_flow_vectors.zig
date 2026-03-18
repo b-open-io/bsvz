@@ -89,3 +89,67 @@ test "go direct control-flow rows: compact op_return and sigpushonly" {
         },
     });
 }
+
+test "go direct script rows: false control-flow result shapes" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, &[_]GoRow{
+        .{ .name = "dup if endif over zero leaves false result", .unlocking_hex = "00", .locking_hex = "766368", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = false } },
+        .{ .name = "if true branch guarded by zero leaves false result", .unlocking_hex = "00", .locking_hex = "635168", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = false } },
+        .{ .name = "dup if else endif over zero leaves false result", .unlocking_hex = "00", .locking_hex = "76636768", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = false } },
+        .{ .name = "if else endif over zero leaves false result", .unlocking_hex = "00", .locking_hex = "63516768", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = false } },
+        .{ .name = "notif else one endif over zero still leaves false result", .unlocking_hex = "00", .locking_hex = "64675168", .flags = bsvz.script.engine.ExecutionFlags.legacyReference(), .expected = .{ .success = false } },
+    });
+}
+
+test "go direct script rows: compact op_return post-genesis rows" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try runRows(allocator, &[_]GoRow{
+        .{ .name = "legacy dup if return endif errors", .unlocking_hex = "51", .locking_hex = "76636a68", .flags = legacy_flags, .expected = .{ .err = error.ReturnEncountered } },
+        .{ .name = "legacy return data errors", .unlocking_hex = "51", .locking_hex = "6a0464617461", .flags = legacy_flags, .expected = .{ .err = error.ReturnEncountered } },
+        .{ .name = "post-genesis dup if return endif succeeds from top stack", .unlocking_hex = "51", .locking_hex = "76636a68", .flags = post_genesis_flags, .expected = .{ .success = true } },
+        .{ .name = "post-genesis return data succeeds from top stack", .unlocking_hex = "51", .locking_hex = "6a0464617461", .flags = post_genesis_flags, .expected = .{ .success = true } },
+    });
+}
+
+test "go direct script rows: legacy versus post-genesis multiple else" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try runRows(allocator, &[_]GoRow{
+        .{ .name = "legacy multiple else inverts execution when if branch is false", .unlocking_hex = "00", .locking_hex = "63006751670068", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .name = "post-genesis multiple else is unbalanced when if branch is false", .unlocking_hex = "00", .locking_hex = "63006751670068", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "legacy multiple else inverts execution when if branch is true", .unlocking_hex = "51", .locking_hex = "635167006768", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .name = "post-genesis multiple else is unbalanced when if branch is true", .unlocking_hex = "51", .locking_hex = "635167006768", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "legacy multiple else with empty first branch still reaches final true branch", .unlocking_hex = "51", .locking_hex = "636700675168", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .name = "post-genesis multiple else with empty first branch is unbalanced", .unlocking_hex = "51", .locking_hex = "636700675168", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+    });
+}
+
+test "go direct script rows: nested else else legacy versus post-genesis" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try runRows(allocator, &[_]GoRow{
+        .{ .name = "legacy nested else else succeeds for outer false path", .unlocking_hex = "00", .locking_hex = "6351636a676a676a6867516351676a675168676a68935287", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .name = "post-genesis nested else else is unbalanced for outer false path", .unlocking_hex = "00", .locking_hex = "6351636a676a676a6867516351676a675168676a68935287", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "legacy nested else else succeeds for outer true notif path", .unlocking_hex = "51", .locking_hex = "6400646a676a676a6867006451676a675168676a68935287", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .name = "post-genesis nested else else is unbalanced for outer true notif path", .unlocking_hex = "51", .locking_hex = "6400646a676a676a6867006451676a675168676a68935287", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+    });
+}
+
+test "go direct script rows: op_return in different branches" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try runRows(allocator, &[_]GoRow{
+        .{ .name = "legacy branch-selected op_return still errors", .unlocking_hex = "00", .locking_hex = "636a05646174613167516a05646174613268", .flags = legacy_flags, .expected = .{ .err = error.ReturnEncountered } },
+        .{ .name = "post-genesis branch-selected op_return keeps success when else branch pushes one first", .unlocking_hex = "00", .locking_hex = "636a05646174613167516a05646174613268", .flags = post_genesis_flags, .expected = .{ .success = true } },
+    });
+}

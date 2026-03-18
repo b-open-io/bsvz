@@ -158,6 +158,166 @@ test "go direct script-pair rows: op_return seam behavior" {
         .flags = post_genesis_flags,
         .expected = .{ .success = false },
     });
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis return only works if not executed across the script seam",
+        .unlocking_hex = "00",
+        .locking_hex = "636a6851",
+        .flags = legacy_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis return only works if not executed across the script seam",
+        .unlocking_hex = "00",
+        .locking_hex = "636a6851",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis taken branch return still errors across the script seam",
+        .unlocking_hex = "51",
+        .locking_hex = "76636a68",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis taken branch return keeps the true stack top across the script seam",
+        .unlocking_hex = "51",
+        .locking_hex = "76636a68",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis locking return if still errors",
+        .unlocking_hex = "51",
+        .locking_hex = "6a63",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis locking return if short-circuits to success",
+        .unlocking_hex = "51",
+        .locking_hex = "6a63",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis locking return bad opcode tail still errors",
+        .unlocking_hex = "51",
+        .locking_hex = "6aba",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis locking return bad opcode tail still succeeds",
+        .unlocking_hex = "51",
+        .locking_hex = "6aba",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if return without endif stays unbalanced when branch is not taken",
+        .unlocking_hex = "00",
+        .locking_hex = "636a",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if return without endif stays unbalanced after genesis when branch is not taken",
+        .unlocking_hex = "00",
+        .locking_hex = "636a",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis taken if return still errors before endif",
+        .unlocking_hex = "51",
+        .locking_hex = "63556a",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis taken if return remains unbalanced without endif",
+        .unlocking_hex = "51",
+        .locking_hex = "63556a",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if return endif tail succeeds when branch is not taken",
+        .unlocking_hex = "00",
+        .locking_hex = "636a6855",
+        .flags = legacy_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if return endif tail succeeds after genesis when branch is not taken",
+        .unlocking_hex = "00",
+        .locking_hex = "636a6855",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if return bad opcode tail without endif stays unbalanced when branch is not taken",
+        .unlocking_hex = "00",
+        .locking_hex = "636aba",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if return bad opcode tail without endif stays unbalanced after genesis when branch is not taken",
+        .unlocking_hex = "00",
+        .locking_hex = "636aba",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis taken if return bad opcode tail still errors",
+        .unlocking_hex = "51",
+        .locking_hex = "63556aba",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis taken if return bad opcode tail remains unbalanced",
+        .unlocking_hex = "51",
+        .locking_hex = "63556aba",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if return bad opcode endif tail succeeds when branch is not taken",
+        .unlocking_hex = "00",
+        .locking_hex = "636aba6855",
+        .flags = legacy_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if return bad opcode endif tail succeeds after genesis when branch is not taken",
+        .unlocking_hex = "00",
+        .locking_hex = "636aba6855",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
 }
 
 test "go direct script-pair rows: stack and conditional state do not cross the seam" {
@@ -185,6 +345,40 @@ test "go direct script-pair rows: stack and conditional state do not cross the s
         .unlocking_hex = "00",
         .locking_hex = "636a6851",
         .flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv(),
+        .expected = .{ .success = true },
+    });
+
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try harness.runCase(allocator, .{
+        .name = "altstack is not shared between unlocking and locking scripts even with trailing success op",
+        .unlocking_hex = "516b",
+        .locking_hex = "6c51",
+        .flags = flags,
+        .expected = .{ .err = error.AltStackUnderflow },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if endif cannot span script pair even with return in locking script pre-genesis",
+        .unlocking_hex = "0063",
+        .locking_hex = "6a6851",
+        .flags = flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if endif cannot span script pair even with return in locking script post-genesis",
+        .unlocking_hex = "0063",
+        .locking_hex = "6a6851",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "skipped if return endif tail still succeeds after genesis",
+        .unlocking_hex = "00",
+        .locking_hex = "63006a6851",
+        .flags = post_genesis_flags,
         .expected = .{ .success = true },
     });
 }
