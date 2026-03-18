@@ -49,7 +49,7 @@ Current construction zones:
 
 - SPV is not yet real beyond placeholders and type stubs
 - broadcast is not yet real beyond namespace scaffolding
-- the script interpreter is materially closer to Go parity, with the direct Go-row harness now split across dedicated control-flow, bitwise, numeric, stack-shape, parser, sigcheck, reserved/NOP, and broader mixed-vector lanes; the full Go reference corpus is still not imported
+- the script interpreter is materially closer to Go parity, with the direct Go-row harness now split across dedicated control-flow, bitwise, numeric, stack-shape, parser, multisig, sigcheck, reserved/NOP, and broader mixed-vector lanes; the full Go reference corpus is still not imported
 - native execution coverage for compiled Runar contracts is broad and growing, including more auction lifecycle behavior and negative covenant checks, but not complete
 
 Current interpreter target:
@@ -79,7 +79,7 @@ This is the current interpreter map for `bsvz.script`.
 | Policy flags | broad coverage | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if` |
 | Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding are both enforced where Go applies `MINIMALDATA` |
 | `CODESEPARATOR` parity | broad coverage | legacy and ForkID scriptCode behavior, chained separator result-shape tests, parser/scanner coverage |
-| Go parity vectors | broad but incomplete | direct Go-row coverage now spans dedicated control-flow, bitwise, numeric, stack-shape, parser, sigcheck, reserved/NOP, and broader mixed-vector lanes, but not the full Go corpus |
+| Go parity vectors | broad but incomplete | direct Go-row coverage now spans dedicated control-flow, bitwise, numeric, stack-shape, parser, multisig, sigcheck, reserved/NOP, and broader mixed-vector lanes, but not the full Go corpus |
 | Runar local acceptance | broad but incomplete | real local acceptance covers stateless, stateful, covenant, auction, NFT, fungible-token, and math/crypto-heavy contracts, including negative covenant checks, but the full Runar corpus is not yet green |
 | SPV / script-adjacent proof tooling | construction zone | not part of the interpreter core yet |
 
