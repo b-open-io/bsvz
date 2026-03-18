@@ -645,6 +645,170 @@ fn buildNftTransferBurnFixture(allocator: std.mem.Allocator) !std.json.Parsed(Th
     });
 }
 
+fn buildMathDemoExponentiateLog2Fixture(allocator: std.mem.Allocator) !std.json.Parsed(ThreeTxFixtureJson) {
+    const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "conformance/tests/math-demo/math-demo.runar.ts",
+    });
+    defer allocator.free(source_abs_rel);
+    try accessOrSkip(source_abs_rel);
+
+    const sdk_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "packages/runar-sdk/dist/index.js",
+    });
+    defer allocator.free(sdk_abs_rel);
+    try accessOrSkip(sdk_abs_rel);
+
+    const code =
+        \\(async () => {
+        \\  const fs = require('fs');
+        \\  const { compile } = await import('./packages/runar-compiler/dist/index.js');
+        \\  const { RunarContract, MockProvider, LocalSigner } = await import('./packages/runar-sdk/dist/index.js');
+        \\  const source = fs.readFileSync('conformance/tests/math-demo/math-demo.runar.ts', 'utf-8');
+        \\  const result = compile(source, { fileName: 'math-demo.runar.ts' });
+        \\  if (!result.artifact) {
+        \\    console.error(JSON.stringify(result));
+        \\    process.exit(1);
+        \\  }
+        \\  const provider = new MockProvider();
+        \\  const signer = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000001');
+        \\  const address = await signer.getAddress();
+        \\  provider.addUtxo(address, {
+        \\    txid: 'bc'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  const contract = new RunarContract(result.artifact, [2n]);
+        \\  await contract.deploy(provider, signer, { satoshis: 5000 });
+        \\  await contract.call('exponentiate', [10n], provider, signer);
+        \\  await contract.call('computeLog2', [], provider, signer);
+        \\  const txs = provider.getBroadcastedTxs();
+        \\  process.stdout.write(JSON.stringify({
+        \\    deploy_tx_hex: txs[0],
+        \\    first_call_tx_hex: txs[1],
+        \\    second_call_tx_hex: txs[2],
+        \\  }));
+        \\})();
+    ;
+
+    const run_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "node", "-e", code },
+        .cwd = runar_root,
+        .max_output_bytes = 1024 * 1024,
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.CurrentWorkingDirectoryUnlinked => return error.SkipZigTest,
+        else => return err,
+    };
+    defer allocator.free(run_result.stderr);
+    defer allocator.free(run_result.stdout);
+
+    switch (run_result.term) {
+        .Exited => |code_value| {
+            if (code_value != 0) {
+                std.log.err("math-demo exponentiate/log2 fixture build failed: {s}", .{run_result.stderr});
+                return error.RunarCompileFailed;
+            }
+        },
+        else => return error.RunarCompileFailed,
+    }
+
+    return std.json.parseFromSlice(ThreeTxFixtureJson, allocator, run_result.stdout, .{
+        .allocate = .alloc_always,
+    });
+}
+
+fn buildSha256CompressFixture(allocator: std.mem.Allocator) !std.json.Parsed(SpendFixtureJson) {
+    const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "examples/ts/sha256-compress/Sha256CompressTest.runar.ts",
+    });
+    defer allocator.free(source_abs_rel);
+    try accessOrSkip(source_abs_rel);
+
+    const sdk_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "packages/runar-sdk/dist/index.js",
+    });
+    defer allocator.free(sdk_abs_rel);
+    try accessOrSkip(sdk_abs_rel);
+
+    const code =
+        \\(async () => {
+        \\  const fs = require('fs');
+        \\  const { compile } = await import('./packages/runar-compiler/dist/index.js');
+        \\  const { RunarContract, MockProvider, LocalSigner } = await import('./packages/runar-sdk/dist/index.js');
+        \\  const source = fs.readFileSync('examples/ts/sha256-compress/Sha256CompressTest.runar.ts', 'utf-8');
+        \\  const result = compile(source, {
+        \\    fileName: 'Sha256CompressTest.runar.ts',
+        \\    constructorArgs: {
+        \\      expected: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+        \\    },
+        \\  });
+        \\  if (!result.artifact) {
+        \\    console.error(JSON.stringify(result));
+        \\    process.exit(1);
+        \\  }
+        \\  const provider = new MockProvider();
+        \\  const signer = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000001');
+        \\  const address = await signer.getAddress();
+        \\  provider.addUtxo(address, {
+        \\    txid: 'cd'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 1000000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  const contract = new RunarContract(result.artifact, [
+        \\    'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+        \\  ]);
+        \\  await contract.deploy(provider, signer, { satoshis: 500000 });
+        \\  await contract.call(
+        \\    'verify',
+        \\    [
+        \\      '6a09e667bb67ae853c6ef372a54ff53a510e527f9b05688c1f83d9ab5be0cd19',
+        \\      '6162638000000000000000000000000000000000000000000000000000000000' +
+        \\      '0000000000000000000000000000000000000000000000000000000000000018',
+        \\    ],
+        \\    provider,
+        \\    signer,
+        \\  );
+        \\  const txs = provider.getBroadcastedTxs();
+        \\  process.stdout.write(JSON.stringify({
+        \\    deploy_tx_hex: txs[0],
+        \\    call_tx_hex: txs[1],
+        \\  }));
+        \\})();
+    ;
+
+    const run_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "node", "-e", code },
+        .cwd = runar_root,
+        .max_output_bytes = 2 * 1024 * 1024,
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.CurrentWorkingDirectoryUnlinked => return error.SkipZigTest,
+        else => return err,
+    };
+    defer allocator.free(run_result.stderr);
+    defer allocator.free(run_result.stdout);
+
+    switch (run_result.term) {
+        .Exited => |code_value| {
+            if (code_value != 0) {
+                std.log.err("sha256 compress fixture build failed: {s}", .{run_result.stderr});
+                return error.RunarCompileFailed;
+            }
+        },
+        else => return error.RunarCompileFailed,
+    }
+
+    return std.json.parseFromSlice(SpendFixtureJson, allocator, run_result.stdout, .{
+        .allocate = .alloc_always,
+    });
+}
+
 fn verifyInputAgainstOutput(
     allocator: std.mem.Allocator,
     previous_tx_hex: []const u8,
@@ -983,5 +1147,39 @@ test "local runar nft transfer and burn verify through bsvz" {
         0,
         fixture.value.second_call_tx_hex,
         0,
+    ));
+}
+
+test "local runar math-demo exponentiate then log2 verifies through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildMathDemoExponentiateLog2Fixture(allocator);
+    defer fixture.deinit();
+
+    try std.testing.expect(try verifyInputAgainstOutput(
+        allocator,
+        fixture.value.deploy_tx_hex,
+        0,
+        fixture.value.first_call_tx_hex,
+        0,
+    ));
+
+    try std.testing.expect(try verifyInputAgainstOutput(
+        allocator,
+        fixture.value.first_call_tx_hex,
+        0,
+        fixture.value.second_call_tx_hex,
+        0,
+    ));
+}
+
+test "local runar sha256 compress verifies through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildSha256CompressFixture(allocator);
+    defer fixture.deinit();
+
+    try std.testing.expect(try verifyFirstInputAgainstFirstOutput(
+        allocator,
+        fixture.value.deploy_tx_hex,
+        fixture.value.call_tx_hex,
     ));
 }
