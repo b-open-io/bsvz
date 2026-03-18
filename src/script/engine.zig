@@ -907,7 +907,10 @@ fn verifyChecksigWithScriptCode(
         },
         else => return err,
     };
-    const public_key = crypto.PublicKey.fromSec1(pubkey_bytes) catch {
+    const public_key = (if (shouldCheckPubKeyEncoding(ctx))
+        crypto.PublicKey.fromSec1(pubkey_bytes)
+    else
+        crypto.PublicKey.fromSec1Relaxed(pubkey_bytes)) catch {
         if (shouldCheckPubKeyEncoding(ctx)) return error.InvalidPublicKeyEncoding;
         return false;
     };
@@ -3620,6 +3623,175 @@ test "engine treats malformed DER signatures as false unless DER policy is enabl
         .previous_satoshis = 1_000,
         .flags = .{ .strict_encoding = false, .der_signatures = true },
     }, Script.init(malformed_unlocking), previous_locking_script));
+}
+
+test "engine checksig accepts a valid hybrid pubkey when strict encoding is disabled" {
+    const allocator = std.testing.allocator;
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+    const std_public_key = try std.crypto.sign.ecdsa.EcdsaSecp256k1Sha256.PublicKey.fromSec1(&public_key.bytes);
+    const uncompressed = std_public_key.toUncompressedSec1();
+
+    var hybrid_pubkey = uncompressed;
+    hybrid_pubkey[0] = if ((hybrid_pubkey[64] & 1) != 0) 0x07 else 0x06;
+
+    const previous_locking_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    });
+
+    var tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x24} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = previous_locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const tx_signature = try @import("../transaction/templates/p2pkh_spend.zig").signInput(
+        allocator,
+        &tx,
+        0,
+        previous_locking_script,
+        1_000,
+        private_key,
+        @import("../transaction/templates/p2pkh_spend.zig").default_scope,
+    );
+    const checksig_bytes = try tx_signature.toChecksigFormat(allocator);
+    defer allocator.free(checksig_bytes);
+    const sig_push = try encodePushDataElement(allocator, checksig_bytes);
+    defer allocator.free(sig_push);
+    const pubkey_push = try encodePushDataElement(allocator, &hybrid_pubkey);
+    defer allocator.free(pubkey_push);
+
+    var unlocking = try allocator.alloc(u8, sig_push.len + pubkey_push.len);
+    defer allocator.free(unlocking);
+    @memcpy(unlocking[0..sig_push.len], sig_push);
+    @memcpy(unlocking[sig_push.len..], pubkey_push);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{
+            .strict_encoding = false,
+            .strict_pubkey_encoding = false,
+        },
+    }, Script.init(unlocking), previous_locking_script));
+
+    try std.testing.expectError(error.InvalidPublicKeyEncoding, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{
+            .strict_encoding = true,
+            .strict_pubkey_encoding = true,
+        },
+    }, Script.init(unlocking), previous_locking_script));
+}
+
+test "engine checksig not treats an invalid hybrid pubkey as false unless strict encoding is enabled" {
+    const allocator = std.testing.allocator;
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+    const std_public_key = try std.crypto.sign.ecdsa.EcdsaSecp256k1Sha256.PublicKey.fromSec1(&public_key.bytes);
+    const uncompressed = std_public_key.toUncompressedSec1();
+
+    var invalid_hybrid_pubkey = uncompressed;
+    invalid_hybrid_pubkey[0] = if ((invalid_hybrid_pubkey[64] & 1) != 0) 0x06 else 0x07;
+
+    const previous_locking_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+        @intFromEnum(opcode.Opcode.OP_NOT),
+    });
+
+    var tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x25} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = previous_locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const tx_signature = try @import("../transaction/templates/p2pkh_spend.zig").signInput(
+        allocator,
+        &tx,
+        0,
+        previous_locking_script,
+        1_000,
+        private_key,
+        @import("../transaction/templates/p2pkh_spend.zig").default_scope,
+    );
+    const checksig_bytes = try tx_signature.toChecksigFormat(allocator);
+    defer allocator.free(checksig_bytes);
+    const sig_push = try encodePushDataElement(allocator, checksig_bytes);
+    defer allocator.free(sig_push);
+    const pubkey_push = try encodePushDataElement(allocator, &invalid_hybrid_pubkey);
+    defer allocator.free(pubkey_push);
+
+    var unlocking = try allocator.alloc(u8, sig_push.len + pubkey_push.len);
+    defer allocator.free(unlocking);
+    @memcpy(unlocking[0..sig_push.len], sig_push);
+    @memcpy(unlocking[sig_push.len..], pubkey_push);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{
+            .strict_encoding = false,
+            .strict_pubkey_encoding = false,
+        },
+    }, Script.init(unlocking), previous_locking_script));
+
+    try std.testing.expectError(error.InvalidPublicKeyEncoding, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{
+            .strict_encoding = true,
+            .strict_pubkey_encoding = true,
+        },
+    }, Script.init(unlocking), previous_locking_script));
 }
 
 test "engine rejects missing forkid when forkid mode is enabled" {

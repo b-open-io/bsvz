@@ -62,6 +62,20 @@ pub const PublicKey = struct {
         return .{ .bytes = parsed.toCompressedSec1() };
     }
 
+    pub fn fromSec1Relaxed(sec1: []const u8) !PublicKey {
+        if (sec1.len == 65 and (sec1[0] == 0x06 or sec1[0] == 0x07)) {
+            const y_is_odd = (sec1[64] & 1) != 0;
+            const prefix_is_odd = sec1[0] == 0x07;
+            if (y_is_odd != prefix_is_odd) return error.InvalidEncoding;
+
+            var uncompressed: [65]u8 = undefined;
+            @memcpy(&uncompressed, sec1);
+            uncompressed[0] = 0x04;
+            return fromSec1(&uncompressed);
+        }
+        return fromSec1(sec1);
+    }
+
     pub fn toCompressedSec1(self: PublicKey) [33]u8 {
         return self.bytes;
     }
