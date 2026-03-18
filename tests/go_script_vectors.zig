@@ -283,6 +283,62 @@ test "go direct checksig rows: padding-related dersig policy rows" {
     });
 }
 
+test "go direct checksig rows: malformed dersig matrix" {
+    const allocator = std.testing.allocator;
+    const locking_hex = "00ac91";
+
+    var dersig_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    dersig_flags.der_signatures = true;
+
+    const cases = [_]struct {
+        name: []const u8,
+        unlocking_hex: []const u8,
+    }{
+        .{
+            .name = "overly long signature is invalid under dersig",
+            .unlocking_hex = "4a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        },
+        .{
+            .name = "missing s is invalid under dersig",
+            .unlocking_hex = "24302202200000000000000000000000000000000000000000000000000000000000000000",
+        },
+        .{
+            .name = "invalid s length is invalid under dersig",
+            .unlocking_hex = "273024021077777777777777777777777777777777020a7777777777777777777777777777777701",
+        },
+        .{
+            .name = "non-integer r is invalid under dersig",
+            .unlocking_hex = "27302403107777777777777777777777777777777702107777777777777777777777777777777701",
+        },
+        .{
+            .name = "non-integer s is invalid under dersig",
+            .unlocking_hex = "27302402107777777777777777777777777777777703107777777777777777777777777777777701",
+        },
+        .{
+            .name = "zero-length r is invalid under dersig",
+            .unlocking_hex = "173014020002107777777777777777777777777777777701",
+        },
+        .{
+            .name = "zero-length s is invalid under dersig",
+            .unlocking_hex = "173014021077777777777777777777777777777777020001",
+        },
+        .{
+            .name = "negative s is invalid under dersig",
+            .unlocking_hex = "27302402107777777777777777777777777777777702108777777777777777777777777777777701",
+        },
+    };
+
+    inline for (cases) |case| {
+        try harness.runCase(allocator, .{
+            .name = case.name,
+            .unlocking_hex = case.unlocking_hex,
+            .locking_hex = locking_hex,
+            .flags = dersig_flags,
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        });
+    }
+}
+
 test "go direct checkmultisig rows: nullfail and nulldummy matrix" {
     const allocator = std.testing.allocator;
 
