@@ -4202,6 +4202,38 @@ test "engine checksig not matches go malformed-signature dersig matrix" {
                 0x01,
             },
         },
+        .{
+            .name = "invalid s length",
+            .payload = &[_]u8{
+                0x30, 0x24,
+                0x02, 0x10,
+            } ++ ([_]u8{0x77} ** 16) ++ [_]u8{
+                0x02, 0x0a,
+            } ++ ([_]u8{0x77} ** 16) ++ [_]u8{
+                0x01,
+            },
+        },
+        .{
+            .name = "non-integer s",
+            .payload = &[_]u8{
+                0x30, 0x24,
+                0x02, 0x10,
+            } ++ ([_]u8{0x77} ** 16) ++ [_]u8{
+                0x03, 0x10,
+            } ++ ([_]u8{0x77} ** 16) ++ [_]u8{
+                0x01,
+            },
+        },
+        .{
+            .name = "zero-length r",
+            .payload = &[_]u8{
+                0x30, 0x14,
+                0x02, 0x00,
+                0x02, 0x10,
+            } ++ ([_]u8{0x77} ** 16) ++ [_]u8{
+                0x01,
+            },
+        },
     };
 
     inline for (cases) |case| {
@@ -4209,19 +4241,22 @@ test "engine checksig not matches go malformed-signature dersig matrix" {
         defer allocator.free(unlocking_bytes);
         const unlocking_script = Script.init(unlocking_bytes);
 
+        var relaxed_flags = ExecutionFlags.legacyReference();
+        relaxed_flags.strict_encoding = false;
+        relaxed_flags.der_signatures = false;
+
         try std.testing.expect(try verifyScripts(.{
             .allocator = allocator,
             .tx = &tx,
             .input_index = 0,
             .previous_locking_script = previous_locking_script,
             .previous_satoshis = 1_000,
-            .flags = .{
-                .strict_encoding = false,
-                .der_signatures = false,
-                .enable_sighash_forkid = false,
-                .verify_bip143_sighash = false,
-            },
+            .flags = relaxed_flags,
         }, unlocking_script, previous_locking_script));
+
+        var dersig_flags = ExecutionFlags.legacyReference();
+        dersig_flags.strict_encoding = false;
+        dersig_flags.der_signatures = true;
 
         try std.testing.expectError(error.InvalidSignatureEncoding, verifyScripts(.{
             .allocator = allocator,
@@ -4229,12 +4264,7 @@ test "engine checksig not matches go malformed-signature dersig matrix" {
             .input_index = 0,
             .previous_locking_script = previous_locking_script,
             .previous_satoshis = 1_000,
-            .flags = .{
-                .strict_encoding = false,
-                .der_signatures = true,
-                .enable_sighash_forkid = false,
-                .verify_bip143_sighash = false,
-            },
+            .flags = dersig_flags,
         }, unlocking_script, previous_locking_script));
     }
 }
