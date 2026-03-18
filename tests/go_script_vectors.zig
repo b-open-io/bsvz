@@ -1220,3 +1220,63 @@ test "go direct script rows: legacy versus post-genesis multiple else" {
         .expected = .{ .err = error.UnbalancedConditionals },
     });
 }
+
+test "go direct script rows: nested else else legacy versus post-genesis" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try harness.runCase(allocator, .{
+        .name = "legacy nested else else succeeds for outer false path",
+        .unlocking_hex = "00",
+        .locking_hex = "6351636a676a676a6867516351676a675168676a68935287",
+        .flags = legacy_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis nested else else is unbalanced for outer false path",
+        .unlocking_hex = "00",
+        .locking_hex = "6351636a676a676a6867516351676a675168676a68935287",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "legacy nested else else succeeds for outer true notif path",
+        .unlocking_hex = "51",
+        .locking_hex = "6400646a676a676a6867006451676a675168676a68935287",
+        .flags = legacy_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis nested else else is unbalanced for outer true notif path",
+        .unlocking_hex = "51",
+        .locking_hex = "6400646a676a676a6867006451676a675168676a68935287",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+}
+
+test "go direct script rows: op_return in different branches" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try harness.runCase(allocator, .{
+        .name = "legacy branch-selected op_return still errors",
+        .unlocking_hex = "00",
+        .locking_hex = "636a05646174613167516a05646174613268",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis branch-selected op_return keeps success when else branch pushes one first",
+        .unlocking_hex = "00",
+        .locking_hex = "636a05646174613167516a05646174613268",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+}
