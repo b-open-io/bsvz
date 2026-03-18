@@ -72,8 +72,8 @@ pub const ExecutionState = struct {
     last_code_separator: usize = 0,
 
     pub fn deinit(self: *ExecutionState, allocator: std.mem.Allocator) void {
-        for (self.stack.items) |item| allocator.free(item);
-        for (self.alt_stack.items) |item| allocator.free(item);
+        freeItems(allocator, self.stack.items);
+        freeItems(allocator, self.alt_stack.items);
         self.stack.deinit(allocator);
         self.alt_stack.deinit(allocator);
         self.condition_stack.deinit(allocator);
@@ -82,7 +82,7 @@ pub const ExecutionState = struct {
     }
 
     pub fn clearAltStack(self: *ExecutionState, allocator: std.mem.Allocator) void {
-        for (self.alt_stack.items) |item| allocator.free(item);
+        freeItems(allocator, self.alt_stack.items);
         self.alt_stack.clearRetainingCapacity();
     }
 };
@@ -95,6 +95,10 @@ pub const ExecutionResult = struct {
         self.state.deinit(allocator);
     }
 };
+
+fn freeItems(allocator: std.mem.Allocator, items: []const []u8) void {
+    for (items) |item| allocator.free(item);
+}
 
 test "execution flag presets expose legacy and BSV policy envelopes" {
     const legacy = ExecutionFlags.legacyReference();

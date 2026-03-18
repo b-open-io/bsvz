@@ -19,7 +19,6 @@ pub fn verify(ctx: P2pkhSpendContext) Error!bool {
         .allocator = ctx.allocator,
         .tx = ctx.tx,
         .input_index = ctx.input_index,
-        .previous_locking_script = ctx.locking_script,
         .previous_satoshis = ctx.previous_satoshis,
     }, ctx.unlocking_script, ctx.locking_script);
 }

@@ -52,6 +52,11 @@ Current construction zones:
 - the script interpreter is materially closer to Go parity, but the full Go reference corpus is not yet imported
 - native execution coverage for compiled Runar contracts is broad and growing, but not complete
 
+Current interpreter target:
+
+- drive `bsvz.script` to full BSV consensus compliance
+- keep using Go parity vectors and real Runar execution as the main regression oracles while closing the remaining gaps
+
 ## Script Interpreter Coverage
 
 This is the current interpreter map for `bsvz.script`.
@@ -59,7 +64,7 @@ This is the current interpreter map for `bsvz.script`.
 | Area | Coverage | Notes |
 | --- | --- | --- |
 | Script bytes, chunks, parser, serializer | implemented | direct pushes, `PUSHDATA1/2/4`, chunk roundtrip, malformed pushdata rejection |
-| Script thread / seam orchestration | implemented | dedicated script-pair orchestration module separates verification seam behavior from the opcode loop |
+| Script thread / seam orchestration | implemented | dedicated script-pair orchestration module separates verification seam behavior from the opcode loop and owns the “full previous locking script for sighash, executable prefix for execution” split |
 | Push-only and script inspection helpers | implemented | `isPushOnly`, `hasCodeSeparator`, top-level `OP_RETURN` tail handling, and push-only seam behavior |
 | Execution core | implemented | stack, altstack, condition stack, truthiness, op counting, stack limits |
 | Control flow | implemented | `IF`, `NOTIF`, `ELSE`, `ENDIF`, `VERIFY`, legacy vs post-Genesis multi-`ELSE` behavior, post-Genesis `OP_RETURN`, `CODESEPARATOR` |
@@ -90,4 +95,5 @@ Project direction:
 - BSV-only, not BTC-compatible
 - no SegWit or Taproot support
 - no HD wallet derivation in core scope
+- target full BSV consensus compliance for script execution
 - prioritize script execution and downstream Runar integration before broadening into secondary areas

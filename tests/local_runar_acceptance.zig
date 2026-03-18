@@ -926,7 +926,6 @@ fn verifyInputAgainstOutput(
         .allocator = allocator,
         .tx = &spend_tx,
         .input_index = spend_input_index,
-        .previous_locking_script = locking_script,
         .previous_satoshis = previous_output.satoshis,
     };
     return bsvz.script.thread.verifyExecutableScripts(
