@@ -1280,3 +1280,41 @@ test "go direct script rows: op_return in different branches" {
         .expected = .{ .success = true },
     });
 }
+
+test "go direct script-pair rows: stack and conditional state do not cross the seam" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try harness.runCase(allocator, .{
+        .name = "altstack is not shared between unlocking and locking scripts",
+        .unlocking_hex = "516b",
+        .locking_hex = "6c51",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.AltStackUnderflow },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if endif cannot span script pair even with return in locking script pre-genesis",
+        .unlocking_hex = "0063",
+        .locking_hex = "6a6851",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "if endif cannot span script pair even with return in locking script post-genesis",
+        .unlocking_hex = "0063",
+        .locking_hex = "6a6851",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "skipped if return endif tail still succeeds after genesis",
+        .unlocking_hex = "00",
+        .locking_hex = "63006a6851",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+}
