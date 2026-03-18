@@ -543,6 +543,37 @@ test "go direct script rows: minimaldata push forms" {
         .expected = .{ .err = error.MinimalData },
     });
 
+    const direct_smallint_cases = [_]struct {
+        name: []const u8,
+        unlocking_hex: []const u8,
+    }{
+        .{ .name = "two minimally represented by op_2", .unlocking_hex = "0102" },
+        .{ .name = "three minimally represented by op_3", .unlocking_hex = "0103" },
+        .{ .name = "four minimally represented by op_4", .unlocking_hex = "0104" },
+        .{ .name = "five minimally represented by op_5", .unlocking_hex = "0105" },
+        .{ .name = "six minimally represented by op_6", .unlocking_hex = "0106" },
+        .{ .name = "seven minimally represented by op_7", .unlocking_hex = "0107" },
+        .{ .name = "eight minimally represented by op_8", .unlocking_hex = "0108" },
+        .{ .name = "nine minimally represented by op_9", .unlocking_hex = "0109" },
+        .{ .name = "ten minimally represented by op_10", .unlocking_hex = "010a" },
+        .{ .name = "eleven minimally represented by op_11", .unlocking_hex = "010b" },
+        .{ .name = "twelve minimally represented by op_12", .unlocking_hex = "010c" },
+        .{ .name = "thirteen minimally represented by op_13", .unlocking_hex = "010d" },
+        .{ .name = "fourteen minimally represented by op_14", .unlocking_hex = "010e" },
+        .{ .name = "fifteen minimally represented by op_15", .unlocking_hex = "010f" },
+        .{ .name = "sixteen minimally represented by op_16", .unlocking_hex = "0110" },
+    };
+
+    inline for (direct_smallint_cases) |case| {
+        try harness.runCase(allocator, .{
+            .name = case.name,
+            .unlocking_hex = case.unlocking_hex,
+            .locking_hex = "7551",
+            .flags = flags,
+            .expected = .{ .err = error.MinimalData },
+        });
+    }
+
     const push_72 = try std.mem.concat(allocator, u8, &[_][]const u8{
         "4c48",
         "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
