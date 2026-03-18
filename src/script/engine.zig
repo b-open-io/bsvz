@@ -687,27 +687,12 @@ fn verifyChecksig(
     sig_bytes: []const u8,
     pubkey_bytes: []const u8,
 ) Error!bool {
-    const tx = ctx.tx orelse return error.MissingChecksigContext;
-    const previous_locking_script = ctx.previous_locking_script orelse return error.MissingChecksigContext;
-    _ = previous_locking_script;
+    _ = ctx.previous_locking_script orelse return error.MissingChecksigContext;
 
-    const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch return error.InvalidSignatureEncoding;
-    const public_key = crypto.PublicKey.fromSec1(pubkey_bytes) catch return error.InvalidPublicKeyEncoding;
+    const script_code = try buildScriptCode(ctx.allocator, current_script, last_code_separator, &[_][]const u8{sig_bytes});
+    defer ctx.allocator.free(script_code.bytes);
 
-    if (last_code_separator > current_script.bytes.len) return error.InvalidPushData;
-    const script_code = Script.init(current_script.bytes[last_code_separator..]);
-
-    const preimage = try sighash.formatPreimage(
-        ctx.allocator,
-        tx,
-        ctx.input_index,
-        script_code,
-        ctx.previous_satoshis,
-        tx_signature.sighash_type,
-    );
-    defer ctx.allocator.free(preimage);
-
-    return public_key.verifyHash256(preimage, tx_signature.der) catch return error.InvalidPublicKeyEncoding;
+    return verifyChecksigWithScriptCode(ctx, script_code, sig_bytes, pubkey_bytes);
 }
 
 fn verifyCheckmultisig(
@@ -741,12 +726,16 @@ fn verifyCheckmultisig(
 
     const dummy = try popOwned(state);
     defer ctx.allocator.free(dummy);
+    if (ctx.flags.strict_encoding and dummy.len != 0) return error.NullDummy;
+
+    const script_code = try buildScriptCode(ctx.allocator, current_script, state.last_code_separator, signatures);
+    defer ctx.allocator.free(script_code.bytes);
 
     var key_index: usize = 0;
     for (signatures) |sig_bytes| {
         var matched = false;
         while (key_index < pubkeys.len) : (key_index += 1) {
-            if (try verifyChecksig(ctx, current_script, state.last_code_separator, sig_bytes, pubkeys[key_index])) {
+            if (try verifyChecksigWithScriptCode(ctx, script_code, sig_bytes, pubkeys[key_index])) {
                 matched = true;
                 key_index += 1;
                 break;
@@ -756,6 +745,122 @@ fn verifyCheckmultisig(
     }
 
     return true;
+}
+
+fn verifyChecksigWithScriptCode(
+    ctx: ExecutionContext,
+    script_code: Script,
+    sig_bytes: []const u8,
+    pubkey_bytes: []const u8,
+) Error!bool {
+    const tx = ctx.tx orelse return error.MissingChecksigContext;
+    const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch return error.InvalidSignatureEncoding;
+    const public_key = crypto.PublicKey.fromSec1(pubkey_bytes) catch return error.InvalidPublicKeyEncoding;
+
+    const preimage = try sighash.formatPreimage(
+        ctx.allocator,
+        tx,
+        ctx.input_index,
+        script_code,
+        ctx.previous_satoshis,
+        tx_signature.sighash_type,
+    );
+    defer ctx.allocator.free(preimage);
+
+    return public_key.verifyHash256(preimage, tx_signature.der) catch return error.InvalidPublicKeyEncoding;
+}
+
+fn buildScriptCode(
+    allocator: std.mem.Allocator,
+    current_script: Script,
+    last_code_separator: usize,
+    signatures_to_remove: []const []const u8,
+) Error!Script {
+    if (last_code_separator > current_script.bytes.len) return error.InvalidPushData;
+
+    var script_bytes = try allocator.dupe(u8, current_script.bytes[last_code_separator..]);
+    errdefer allocator.free(script_bytes);
+
+    for (signatures_to_remove) |signature_bytes| {
+        const target_push = try encodePushDataElement(allocator, signature_bytes);
+        defer allocator.free(target_push);
+
+        const next_script_bytes = try findAndDeletePushData(allocator, script_bytes, target_push);
+        allocator.free(script_bytes);
+        script_bytes = next_script_bytes;
+    }
+
+    return Script.init(script_bytes);
+}
+
+fn encodePushDataElement(allocator: std.mem.Allocator, data: []const u8) Error![]u8 {
+    var bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer bytes.deinit(allocator);
+
+    if (data.len == 0) {
+        try bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+        return bytes.toOwnedSlice(allocator);
+    }
+
+    if (data.len <= 75) {
+        try bytes.append(allocator, @intCast(data.len));
+    } else if (data.len <= std.math.maxInt(u8)) {
+        try bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_PUSHDATA1));
+        try bytes.append(allocator, @intCast(data.len));
+    } else if (data.len <= std.math.maxInt(u16)) {
+        try bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_PUSHDATA2));
+        var len_buf: [2]u8 = undefined;
+        std.mem.writeInt(u16, &len_buf, @intCast(data.len), .little);
+        try bytes.appendSlice(allocator, &len_buf);
+    } else {
+        try bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_PUSHDATA4));
+        var len_buf: [4]u8 = undefined;
+        std.mem.writeInt(u32, &len_buf, @intCast(data.len), .little);
+        try bytes.appendSlice(allocator, &len_buf);
+    }
+
+    try bytes.appendSlice(allocator, data);
+    return bytes.toOwnedSlice(allocator);
+}
+
+fn findAndDeletePushData(
+    allocator: std.mem.Allocator,
+    script_bytes: []const u8,
+    target_push: []const u8,
+) Error![]u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    defer out.deinit(allocator);
+
+    var cursor: usize = 0;
+    while (cursor < script_bytes.len) {
+        const start = cursor;
+        const byte = script_bytes[cursor];
+        cursor += 1;
+
+        if (byte >= 0x01 and byte <= 0x4b) {
+            if (script_bytes.len < cursor + byte) return error.InvalidPushData;
+            cursor += byte;
+        } else if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA1)) {
+            const len = try readPushLength(u8, script_bytes, &cursor);
+            if (script_bytes.len < cursor + len) return error.InvalidPushData;
+            cursor += len;
+        } else if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA2)) {
+            const len = try readPushLength(u16, script_bytes, &cursor);
+            if (script_bytes.len < cursor + len) return error.InvalidPushData;
+            cursor += len;
+        } else if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA4)) {
+            const len = try readPushLength(u32, script_bytes, &cursor);
+            if (script_bytes.len < cursor + len) return error.InvalidPushData;
+            cursor += len;
+        }
+
+        const segment = script_bytes[start..cursor];
+        if (!std.mem.eql(u8, segment, target_push)) {
+            try out.appendSlice(allocator, segment);
+        }
+    }
+
+    return out.toOwnedSlice(allocator);
 }
 
 fn buildTwoOfTwoLockingScript(pubkey_a: crypto.PublicKey, pubkey_b: crypto.PublicKey) [71]u8 {
@@ -993,6 +1098,158 @@ test "engine verifies 2-of-2 checksig ordering with checkmultisig" {
         .previous_locking_script = locking_script,
         .previous_satoshis = 1_500,
     }, wrong_unlocking_script, locking_script)));
+}
+
+test "engine find-and-delete removes pushed signature copies from checksig script code" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const script_code_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_DROP),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    };
+    const script_code = Script.init(&script_code_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x77} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = .{ .bytes = &[_]u8{0x6a} },
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const scope = sighash.SigHashType.forkid | sighash.SigHashType.all;
+    const preimage = try sighash.formatPreimage(allocator, &tx, 0, script_code, 1_000, scope);
+    defer allocator.free(preimage);
+
+    const tx_signature = crypto.TxSignature{
+        .der = try private_key.signHash256(preimage),
+        .sighash_type = @truncate(scope),
+    };
+    const checksig_bytes = try tx_signature.toChecksigFormat(allocator);
+    defer allocator.free(checksig_bytes);
+
+    const checksig_push = try encodePushDataElement(allocator, checksig_bytes);
+    defer allocator.free(checksig_push);
+
+    var locking_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer locking_bytes.deinit(allocator);
+    try locking_bytes.appendSlice(allocator, checksig_push);
+    try locking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_DROP));
+    try locking_bytes.append(allocator, 33);
+    try locking_bytes.appendSlice(allocator, &public_key.bytes);
+    try locking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_CHECKSIG));
+    const locking_script = Script.init(try locking_bytes.toOwnedSlice(allocator));
+    defer allocator.free(locking_script.bytes);
+
+    const unlocking_script = Script.init(checksig_push);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_000,
+    }, unlocking_script, locking_script));
+}
+
+test "engine enforces NULLDUMMY for checkmultisig when strict encoding is enabled" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x88} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = .{ .bytes = &[_]u8{0x6a} },
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const p2pkh_spend = @import("../transaction/templates/p2pkh_spend.zig");
+    const tx_signature = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_000,
+        private_key,
+        p2pkh_spend.default_scope,
+    );
+    const checksig_bytes = try tx_signature.toChecksigFormat(allocator);
+    defer allocator.free(checksig_bytes);
+
+    var unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer unlocking_bytes.deinit(allocator);
+    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_1));
+    const sig_push = try encodePushDataElement(allocator, checksig_bytes);
+    defer allocator.free(sig_push);
+    try unlocking_bytes.appendSlice(allocator, sig_push);
+    const unlocking_script = Script.init(try unlocking_bytes.toOwnedSlice(allocator));
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expectError(error.NullDummy, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_000,
+    }, unlocking_script, locking_script));
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{ .strict_encoding = false },
+    }, unlocking_script, locking_script));
 }
 
 test "engine surfaces malformed control flow and bounds errors" {

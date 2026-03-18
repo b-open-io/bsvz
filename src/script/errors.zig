@@ -20,6 +20,7 @@ pub const ScriptError = error{
     MissingChecksigContext,
     InvalidMultisigKeyCount,
     InvalidMultisigSignatureCount,
+    NullDummy,
     UnknownOpcode,
     InvalidSignatureEncoding,
     InvalidPublicKeyEncoding,
