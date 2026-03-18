@@ -15,6 +15,14 @@ fn scriptHexFromBytes(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
     return encodeLowerAlloc(allocator, bytes);
 }
 
+fn numericOpDrop1Hex(allocator: std.mem.Allocator, op: bsvz.script.opcode.Opcode) ![]u8 {
+    return scriptHexFromBytes(allocator, &[_]u8{
+        @intFromEnum(op),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_DROP),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+    });
+}
+
 fn buildSyntheticCheckmultisigNotHexes(
     allocator: std.mem.Allocator,
     dummy_opcode: u8,
@@ -369,11 +377,7 @@ test "go direct script rows: minimaldata numeric arguments" {
         .expected = .{ .err = error.MinimalData },
     });
 
-    const locking_add_drop_1 = try scriptHexFromBytes(allocator, &[_]u8{
-        @intFromEnum(bsvz.script.opcode.Opcode.OP_ADD),
-        @intFromEnum(bsvz.script.opcode.Opcode.OP_DROP),
-        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
-    });
+    const locking_add_drop_1 = try numericOpDrop1Hex(allocator, .OP_ADD);
     defer allocator.free(locking_add_drop_1);
 
     try harness.runCase(allocator, .{
@@ -388,6 +392,64 @@ test "go direct script rows: minimaldata numeric arguments" {
         .name = "add rejects non-minimal right operand",
         .unlocking_hex = "02000000",
         .locking_hex = locking_add_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    const locking_booland_drop_1 = try numericOpDrop1Hex(allocator, .OP_BOOLAND);
+    defer allocator.free(locking_booland_drop_1);
+
+    try harness.runCase(allocator, .{
+        .name = "booland rejects non-minimal operand",
+        .unlocking_hex = "00020000",
+        .locking_hex = locking_booland_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    const locking_booleor_drop_1 = try numericOpDrop1Hex(allocator, .OP_BOOLOR);
+    defer allocator.free(locking_booleor_drop_1);
+
+    try harness.runCase(allocator, .{
+        .name = "boolor rejects non-minimal operand",
+        .unlocking_hex = "02000000",
+        .locking_hex = locking_booleor_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    const locking_numequalverify_1 = try scriptHexFromBytes(allocator, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUALVERIFY),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+    });
+    defer allocator.free(locking_numequalverify_1);
+
+    try harness.runCase(allocator, .{
+        .name = "numequalverify rejects non-minimal operand",
+        .unlocking_hex = "00020000",
+        .locking_hex = locking_numequalverify_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    const locking_min_drop_1 = try numericOpDrop1Hex(allocator, .OP_MIN);
+    defer allocator.free(locking_min_drop_1);
+
+    try harness.runCase(allocator, .{
+        .name = "min rejects non-minimal operand",
+        .unlocking_hex = "02000000",
+        .locking_hex = locking_min_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    const locking_within_drop_1 = try numericOpDrop1Hex(allocator, .OP_WITHIN);
+    defer allocator.free(locking_within_drop_1);
+
+    try harness.runCase(allocator, .{
+        .name = "within rejects non-minimal operand",
+        .unlocking_hex = "0200000000",
+        .locking_hex = locking_within_drop_1,
         .flags = flags,
         .expected = .{ .err = error.MinimalData },
     });
