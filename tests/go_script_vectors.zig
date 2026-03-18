@@ -1350,6 +1350,34 @@ test "go direct script-pair rows: op_return seam behavior" {
     });
 }
 
+test "go direct script rows: false control-flow result shapes" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 851, .name = "dup if endif over zero leaves false result", .unlocking_hex = "00", .locking_hex = "766368", .expected = .{ .success = false } },
+        .{ .row = 852, .name = "if true branch guarded by zero leaves false result", .unlocking_hex = "00", .locking_hex = "635168", .expected = .{ .success = false } },
+        .{ .row = 853, .name = "dup if else endif over zero leaves false result", .unlocking_hex = "00", .locking_hex = "76636768", .expected = .{ .success = false } },
+        .{ .row = 854, .name = "if else endif over zero leaves false result", .unlocking_hex = "00", .locking_hex = "63516768", .expected = .{ .success = false } },
+        .{ .row = 855, .name = "notif else one endif over zero still leaves false result", .unlocking_hex = "00", .locking_hex = "64675168", .expected = .{ .success = false } },
+    });
+}
+
+test "go direct script rows: compact op_return post-genesis rows" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try runRows(allocator, legacy_flags, &[_]GoRow{
+        .{ .row = 883, .name = "legacy dup if return endif errors", .unlocking_hex = "51", .locking_hex = "76636a68", .expected = .{ .err = error.ReturnEncountered } },
+        .{ .row = 886, .name = "legacy return data errors", .unlocking_hex = "51", .locking_hex = "6a0464617461", .expected = .{ .err = error.ReturnEncountered } },
+    });
+
+    try runRows(allocator, post_genesis_flags, &[_]GoRow{
+        .{ .row = 884, .name = "post-genesis dup if return endif succeeds from top stack", .unlocking_hex = "51", .locking_hex = "76636a68", .expected = .{ .success = true } },
+        .{ .row = 887, .name = "post-genesis return data succeeds from top stack", .unlocking_hex = "51", .locking_hex = "6a0464617461", .expected = .{ .success = true } },
+    });
+}
+
 test "go direct script rows: legacy versus post-genesis multiple else" {
     const allocator = std.testing.allocator;
     const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
