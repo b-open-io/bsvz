@@ -635,6 +635,17 @@ test "go direct checkmultisig rows: strict evaluation order" {
     });
 }
 
+test "go direct script rows: checkmultisig zero count parity" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 565, .name = "checkmultisig allows zero keys and zero sigs", .unlocking_hex = "", .locking_hex = "000000ae69740087", .expected = .{ .success = true } },
+        .{ .row = 566, .name = "checkmultisigverify allows zero keys and zero sigs", .unlocking_hex = "", .locking_hex = "000000af740087", .expected = .{ .success = true } },
+        .{ .row = 567, .name = "checkmultisig ignores keys when zero sigs are required", .unlocking_hex = "", .locking_hex = "00000051ae69740087", .expected = .{ .success = true } },
+        .{ .row = 568, .name = "checkmultisigverify ignores keys when zero sigs are required", .unlocking_hex = "", .locking_hex = "00000051af740087", .expected = .{ .success = true } },
+    });
+}
+
 test "go direct script rows: minimaldata push forms" {
     const allocator = std.testing.allocator;
 
@@ -1588,6 +1599,9 @@ test "go direct script rows: pick parity" {
     const allocator = std.testing.allocator;
 
     try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 198, .name = "pick index zero reads stack top without changing depth", .unlocking_hex = "011601150114", .locking_hex = "0079011488745387", .expected = .{ .success = true } },
+        .{ .row = 199, .name = "pick index one reads second stack item", .unlocking_hex = "011601150114", .locking_hex = "5179011588745387", .expected = .{ .success = true } },
+        .{ .row = 200, .name = "pick index two reads third stack item", .unlocking_hex = "011601150114", .locking_hex = "5279011688745387", .expected = .{ .success = true } },
         .{ .row = 611, .name = "pick with minimally encoded index succeeds", .unlocking_hex = "51020000", .locking_hex = "7975", .expected = .{ .success = true } },
     });
 
@@ -1603,6 +1617,9 @@ test "go direct script rows: roll parity" {
     const allocator = std.testing.allocator;
 
     try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 201, .name = "roll index zero preserves top item and reduces depth", .unlocking_hex = "011601150114", .locking_hex = "007a011488745287", .expected = .{ .success = true } },
+        .{ .row = 202, .name = "roll index one rotates second stack item to the top", .unlocking_hex = "011601150114", .locking_hex = "517a011588745287", .expected = .{ .success = true } },
+        .{ .row = 203, .name = "roll index two rotates third stack item to the top", .unlocking_hex = "011601150114", .locking_hex = "527a011688745287", .expected = .{ .success = true } },
         .{ .row = 612, .name = "roll with minimally encoded index succeeds", .unlocking_hex = "51020000", .locking_hex = "7a7551", .expected = .{ .success = true } },
     });
 
@@ -1905,6 +1922,52 @@ test "go direct script rows: minimaldata push form boundaries" {
 test "go direct script rows: boolean and minmaxwithin parity" {
     const allocator = std.testing.allocator;
 
+    const push_neg_2147483647 = try scriptNumBytes(allocator, -2_147_483_647);
+    defer allocator.free(push_neg_2147483647);
+    const push_pos_2147483647 = try scriptNumBytes(allocator, 2_147_483_647);
+    defer allocator.free(push_pos_2147483647);
+    const push_neg_100 = try scriptNumBytes(allocator, -100);
+    defer allocator.free(push_neg_100);
+    const push_pos_100 = try scriptNumBytes(allocator, 100);
+    defer allocator.free(push_pos_100);
+    const push_eleven = try scriptNumBytes(allocator, 11);
+    defer allocator.free(push_eleven);
+    const push_zero = try scriptNumBytes(allocator, 0);
+    defer allocator.free(push_zero);
+    const push_neg_one = try scriptNumBytes(allocator, -1);
+    defer allocator.free(push_neg_one);
+
+    const within_315_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        push_zero,
+        push_neg_2147483647,
+        push_pos_2147483647,
+    }, &[_]u8{});
+    defer allocator.free(within_315_hex);
+    const within_316_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        push_neg_one,
+        push_neg_100,
+        push_pos_100,
+    }, &[_]u8{});
+    defer allocator.free(within_316_hex);
+    const within_317_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        push_eleven,
+        push_neg_100,
+        push_pos_100,
+    }, &[_]u8{});
+    defer allocator.free(within_317_hex);
+    const within_318_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        push_neg_2147483647,
+        push_neg_100,
+        push_pos_100,
+    }, &[_]u8{});
+    defer allocator.free(within_318_hex);
+    const within_319_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        push_pos_2147483647,
+        push_neg_100,
+        push_pos_100,
+    }, &[_]u8{});
+    defer allocator.free(within_319_hex);
+
     try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
         .{ .row = 271, .name = "booland with true and true stays true", .unlocking_hex = "51519a", .locking_hex = "61", .expected = .{ .success = true } },
         .{ .row = 272, .name = "booland with true and false becomes true after not", .unlocking_hex = "51009a", .locking_hex = "91", .expected = .{ .success = true } },
@@ -1918,6 +1981,11 @@ test "go direct script rows: boolean and minmaxwithin parity" {
         .{ .row = 280, .name = "boolor with sixteen and seventeen stays true", .unlocking_hex = "6001119b", .locking_hex = "61", .expected = .{ .success = true } },
         .{ .row = 313, .name = "within includes lower bound and excludes upper bound", .unlocking_hex = "000051", .locking_hex = "a5", .expected = .{ .success = true } },
         .{ .row = 314, .name = "within rejects upper bound and not makes it true", .unlocking_hex = "510051", .locking_hex = "a591", .expected = .{ .success = true } },
+        .{ .row = 315, .name = "within accepts zero inside full int32 range", .unlocking_hex = within_315_hex, .locking_hex = "a5", .expected = .{ .success = true } },
+        .{ .row = 316, .name = "within accepts negative one inside negative hundred to positive hundred", .unlocking_hex = within_316_hex, .locking_hex = "a5", .expected = .{ .success = true } },
+        .{ .row = 317, .name = "within accepts eleven inside negative hundred to positive hundred", .unlocking_hex = within_317_hex, .locking_hex = "a5", .expected = .{ .success = true } },
+        .{ .row = 318, .name = "within rejects very negative value and not makes it true", .unlocking_hex = within_318_hex, .locking_hex = "a591", .expected = .{ .success = true } },
+        .{ .row = 319, .name = "within rejects very positive value and not makes it true", .unlocking_hex = within_319_hex, .locking_hex = "a591", .expected = .{ .success = true } },
         .{ .row = 534, .name = "booland treats negative one as true", .unlocking_hex = "4f4f9a", .locking_hex = "61", .expected = .{ .success = true } },
         .{ .row = 535, .name = "boolor treats negative one as true", .unlocking_hex = "4f009b", .locking_hex = "61", .expected = .{ .success = true } },
         .{ .row = 545, .name = "within rejects matching upper bound on negative one", .unlocking_hex = "4f4f00", .locking_hex = "a5", .expected = .{ .success = true } },
