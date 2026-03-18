@@ -3,7 +3,7 @@ const bsvz = @import("bsvz");
 const harness = @import("support/go_script_harness.zig");
 
 const GoRow = struct {
-    row: usize,
+    row: ?usize = null,
     name: []const u8,
     unlocking_hex: []const u8,
     locking_hex: []const u8,
@@ -120,6 +120,341 @@ test "go strict sigcheck rows: signature policy gates" {
         .locking_hex = "2103363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640ac",
         .flags = dersig_flags,
         .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+}
+
+test "go direct checksig rows: bip66 example 4 nullfail matrix" {
+    const allocator = std.testing.allocator;
+    const locking_hex =
+        "21"
+        ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
+        ++ "ac91";
+
+    var base_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    base_flags.der_signatures = true;
+
+    try harness.runCase(allocator, .{
+        .name = "empty signature with dersig",
+        .unlocking_hex = "00",
+        .locking_hex = locking_hex,
+        .flags = base_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "non-null der-compliant invalid signature with dersig",
+        .unlocking_hex = "09300602010102010101",
+        .locking_hex = locking_hex,
+        .flags = base_flags,
+        .expected = .{ .success = true },
+    });
+
+    var nullfail_flags = base_flags;
+    nullfail_flags.null_fail = true;
+
+    try harness.runCase(allocator, .{
+        .name = "empty signature with dersig and nullfail",
+        .unlocking_hex = "00",
+        .locking_hex = locking_hex,
+        .flags = nullfail_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "non-null der-compliant invalid signature with dersig and nullfail",
+        .unlocking_hex = "09300602010102010101",
+        .locking_hex = locking_hex,
+        .flags = nullfail_flags,
+        .expected = .{ .err = error.NullFail },
+    });
+}
+
+test "go direct checksig rows: additional bip66 result shapes" {
+    const allocator = std.testing.allocator;
+    const locking_hex =
+        "21"
+        ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
+        ++ "ac";
+
+    var relaxed_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    relaxed_flags.der_signatures = false;
+
+    var dersig_flags = relaxed_flags;
+    dersig_flags.der_signatures = true;
+
+    try harness.runCase(allocator, .{
+        .name = "bip66 example 1 with dersig",
+        .unlocking_hex = "4730440220d7a0417c3f6d1a15094d1cf2a3378ca0503eb8a57630953a9e2987e21ddd0a6502207a6266d686c99090920249991d3d42065b6d43eb70187b219c0db82e4f94d1a201",
+        .locking_hex = locking_hex,
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "bip66 example 2 with dersig",
+        .unlocking_hex = "47304402208e43c0b91f7c1e5bc58e41c8185f8a6086e111b0090187968a86f2822462d3c902200a58f4076b1133b18ff1dc83ee51676e44c60cc608d9534e0df5ace0424fc0be01",
+        .locking_hex = locking_hex ++ "91",
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "bip66 example 3 without dersig",
+        .unlocking_hex = "00",
+        .locking_hex = locking_hex,
+        .flags = relaxed_flags,
+        .expected = .{ .success = false },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "bip66 example 3 with dersig",
+        .unlocking_hex = "00",
+        .locking_hex = locking_hex,
+        .flags = dersig_flags,
+        .expected = .{ .success = false },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "bip66 example 5 without dersig",
+        .unlocking_hex = "51",
+        .locking_hex = locking_hex,
+        .flags = relaxed_flags,
+        .expected = .{ .success = false },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "bip66 example 5 with dersig",
+        .unlocking_hex = "51",
+        .locking_hex = locking_hex,
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "bip66 example 6 without dersig",
+        .unlocking_hex = "51",
+        .locking_hex = locking_hex ++ "91",
+        .flags = relaxed_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "bip66 example 6 with dersig",
+        .unlocking_hex = "51",
+        .locking_hex = locking_hex ++ "91",
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+}
+
+test "go direct checksig rows: padding-related dersig policy rows" {
+    const allocator = std.testing.allocator;
+
+    var relaxed_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    relaxed_flags.der_signatures = false;
+
+    var dersig_flags = relaxed_flags;
+    dersig_flags.der_signatures = true;
+
+    try harness.runCase(allocator, .{
+        .name = "p2pk checksig not bad sig with too much r padding without dersig",
+        .unlocking_hex = "4730440220005ece1335e7f757a1a1f476a7fb5bd90964e8a022489f890614a04acfb734c002206c12b8294a6513c7710e8c82d3c23d75cdbfe83200eb7efb495701958501a5d601",
+        .locking_hex =
+            "21"
+            ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640"
+            ++ "ac91",
+        .flags = relaxed_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "p2pk checksig not bad sig with too much r padding with dersig",
+        .unlocking_hex = "4730440220005ece1335e7f757a1a1f476a7fb5bd90964e8a022489f890614a04acfb734c002206c12b8294a6513c7710e8c82d3c23d75cdbfe83200eb7efb495701958501a5d601",
+        .locking_hex =
+            "21"
+            ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640"
+            ++ "ac91",
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "p2pk checksig too little r padding with dersig",
+        .unlocking_hex = "4730440220d7a0417c3f6d1a15094d1cf2a3378ca0503eb8a57630953a9e2987e21ddd0a6502207a6266d686c99090920249991d3d42065b6d43eb70187b219c0db82e4f94d1a201",
+        .locking_hex =
+            "21"
+            ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
+            ++ "ac",
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "p2pk checksig too much r padding with dersig",
+        .unlocking_hex = "47304402200060558477337b9022e70534f1fea71a318caf836812465a2509931c5e7c4987022078ec32bd50ac9e03a349ba953dfd9fe1c8d2dd8bdb1d38ddca844d3d5c78c11801",
+        .locking_hex =
+            "21"
+            ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
+            ++ "ac",
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "p2pk checksig too much s padding with dersig",
+        .unlocking_hex = "48304502202de8c03fc525285c9c535631019a5f2af7c6454fa9eb392a3756a4917c420edd02210046130bf2baf7cfc065067c8b9e33a066d9c15edcea9feb0ca2d233e3597925b401",
+        .locking_hex =
+            "21"
+            ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
+            ++ "ac",
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
+}
+
+test "go direct checksig rows: malformed dersig matrix" {
+    const allocator = std.testing.allocator;
+    const locking_hex = "00ac91";
+
+    var dersig_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    dersig_flags.der_signatures = true;
+
+    const cases = [_]struct {
+        name: []const u8,
+        unlocking_hex: []const u8,
+    }{
+        .{
+            .name = "overly long signature is invalid under dersig",
+            .unlocking_hex = "4a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        },
+        .{
+            .name = "missing s is invalid under dersig",
+            .unlocking_hex = "24302202200000000000000000000000000000000000000000000000000000000000000000",
+        },
+        .{
+            .name = "invalid s length is invalid under dersig",
+            .unlocking_hex = "273024021077777777777777777777777777777777020a7777777777777777777777777777777701",
+        },
+        .{
+            .name = "non-integer r is invalid under dersig",
+            .unlocking_hex = "27302403107777777777777777777777777777777702107777777777777777777777777777777701",
+        },
+        .{
+            .name = "non-integer s is invalid under dersig",
+            .unlocking_hex = "27302402107777777777777777777777777777777703107777777777777777777777777777777701",
+        },
+        .{
+            .name = "zero-length r is invalid under dersig",
+            .unlocking_hex = "173014020002107777777777777777777777777777777701",
+        },
+        .{
+            .name = "zero-length s is invalid under dersig",
+            .unlocking_hex = "173014021077777777777777777777777777777777020001",
+        },
+        .{
+            .name = "negative s is invalid under dersig",
+            .unlocking_hex = "27302402107777777777777777777777777777777702108777777777777777777777777777777701",
+        },
+    };
+
+    inline for (cases) |case| {
+        try harness.runCase(allocator, .{
+            .name = case.name,
+            .unlocking_hex = case.unlocking_hex,
+            .locking_hex = locking_hex,
+            .flags = dersig_flags,
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        });
+    }
+}
+
+test "go direct checksig rows: sighash policy gates" {
+    const allocator = std.testing.allocator;
+
+    const checksig_not_locking_hex =
+        "21"
+        ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
+        ++ "ac91";
+
+    var legacy_strict = bsvz.script.engine.ExecutionFlags.legacyReference();
+    legacy_strict.strict_encoding = true;
+
+    try harness.runCase(allocator, .{
+        .name = "checksig not rejects illegal forkid under legacy strict policy",
+        .unlocking_hex = "09300602010102010141",
+        .locking_hex = checksig_not_locking_hex,
+        .flags = legacy_strict,
+        .expected = .{ .err = error.IllegalForkId },
+    });
+
+    var forkid_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+    forkid_flags.der_signatures = true;
+
+    try harness.runCase(allocator, .{
+        .name = "checksig not accepts forkid under forkid policy",
+        .unlocking_hex = "09300602010102010141",
+        .locking_hex = checksig_not_locking_hex,
+        .flags = forkid_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "checksig not rejects invalid sighash type under legacy strict policy",
+        .unlocking_hex = "09300602010102010105",
+        .locking_hex = checksig_not_locking_hex,
+        .flags = legacy_strict,
+        .expected = .{ .err = error.InvalidSigHashType },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "p2pk rejects invalid forkid under legacy strict policy",
+        .unlocking_hex = "4730440220368d68340dfbebf99d5ec87d77fba899763e466c0a7ab2fa0221fb868ab0f3ef0220266c1a52a8e5b7b597613b80cf53814d3925dfb6715dce712c8e7a25e63a044041",
+        .locking_hex =
+            "41"
+            ++ "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
+            ++ "ac",
+        .flags = legacy_strict,
+        .expected = .{ .err = error.IllegalForkId },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "p2pkh rejects invalid sighash type under legacy strict policy",
+        .unlocking_hex =
+            "4730440220647a83507454f15f85f7e24de6e70c9d7b1d4020c71d0e53f4412425487e1dde022015737290670b4ab17b6783697a88ddd581c2d9c9efe26a59ac213076fc67f53021"
+            ++ "41"
+            ++ "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
+        .locking_hex =
+            "76"
+            ++ "a9"
+            ++ "14"
+            ++ "91b24bf9f5288532960ac687abb035127b1d28a5"
+            ++ "88"
+            ++ "ac",
+        .flags = legacy_strict,
+        .expected = .{ .err = error.InvalidSigHashType },
+    });
+
+    const checkmultisig_not_locking_hex =
+        "51"
+        ++ "21"
+        ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
+        ++ "51"
+        ++ "ae91";
+
+    try harness.runCase(allocator, .{
+        .name = "checkmultisig not rejects illegal forkid under legacy strict policy",
+        .unlocking_hex = "0009300602010102010141",
+        .locking_hex = checkmultisig_not_locking_hex,
+        .flags = legacy_strict,
+        .expected = .{ .err = error.IllegalForkId },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "checkmultisig not accepts forkid under forkid policy",
+        .unlocking_hex = "0009300602010102010141",
+        .locking_hex = checkmultisig_not_locking_hex,
+        .flags = forkid_flags,
+        .expected = .{ .success = true },
     });
 }
 
