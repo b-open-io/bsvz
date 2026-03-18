@@ -109,7 +109,27 @@ pub const PublicKey = struct {
         };
         return true;
     }
+
+    pub fn verifyDigest256Relaxed(self: PublicKey, digest: [32]u8, der_bytes: []const u8) !bool {
+        const public_key = EcdsaSha256d.PublicKey.fromSec1(&self.bytes) catch return error.InvalidEncoding;
+        const normalized = normalizeLaxDer(der_bytes) catch return error.InvalidEncoding;
+        const parsed_sig = EcdsaSha256d.Signature.fromDer(normalized) catch return error.InvalidEncoding;
+        parsed_sig.verifyPrehashed(digest, public_key) catch |err| switch (err) {
+            error.SignatureVerificationFailed => return false,
+            else => return error.InvalidEncoding,
+        };
+        return true;
+    }
 };
+
+fn normalizeLaxDer(der_bytes: []const u8) Error![]const u8 {
+    if (der_bytes.len < 2) return error.InvalidEncoding;
+    if (der_bytes[0] != 0x30) return error.InvalidEncoding;
+    const total_len = 2 + der_bytes[1];
+    if (total_len > der_bytes.len) return error.InvalidEncoding;
+    if (total_len > signature.max_der_signature_len) return error.InvalidEncoding;
+    return der_bytes[0..total_len];
+}
 
 test "public key derivation and sha256 sign/verify roundtrip" {
     var key_bytes = [_]u8{0} ** 32;
