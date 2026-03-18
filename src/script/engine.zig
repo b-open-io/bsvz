@@ -3965,6 +3965,118 @@ test "engine checksig not accepts a forkid signature when forkid mode is enabled
     }, Script.init(unlocking), previous_locking_script));
 }
 
+test "engine checksig not matches go malformed-signature dersig matrix" {
+    const allocator = std.testing.allocator;
+
+    const previous_locking_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+        @intFromEnum(opcode.Opcode.OP_NOT),
+    });
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x27} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = previous_locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const cases = [_]struct {
+        name: []const u8,
+        payload: []const u8,
+    }{
+        .{
+            .name = "overly long signature",
+            .payload = &([_]u8{0} ** 74),
+        },
+        .{
+            .name = "missing s",
+            .payload = &[_]u8{
+                0x30, 0x22, 0x02, 0x20,
+            } ++ ([_]u8{0x00} ** 32),
+        },
+        .{
+            .name = "non-integer r",
+            .payload = &[_]u8{
+                0x30, 0x24,
+                0x03, 0x10,
+            } ++ ([_]u8{0x77} ** 16) ++ [_]u8{
+                0x02, 0x10,
+            } ++ ([_]u8{0x77} ** 16) ++ [_]u8{
+                0x01,
+            },
+        },
+        .{
+            .name = "zero-length s",
+            .payload = &[_]u8{
+                0x30, 0x14,
+                0x02, 0x10,
+            } ++ ([_]u8{0x77} ** 16) ++ [_]u8{
+                0x02, 0x00, 0x01,
+            },
+        },
+        .{
+            .name = "negative s",
+            .payload = &[_]u8{
+                0x30, 0x24,
+                0x02, 0x10,
+            } ++ ([_]u8{0x77} ** 16) ++ [_]u8{
+                0x02, 0x10, 0x87,
+            } ++ ([_]u8{0x77} ** 15) ++ [_]u8{
+                0x01,
+            },
+        },
+    };
+
+    inline for (cases) |case| {
+        const unlocking_bytes = try encodePushDataElement(allocator, case.payload);
+        defer allocator.free(unlocking_bytes);
+        const unlocking_script = Script.init(unlocking_bytes);
+
+        try std.testing.expect(try verifyScripts(.{
+            .allocator = allocator,
+            .tx = &tx,
+            .input_index = 0,
+            .previous_locking_script = previous_locking_script,
+            .previous_satoshis = 1_000,
+            .flags = .{
+                .strict_encoding = false,
+                .der_signatures = false,
+                .enable_sighash_forkid = false,
+                .verify_bip143_sighash = false,
+            },
+        }, unlocking_script, previous_locking_script));
+
+        try std.testing.expectError(error.InvalidSignatureEncoding, verifyScripts(.{
+            .allocator = allocator,
+            .tx = &tx,
+            .input_index = 0,
+            .previous_locking_script = previous_locking_script,
+            .previous_satoshis = 1_000,
+            .flags = .{
+                .strict_encoding = false,
+                .der_signatures = true,
+                .enable_sighash_forkid = false,
+                .verify_bip143_sighash = false,
+            },
+        }, unlocking_script, previous_locking_script));
+    }
+}
+
 test "engine rejects reserved sighash bits under strict encoding" {
     const allocator = std.testing.allocator;
 
