@@ -23,6 +23,51 @@ fn numericOpDrop1Hex(allocator: std.mem.Allocator, op: bsvz.script.opcode.Opcode
     });
 }
 
+fn expectMinimalDataUnary(
+    allocator: std.mem.Allocator,
+    flags: bsvz.script.engine.ExecutionFlags,
+    op: bsvz.script.opcode.Opcode,
+    name: []const u8,
+) !void {
+    const locking_hex = try numericOpDrop1Hex(allocator, op);
+    defer allocator.free(locking_hex);
+
+    try harness.runCase(allocator, .{
+        .name = name,
+        .unlocking_hex = "020000",
+        .locking_hex = locking_hex,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+}
+
+fn expectMinimalDataBinary(
+    allocator: std.mem.Allocator,
+    flags: bsvz.script.engine.ExecutionFlags,
+    op: bsvz.script.opcode.Opcode,
+    name_left: []const u8,
+    name_right: []const u8,
+) !void {
+    const locking_hex = try numericOpDrop1Hex(allocator, op);
+    defer allocator.free(locking_hex);
+
+    try harness.runCase(allocator, .{
+        .name = name_left,
+        .unlocking_hex = "00020000",
+        .locking_hex = locking_hex,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = name_right,
+        .unlocking_hex = "02000000",
+        .locking_hex = locking_hex,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+}
+
 fn buildSyntheticCheckmultisigNotHexes(
     allocator: std.mem.Allocator,
     dummy_opcode: u8,
@@ -348,6 +393,12 @@ test "go direct script rows: minimaldata numeric arguments" {
         .expected = .{ .err = error.MinimalData },
     });
 
+    try expectMinimalDataUnary(allocator, flags, .OP_1ADD, "1add rejects non-minimal operand");
+    try expectMinimalDataUnary(allocator, flags, .OP_1SUB, "1sub rejects non-minimal operand");
+    try expectMinimalDataUnary(allocator, flags, .OP_NEGATE, "negate rejects non-minimal operand");
+    try expectMinimalDataUnary(allocator, flags, .OP_ABS, "abs rejects non-minimal operand");
+    try expectMinimalDataUnary(allocator, flags, .OP_0NOTEQUAL, "0notequal rejects non-minimal operand");
+
     const locking_pick_drop = try scriptHexFromBytes(allocator, &[_]u8{
         @intFromEnum(bsvz.script.opcode.Opcode.OP_PICK),
         @intFromEnum(bsvz.script.opcode.Opcode.OP_DROP),
@@ -377,46 +428,41 @@ test "go direct script rows: minimaldata numeric arguments" {
         .expected = .{ .err = error.MinimalData },
     });
 
-    const locking_add_drop_1 = try numericOpDrop1Hex(allocator, .OP_ADD);
-    defer allocator.free(locking_add_drop_1);
-
-    try harness.runCase(allocator, .{
-        .name = "add rejects non-minimal left operand",
-        .unlocking_hex = "00020000",
-        .locking_hex = locking_add_drop_1,
-        .flags = flags,
-        .expected = .{ .err = error.MinimalData },
-    });
-
-    try harness.runCase(allocator, .{
-        .name = "add rejects non-minimal right operand",
-        .unlocking_hex = "02000000",
-        .locking_hex = locking_add_drop_1,
-        .flags = flags,
-        .expected = .{ .err = error.MinimalData },
-    });
-
-    const locking_booland_drop_1 = try numericOpDrop1Hex(allocator, .OP_BOOLAND);
-    defer allocator.free(locking_booland_drop_1);
-
-    try harness.runCase(allocator, .{
-        .name = "booland rejects non-minimal operand",
-        .unlocking_hex = "00020000",
-        .locking_hex = locking_booland_drop_1,
-        .flags = flags,
-        .expected = .{ .err = error.MinimalData },
-    });
-
-    const locking_booleor_drop_1 = try numericOpDrop1Hex(allocator, .OP_BOOLOR);
-    defer allocator.free(locking_booleor_drop_1);
-
-    try harness.runCase(allocator, .{
-        .name = "boolor rejects non-minimal operand",
-        .unlocking_hex = "02000000",
-        .locking_hex = locking_booleor_drop_1,
-        .flags = flags,
-        .expected = .{ .err = error.MinimalData },
-    });
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_ADD,
+        "add rejects non-minimal left operand",
+        "add rejects non-minimal right operand",
+    );
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_SUB,
+        "sub rejects non-minimal left operand",
+        "sub rejects non-minimal right operand",
+    );
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_BOOLAND,
+        "booland rejects non-minimal left operand",
+        "booland rejects non-minimal right operand",
+    );
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_BOOLOR,
+        "boolor rejects non-minimal left operand",
+        "boolor rejects non-minimal right operand",
+    );
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_NUMEQUAL,
+        "numequal rejects non-minimal left operand",
+        "numequal rejects non-minimal right operand",
+    );
 
     const locking_numequalverify_1 = try scriptHexFromBytes(allocator, &[_]u8{
         @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUALVERIFY),
@@ -432,16 +478,55 @@ test "go direct script rows: minimaldata numeric arguments" {
         .expected = .{ .err = error.MinimalData },
     });
 
-    const locking_min_drop_1 = try numericOpDrop1Hex(allocator, .OP_MIN);
-    defer allocator.free(locking_min_drop_1);
-
-    try harness.runCase(allocator, .{
-        .name = "min rejects non-minimal operand",
-        .unlocking_hex = "02000000",
-        .locking_hex = locking_min_drop_1,
-        .flags = flags,
-        .expected = .{ .err = error.MinimalData },
-    });
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_NUMNOTEQUAL,
+        "numnotequal rejects non-minimal left operand",
+        "numnotequal rejects non-minimal right operand",
+    );
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_LESSTHAN,
+        "lessthan rejects non-minimal left operand",
+        "lessthan rejects non-minimal right operand",
+    );
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_GREATERTHAN,
+        "greaterthan rejects non-minimal left operand",
+        "greaterthan rejects non-minimal right operand",
+    );
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_LESSTHANOREQUAL,
+        "lessthanorequal rejects non-minimal left operand",
+        "lessthanorequal rejects non-minimal right operand",
+    );
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_GREATERTHANOREQUAL,
+        "greaterthanorequal rejects non-minimal left operand",
+        "greaterthanorequal rejects non-minimal right operand",
+    );
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_MIN,
+        "min rejects non-minimal left operand",
+        "min rejects non-minimal right operand",
+    );
+    try expectMinimalDataBinary(
+        allocator,
+        flags,
+        .OP_MAX,
+        "max rejects non-minimal left operand",
+        "max rejects non-minimal right operand",
+    );
 
     const locking_within_drop_1 = try numericOpDrop1Hex(allocator, .OP_WITHIN);
     defer allocator.free(locking_within_drop_1);
