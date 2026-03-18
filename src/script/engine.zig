@@ -658,25 +658,44 @@ fn shiftBytes(allocator: std.mem.Allocator, data: []const u8, shift: usize, left
     if (byte_shift >= data.len) return out;
 
     if (left) {
-        for (out, 0..) |*dest, dest_index| {
-            const src_index = dest_index + byte_shift;
-            if (src_index >= data.len) continue;
-            var value: u16 = @as(u16, data[src_index]) << @intCast(bit_shift);
-            if (bit_shift != 0 and src_index + 1 < data.len) {
-                value |= @as(u16, data[src_index + 1]) >> @intCast(8 - bit_shift);
+        const masks = [_]u8{ 0xFF, 0x7F, 0x3F, 0x1F, 0x0F, 0x07, 0x03, 0x01 };
+        const mask = masks[bit_shift];
+        const overflow_mask: u8 = ~mask;
+
+        var idx = data.len;
+        while (idx > 0) {
+            idx -= 1;
+            if (byte_shift <= idx) {
+                const dest_index = idx - byte_shift;
+                var value: u8 = data[idx] & mask;
+                value <<= @intCast(bit_shift);
+                out[dest_index] |= value;
+
+                if (dest_index >= 1 and bit_shift != 0) {
+                    var carry: u8 = data[idx] & overflow_mask;
+                    carry >>= @intCast(8 - bit_shift);
+                    out[dest_index - 1] |= carry;
+                }
             }
-            dest.* = @truncate(value & 0xff);
         }
     } else {
-        var dest_index: usize = 0;
-        while (dest_index < data.len) : (dest_index += 1) {
-            if (dest_index + byte_shift >= data.len) continue;
-            const src_index = dest_index + byte_shift;
-            var value: u16 = @as(u16, data[src_index]) >> @intCast(bit_shift);
-            if (bit_shift != 0 and src_index > 0) {
-                value |= (@as(u16, data[src_index - 1]) << @intCast(8 - bit_shift)) & 0xff;
+        const masks = [_]u8{ 0xFF, 0xFE, 0xFC, 0xF8, 0xF0, 0xE0, 0xC0, 0x80 };
+        const mask = masks[bit_shift];
+        const overflow_mask: u8 = ~mask;
+
+        for (data, 0..) |byte, index| {
+            const dest_index = index + byte_shift;
+            if (dest_index < data.len) {
+                var value: u8 = byte & mask;
+                value >>= @intCast(bit_shift);
+                out[dest_index] |= value;
             }
-            out[dest_index] = @truncate(value & 0xff);
+
+            if (dest_index + 1 < data.len and bit_shift != 0) {
+                var carry: u8 = byte & overflow_mask;
+                carry <<= @intCast(8 - bit_shift);
+                out[dest_index + 1] |= carry;
+            }
         }
     }
 
@@ -1008,6 +1027,132 @@ test "engine supports runar critical byte ops" {
     defer result.deinit(allocator);
 
     try std.testing.expect(result.success);
+}
+
+test "engine matches go-sdk OP_LSHIFT vectors" {
+    const allocator = std.testing.allocator;
+
+    const Case = struct {
+        initial: []const u8,
+        shift: i64,
+        expected: []const u8,
+    };
+
+    const cases = [_]Case{
+        .{ .initial = &.{}, .shift = 0x00, .expected = &.{} },
+        .{ .initial = &.{}, .shift = 0x11, .expected = &.{} },
+        .{ .initial = &.{ 0xFF }, .shift = 0x00, .expected = &.{ 0xFF } },
+        .{ .initial = &.{ 0xFF }, .shift = 0x01, .expected = &.{ 0xFE } },
+        .{ .initial = &.{ 0xFF }, .shift = 0x07, .expected = &.{ 0x80 } },
+        .{ .initial = &.{ 0xFF }, .shift = 0x08, .expected = &.{ 0x00 } },
+        .{ .initial = &.{ 0x00, 0x80 }, .shift = 0x01, .expected = &.{ 0x01, 0x00 } },
+        .{ .initial = &.{ 0x00, 0x80, 0x00 }, .shift = 0x01, .expected = &.{ 0x01, 0x00, 0x00 } },
+        .{ .initial = &.{ 0x00, 0x00, 0x80 }, .shift = 0x01, .expected = &.{ 0x00, 0x01, 0x00 } },
+        .{ .initial = &.{ 0x80, 0x00, 0x00 }, .shift = 0x01, .expected = &.{ 0x00, 0x00, 0x00 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x00, .expected = &.{ 0b10011111, 0b00010001, 0b11110101, 0b01010101 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x01, .expected = &.{ 0b00111110, 0b00100011, 0b11101010, 0b10101010 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x02, .expected = &.{ 0b01111100, 0b01000111, 0b11010101, 0b01010100 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x03, .expected = &.{ 0b11111000, 0b10001111, 0b10101010, 0b10101000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x04, .expected = &.{ 0b11110001, 0b00011111, 0b01010101, 0b01010000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x05, .expected = &.{ 0b11100010, 0b00111110, 0b10101010, 0b10100000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x06, .expected = &.{ 0b11000100, 0b01111101, 0b01010101, 0b01000000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x07, .expected = &.{ 0b10001000, 0b11111010, 0b10101010, 0b10000000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x08, .expected = &.{ 0b00010001, 0b11110101, 0b01010101, 0b00000000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x09, .expected = &.{ 0b00100011, 0b11101010, 0b10101010, 0b00000000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0A, .expected = &.{ 0b01000111, 0b11010101, 0b01010100, 0b00000000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0B, .expected = &.{ 0b10001111, 0b10101010, 0b10101000, 0b00000000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0C, .expected = &.{ 0b00011111, 0b01010101, 0b01010000, 0b00000000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0D, .expected = &.{ 0b00111110, 0b10101010, 0b10100000, 0b00000000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0E, .expected = &.{ 0b01111101, 0b01010101, 0b01000000, 0b00000000 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0F, .expected = &.{ 0b11111010, 0b10101010, 0b10000000, 0b00000000 } },
+    };
+
+    inline for (cases) |case| {
+        const initial_push = try encodePushDataElement(allocator, case.initial);
+        defer allocator.free(initial_push);
+        const shift_encoded = try num.ScriptNum.encode(allocator, case.shift);
+        defer allocator.free(shift_encoded);
+        const shift_push = try encodePushDataElement(allocator, shift_encoded);
+        defer allocator.free(shift_push);
+
+        var script_bytes: std.ArrayListUnmanaged(u8) = .empty;
+        defer script_bytes.deinit(allocator);
+        try script_bytes.appendSlice(allocator, initial_push);
+        try script_bytes.appendSlice(allocator, shift_push);
+        try script_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_LSHIFT));
+
+        const script = Script.init(try script_bytes.toOwnedSlice(allocator));
+        defer allocator.free(script.bytes);
+
+        var result = try executeScript(.{ .allocator = allocator }, script);
+        defer result.deinit(allocator);
+
+        try std.testing.expectEqual(@as(usize, 1), result.state.stack.items.len);
+        try std.testing.expectEqualSlices(u8, case.expected, result.state.stack.items[0]);
+    }
+}
+
+test "engine matches go-sdk OP_RSHIFT vectors" {
+    const allocator = std.testing.allocator;
+
+    const Case = struct {
+        initial: []const u8,
+        shift: i64,
+        expected: []const u8,
+    };
+
+    const cases = [_]Case{
+        .{ .initial = &.{}, .shift = 0x00, .expected = &.{} },
+        .{ .initial = &.{}, .shift = 0x11, .expected = &.{} },
+        .{ .initial = &.{ 0xFF }, .shift = 0x00, .expected = &.{ 0xFF } },
+        .{ .initial = &.{ 0xFF }, .shift = 0x01, .expected = &.{ 0x7F } },
+        .{ .initial = &.{ 0xFF }, .shift = 0x07, .expected = &.{ 0x01 } },
+        .{ .initial = &.{ 0xFF }, .shift = 0x08, .expected = &.{ 0x00 } },
+        .{ .initial = &.{ 0x01, 0x00 }, .shift = 0x01, .expected = &.{ 0x00, 0x80 } },
+        .{ .initial = &.{ 0x01, 0x00, 0x00 }, .shift = 0x01, .expected = &.{ 0x00, 0x80, 0x00 } },
+        .{ .initial = &.{ 0x00, 0x01, 0x00 }, .shift = 0x01, .expected = &.{ 0x00, 0x00, 0x80 } },
+        .{ .initial = &.{ 0x00, 0x00, 0x01 }, .shift = 0x01, .expected = &.{ 0x00, 0x00, 0x00 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x00, .expected = &.{ 0b10011111, 0b00010001, 0b11110101, 0b01010101 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x01, .expected = &.{ 0b01001111, 0b10001000, 0b11111010, 0b10101010 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x02, .expected = &.{ 0b00100111, 0b11000100, 0b01111101, 0b01010101 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x03, .expected = &.{ 0b00010011, 0b11100010, 0b00111110, 0b10101010 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x04, .expected = &.{ 0b00001001, 0b11110001, 0b00011111, 0b01010101 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x05, .expected = &.{ 0b00000100, 0b11111000, 0b10001111, 0b10101010 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x06, .expected = &.{ 0b00000010, 0b01111100, 0b01000111, 0b11010101 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x07, .expected = &.{ 0b00000001, 0b00111110, 0b00100011, 0b11101010 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x08, .expected = &.{ 0b00000000, 0b10011111, 0b00010001, 0b11110101 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x09, .expected = &.{ 0b00000000, 0b01001111, 0b10001000, 0b11111010 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0A, .expected = &.{ 0b00000000, 0b00100111, 0b11000100, 0b01111101 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0B, .expected = &.{ 0b00000000, 0b00010011, 0b11100010, 0b00111110 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0C, .expected = &.{ 0b00000000, 0b00001001, 0b11110001, 0b00011111 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0D, .expected = &.{ 0b00000000, 0b00000100, 0b11111000, 0b10001111 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0E, .expected = &.{ 0b00000000, 0b00000010, 0b01111100, 0b01000111 } },
+        .{ .initial = &.{ 0x9F, 0x11, 0xF5, 0x55 }, .shift = 0x0F, .expected = &.{ 0b00000000, 0b00000001, 0b00111110, 0b00100011 } },
+    };
+
+    inline for (cases) |case| {
+        const initial_push = try encodePushDataElement(allocator, case.initial);
+        defer allocator.free(initial_push);
+        const shift_encoded = try num.ScriptNum.encode(allocator, case.shift);
+        defer allocator.free(shift_encoded);
+        const shift_push = try encodePushDataElement(allocator, shift_encoded);
+        defer allocator.free(shift_push);
+
+        var script_bytes: std.ArrayListUnmanaged(u8) = .empty;
+        defer script_bytes.deinit(allocator);
+        try script_bytes.appendSlice(allocator, initial_push);
+        try script_bytes.appendSlice(allocator, shift_push);
+        try script_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_RSHIFT));
+
+        const script = Script.init(try script_bytes.toOwnedSlice(allocator));
+        defer allocator.free(script.bytes);
+
+        var result = try executeScript(.{ .allocator = allocator }, script);
+        defer result.deinit(allocator);
+
+        try std.testing.expectEqual(@as(usize, 1), result.state.stack.items.len);
+        try std.testing.expectEqualSlices(u8, case.expected, result.state.stack.items[0]);
+    }
 }
 
 test "engine executes runar-style dispatch branches" {

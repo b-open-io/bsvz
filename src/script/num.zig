@@ -507,3 +507,50 @@ test "num2bin rejects undersized non-zero encodings" {
     try std.testing.expectError(error.InvalidEncoding, ScriptNum.num2bin(allocator, 128, 1));
     try std.testing.expectError(error.InvalidEncoding, ScriptNum.num2bin(allocator, -128, 1));
 }
+
+test "script num matches representative go-sdk encode/decode vectors" {
+    const allocator = std.testing.allocator;
+
+    const Case = struct {
+        value: i128,
+        encoded: []const u8,
+    };
+
+    const cases = [_]Case{
+        .{ .value = 0, .encoded = &.{} },
+        .{ .value = 1, .encoded = &.{0x01} },
+        .{ .value = -1, .encoded = &.{0x81} },
+        .{ .value = 127, .encoded = &.{0x7f} },
+        .{ .value = -127, .encoded = &.{0xff} },
+        .{ .value = 128, .encoded = &.{ 0x80, 0x00 } },
+        .{ .value = -128, .encoded = &.{ 0x80, 0x80 } },
+        .{ .value = 129, .encoded = &.{ 0x81, 0x00 } },
+        .{ .value = -129, .encoded = &.{ 0x81, 0x80 } },
+        .{ .value = 32767, .encoded = &.{ 0xff, 0x7f } },
+        .{ .value = -32767, .encoded = &.{ 0xff, 0xff } },
+        .{ .value = 32768, .encoded = &.{ 0x00, 0x80, 0x00 } },
+        .{ .value = -32768, .encoded = &.{ 0x00, 0x80, 0x80 } },
+        .{ .value = 2147483647, .encoded = &.{ 0xff, 0xff, 0xff, 0x7f } },
+        .{ .value = -2147483647, .encoded = &.{ 0xff, 0xff, 0xff, 0xff } },
+        .{ .value = 2147483648, .encoded = &.{ 0x00, 0x00, 0x00, 0x80, 0x00 } },
+        .{ .value = -2147483648, .encoded = &.{ 0x00, 0x00, 0x00, 0x80, 0x80 } },
+        .{ .value = 4294967296, .encoded = &.{ 0x00, 0x00, 0x00, 0x00, 0x01 } },
+        .{ .value = -4294967296, .encoded = &.{ 0x00, 0x00, 0x00, 0x00, 0x81 } },
+    };
+
+    inline for (cases) |case| {
+        const encoded = try ScriptNum.encode(allocator, case.value);
+        defer allocator.free(encoded);
+        try std.testing.expectEqualSlices(u8, case.encoded, encoded);
+
+        var decoded = try ScriptNum.decodeOwned(allocator, case.encoded);
+        defer decoded.deinit();
+        var expected = try ScriptNum.fromValue(allocator, case.value);
+        defer expected.deinit();
+        try std.testing.expect(decoded.eql(&expected));
+
+        var decoded_min = try ScriptNum.decodeMinimalOwned(allocator, case.encoded);
+        defer decoded_min.deinit();
+        try std.testing.expect(decoded_min.eql(&expected));
+    }
+}
