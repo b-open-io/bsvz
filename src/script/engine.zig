@@ -106,6 +106,7 @@ fn executeIntoState(
     script: Script,
 ) Error!void {
     var cursor: usize = 0;
+    var early_return_after_genesis = false;
     state.last_code_separator = 0;
 
     while (cursor < script.bytes.len) {
@@ -113,7 +114,7 @@ fn executeIntoState(
         cursor += 1;
 
         if (byte >= 0x01 and byte <= 0x4b) {
-            if (shouldExecute(state)) {
+            if (!early_return_after_genesis and shouldExecute(state)) {
                 if (script.bytes.len < cursor + byte) return error.InvalidPushData;
                 try pushCopy(ctx, state, script.bytes[cursor .. cursor + byte]);
             } else if (script.bytes.len < cursor + byte) {
@@ -124,14 +125,14 @@ fn executeIntoState(
         }
 
         if (byte == @intFromEnum(opcode.Opcode.OP_0)) {
-            if (shouldExecute(state)) try pushBool(ctx, state, false);
+            if (!early_return_after_genesis and shouldExecute(state)) try pushBool(ctx, state, false);
             continue;
         }
 
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA1)) {
             const len = try readPushLength(u8, script.bytes, &cursor);
             if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            if (shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            if (!early_return_after_genesis and shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
             cursor += len;
             continue;
         }
@@ -139,7 +140,7 @@ fn executeIntoState(
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA2)) {
             const len = try readPushLength(u16, script.bytes, &cursor);
             if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            if (shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            if (!early_return_after_genesis and shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
             cursor += len;
             continue;
         }
@@ -147,21 +148,21 @@ fn executeIntoState(
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA4)) {
             const len = try readPushLength(u32, script.bytes, &cursor);
             if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            if (shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            if (!early_return_after_genesis and shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
             cursor += len;
             continue;
         }
 
         const op = opcode.Opcode.fromByte(byte);
         if (op.smallIntegerValue()) |small_int| {
-            if (shouldExecute(state)) try pushNum(ctx, state, small_int);
+            if (!early_return_after_genesis and shouldExecute(state)) try pushNum(ctx, state, small_int);
             continue;
         }
 
         switch (op) {
             .OP_IF, .OP_NOTIF => {
                 try countOp(ctx, state);
-                if (shouldExecute(state)) {
+                if (!early_return_after_genesis and shouldExecute(state)) {
                     const cond_bytes = try popOwned(state);
                     defer ctx.allocator.free(cond_bytes);
                     if (ctx.flags.minimal_if) {
@@ -194,7 +195,7 @@ fn executeIntoState(
             else => {},
         }
 
-        if (!shouldExecute(state)) continue;
+        if (early_return_after_genesis or !shouldExecute(state)) continue;
 
         if (!ctx.flags.enable_reenabled_opcodes) {
             switch (op) {
@@ -226,7 +227,11 @@ fn executeIntoState(
                 defer ctx.allocator.free(value);
                 if (!isTruthy(value)) return error.VerifyFailed;
             },
-            .OP_RETURN => return error.ReturnEncountered,
+            .OP_RETURN => {
+                if (!ctx.flags.utxo_after_genesis) return error.ReturnEncountered;
+                if (state.condition_stack.items.len == 0) return;
+                early_return_after_genesis = true;
+            },
             .OP_CODESEPARATOR => {
                 try countOp(ctx, state);
                 if (active_script == .locking) state.last_code_separator = cursor;
@@ -768,7 +773,7 @@ fn verifyCheckmultisig(
     const signing_script = ctx.previous_locking_script orelse current_script;
 
     const key_count = try popIndex(ctx, state);
-    if (key_count > 20) return error.InvalidMultisigKeyCount;
+    if (!ctx.flags.utxo_after_genesis and key_count > 20) return error.InvalidMultisigKeyCount;
 
     const pubkeys = try ctx.allocator.alloc([]u8, key_count);
     defer ctx.allocator.free(pubkeys);
@@ -793,22 +798,20 @@ fn verifyCheckmultisig(
 
     const dummy = try popOwned(state);
     defer ctx.allocator.free(dummy);
-    if (ctx.flags.strict_encoding and dummy.len != 0) return error.NullDummy;
+    if (ctx.flags.null_dummy and dummy.len != 0) return error.NullDummy;
 
     const script_code = try buildScriptCode(ctx.allocator, signing_script, state.last_code_separator, signatures, true);
     defer ctx.allocator.free(script_code.bytes);
 
     var key_index: usize = 0;
-    for (signatures) |sig_bytes| {
-        var matched = false;
-        while (key_index < pubkeys.len) : (key_index += 1) {
-            if (try verifyChecksigWithScriptCode(ctx, script_code, sig_bytes, pubkeys[key_index])) {
-                matched = true;
-                key_index += 1;
-                break;
-            }
+    var sig_index: usize = 0;
+    while (sig_index < signatures.len and key_index < pubkeys.len) {
+        if (try verifyChecksigWithScriptCode(ctx, script_code, signatures[sig_index], pubkeys[key_index])) {
+            sig_index += 1;
         }
-        if (!matched) {
+        key_index += 1;
+
+        if (signatures.len - sig_index > pubkeys.len - key_index) {
             if (ctx.flags.null_fail) {
                 for (signatures) |candidate| {
                     if (candidate.len != 0) return error.NullFail;
@@ -816,6 +819,15 @@ fn verifyCheckmultisig(
             }
             return false;
         }
+    }
+
+    if (sig_index != signatures.len) {
+        if (ctx.flags.null_fail) {
+            for (signatures) |candidate| {
+                if (candidate.len != 0) return error.NullFail;
+            }
+        }
+        return false;
     }
 
     return true;
@@ -875,11 +887,20 @@ fn shouldCheckPubKeyEncoding(ctx: ExecutionContext) bool {
 }
 
 fn checkHashTypeEncoding(ctx: ExecutionContext, hash_type: u8) Error!void {
-    if (!ctx.flags.strict_encoding) return;
-    const base_type = sighash.SigHashType.baseType(hash_type);
+    if (!ctx.flags.strict_encoding and !ctx.flags.enable_sighash_forkid and !ctx.flags.verify_bip143_sighash) return;
+
+    const anyone_can_pay: u8 = @intCast(sighash.SigHashType.anyone_can_pay);
+    const forkid: u8 = @intCast(sighash.SigHashType.forkid);
+    const base_with_forkid = hash_type & ~anyone_can_pay;
+    const has_forkid = (hash_type & forkid) != 0;
+    const base_type = if (has_forkid) (base_with_forkid ^ forkid) else base_with_forkid;
+
     if (base_type < sighash.SigHashType.all or base_type > sighash.SigHashType.single) {
         return error.InvalidSigHashType;
     }
+    if (ctx.flags.verify_bip143_sighash and !has_forkid) return error.IllegalForkId;
+    if (!ctx.flags.enable_sighash_forkid and has_forkid) return error.IllegalForkId;
+    if (ctx.flags.enable_sighash_forkid and !has_forkid) return error.IllegalForkId;
 }
 
 fn checkPubKeyEncoding(pubkey: []const u8) Error!void {
@@ -1564,7 +1585,88 @@ test "engine verifies 2-of-2 checksig ordering with checkmultisig" {
     }, wrong_unlocking_script, locking_script)));
 }
 
-test "engine legacy checksig removes pushed signature copies from script code" {
+test "engine checkmultisig exits early before touching later invalid pubkeys" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes_a = [_]u8{0} ** 32;
+    key_bytes_a[31] = 1;
+    var key_bytes_b = [_]u8{0} ** 32;
+    key_bytes_b[31] = 2;
+
+    const private_key_a = try crypto.PrivateKey.fromBytes(key_bytes_a);
+    const private_key_b = try crypto.PrivateKey.fromBytes(key_bytes_b);
+    const public_key_a = try private_key_a.publicKey();
+    _ = try private_key_b.publicKey();
+
+    var invalid_pubkey = [_]u8{0} ** 33;
+    invalid_pubkey[0] = 0x05;
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        33,
+    } ++ invalid_pubkey ++ [_]u8{
+        33,
+    } ++ public_key_a.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x56} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 1_200,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const p2pkh_spend = @import("../transaction/templates/p2pkh_spend.zig");
+    const sig_a = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_500,
+        private_key_a,
+        p2pkh_spend.default_scope,
+    );
+    const sig_b = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_500,
+        private_key_b,
+        p2pkh_spend.default_scope,
+    );
+
+    const unlocking_script = try buildMultisigUnlockingScript(allocator, &[_]crypto.TxSignature{ sig_a, sig_b });
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expect(!(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{ .strict_pubkey_encoding = true },
+    }, unlocking_script, locking_script)));
+}
+
+test "engine legacy checksig removes pushed signature copies from script code when legacy mode is enabled" {
     const allocator = std.testing.allocator;
 
     var key_bytes = [_]u8{0} ** 32;
@@ -1633,10 +1735,14 @@ test "engine legacy checksig removes pushed signature copies from script code" {
         .input_index = 0,
         .previous_locking_script = locking_script,
         .previous_satoshis = 1_000,
+        .flags = .{
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+        },
     }, unlocking_script, locking_script));
 }
 
-test "engine enforces NULLDUMMY for checkmultisig when strict encoding is enabled" {
+test "engine enforces NULLDUMMY for checkmultisig when enabled" {
     const allocator = std.testing.allocator;
 
     var key_bytes = [_]u8{0} ** 32;
@@ -1703,6 +1809,7 @@ test "engine enforces NULLDUMMY for checkmultisig when strict encoding is enable
         .input_index = 0,
         .previous_locking_script = locking_script,
         .previous_satoshis = 1_000,
+        .flags = .{ .null_dummy = true },
     }, unlocking_script, locking_script));
 
     try std.testing.expect(try verifyScripts(.{
@@ -1711,8 +1818,40 @@ test "engine enforces NULLDUMMY for checkmultisig when strict encoding is enable
         .input_index = 0,
         .previous_locking_script = locking_script,
         .previous_satoshis = 1_000,
-        .flags = .{ .strict_encoding = false },
+        .flags = .{ .null_dummy = false },
     }, unlocking_script, locking_script));
+}
+
+test "engine allows more than 20 multisig pubkeys after genesis" {
+    const allocator = std.testing.allocator;
+
+    var script_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer script_bytes.deinit(allocator);
+
+    try script_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    try script_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    for (0..21) |index| {
+        try script_bytes.append(allocator, 0x01);
+        try script_bytes.append(allocator, @intCast(index + 1));
+    }
+    try script_bytes.append(allocator, 0x01);
+    try script_bytes.append(allocator, 21);
+    try script_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG));
+
+    const script = Script.init(try script_bytes.toOwnedSlice(allocator));
+    defer allocator.free(script.bytes);
+
+    var result = try executeScript(.{
+        .allocator = allocator,
+    }, script);
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.success);
+
+    try std.testing.expectError(error.InvalidMultisigKeyCount, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .utxo_after_genesis = false },
+    }, script));
 }
 
 test "engine can require push-only unlocking scripts" {
@@ -1769,6 +1908,40 @@ test "engine surfaces malformed control flow and bounds errors" {
     }, Script.init(&[_]u8{
         0x02,                             0xaa,                                 0xbb,
         @intFromEnum(opcode.Opcode.OP_3), @intFromEnum(opcode.Opcode.OP_SPLIT),
+    })));
+}
+
+test "engine treats OP_RETURN as post-genesis early success at top level" {
+    const allocator = std.testing.allocator;
+
+    var result = try executeScript(.{
+        .allocator = allocator,
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_RETURN),
+        0xba,
+    }));
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.success);
+
+    var false_result = try executeScript(.{
+        .allocator = allocator,
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_RETURN),
+        0xba,
+    }));
+    defer false_result.deinit(allocator);
+
+    try std.testing.expect(!false_result.success);
+
+    try std.testing.expectError(error.ReturnEncountered, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .utxo_after_genesis = false },
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_RETURN),
     })));
 }
 
@@ -2022,6 +2195,53 @@ test "engine treats malformed DER signatures as false unless DER policy is enabl
         .previous_satoshis = 1_000,
         .flags = .{ .strict_encoding = false, .der_signatures = true },
     }, Script.init(malformed_unlocking), previous_locking_script));
+}
+
+test "engine rejects missing forkid when forkid mode is enabled" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.IllegalForkId, checkHashTypeEncoding(.{
+        .allocator = allocator,
+    }, @intCast(sighash.SigHashType.all)));
+
+    try checkHashTypeEncoding(.{
+        .allocator = allocator,
+    }, @intCast(sighash.SigHashType.all | sighash.SigHashType.forkid));
+}
+
+test "engine rejects reserved sighash bits under strict encoding" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.InvalidSigHashType, checkHashTypeEncoding(.{
+        .allocator = allocator,
+        .flags = .{
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+            .strict_encoding = true,
+        },
+    }, 0x21));
+}
+
+test "engine can disable forkid mode explicitly for legacy sighash policy" {
+    const allocator = std.testing.allocator;
+
+    try checkHashTypeEncoding(.{
+        .allocator = allocator,
+        .flags = .{
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+            .strict_encoding = true,
+        },
+    }, @intCast(sighash.SigHashType.all));
+
+    try std.testing.expectError(error.IllegalForkId, checkHashTypeEncoding(.{
+        .allocator = allocator,
+        .flags = .{
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+            .strict_encoding = true,
+        },
+    }, @intCast(sighash.SigHashType.all | sighash.SigHashType.forkid)));
 }
 
 test "engine can enforce low-S policy on DER signatures" {

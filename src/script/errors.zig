@@ -25,6 +25,7 @@ pub const ScriptError = error{
     SigPushOnly,
     CleanStack,
     MinimalIf,
+    IllegalForkId,
     InvalidSigHashType,
     HighS,
     UnknownOpcode,
