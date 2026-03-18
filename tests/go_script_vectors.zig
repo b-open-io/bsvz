@@ -103,6 +103,13 @@ fn buildSyntheticCheckmultisigNotHexes(
     };
 }
 
+fn scriptHexForOps(allocator: std.mem.Allocator, ops: []const bsvz.script.opcode.Opcode) ![]u8 {
+    var bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer bytes.deinit(allocator);
+    for (ops) |op| try bytes.append(allocator, @intFromEnum(op));
+    return scriptHexFromBytes(allocator, bytes.items);
+}
+
 test "go direct checksig rows: bip66 example 4 nullfail matrix" {
     const allocator = std.testing.allocator;
     const locking_hex =
@@ -535,6 +542,58 @@ test "go direct script rows: minimaldata numeric arguments" {
         .name = "within rejects non-minimal operand",
         .unlocking_hex = "0200000000",
         .locking_hex = locking_within_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+}
+
+test "go direct script rows: minimaldata multisig counts" {
+    const allocator = std.testing.allocator;
+
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.minimal_data = true;
+
+    const checkmultisig_drop_1 = try scriptHexForOps(allocator, &[_]bsvz.script.opcode.Opcode{
+        .OP_CHECKMULTISIG,
+        .OP_DROP,
+        .OP_1,
+    });
+    defer allocator.free(checkmultisig_drop_1);
+
+    try harness.runCase(allocator, .{
+        .name = "checkmultisig rejects non-minimal key count",
+        .unlocking_hex = "0000020000",
+        .locking_hex = checkmultisig_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "checkmultisig rejects non-minimal signature count",
+        .unlocking_hex = "0002000000",
+        .locking_hex = checkmultisig_drop_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    const checkmultisigverify_1 = try scriptHexForOps(allocator, &[_]bsvz.script.opcode.Opcode{
+        .OP_CHECKMULTISIGVERIFY,
+        .OP_1,
+    });
+    defer allocator.free(checkmultisigverify_1);
+
+    try harness.runCase(allocator, .{
+        .name = "checkmultisigverify rejects non-minimal key count",
+        .unlocking_hex = "0000020000",
+        .locking_hex = checkmultisigverify_1,
+        .flags = flags,
+        .expected = .{ .err = error.MinimalData },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "checkmultisigverify rejects non-minimal signature count",
+        .unlocking_hex = "0002000000",
+        .locking_hex = checkmultisigverify_1,
         .flags = flags,
         .expected = .{ .err = error.MinimalData },
     });
