@@ -35,7 +35,21 @@ fn scriptHexForPushesAndOps(
     var bytes: std.ArrayListUnmanaged(u8) = .empty;
     defer bytes.deinit(allocator);
 
-    for (pushes) |push| try builders.appendPushData(&bytes, allocator, push);
+    for (pushes) |push| {
+        if (push.len <= 75) {
+            try bytes.append(allocator, @intCast(push.len));
+        } else if (push.len <= 0xff) {
+            try bytes.append(allocator, 0x4c);
+            try bytes.append(allocator, @intCast(push.len));
+        } else if (push.len <= 0xffff) {
+            try bytes.append(allocator, 0x4d);
+            try bytes.append(allocator, @intCast(push.len & 0xff));
+            try bytes.append(allocator, @intCast((push.len >> 8) & 0xff));
+        } else {
+            return error.InvalidPushData;
+        }
+        try bytes.appendSlice(allocator, push);
+    }
     try bytes.appendSlice(allocator, ops);
     return builders.scriptHexFromBytes(allocator, bytes.items);
 }
@@ -110,6 +124,77 @@ test "go direct script rows: cat parity" {
     });
 }
 
+test "go direct script rows: cat max length parity" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    const left_145 = try builders.repeatedHexByte(allocator, 145, 'a');
+    defer allocator.free(left_145);
+    const right_375 = try builders.repeatedHexByte(allocator, 375, 'b');
+    defer allocator.free(right_375);
+    const joined_520 = try allocator.alloc(u8, 520);
+    defer allocator.free(joined_520);
+    @memcpy(joined_520[0..145], left_145);
+    @memcpy(joined_520[145..], right_375);
+
+    const cat_520 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        left_145,
+        right_375,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_CAT),
+    });
+    defer allocator.free(cat_520);
+    const cat_520_eq = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        joined_520,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(cat_520_eq);
+
+    const cat_empty_left = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        &[_]u8{},
+        joined_520,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_CAT),
+    });
+    defer allocator.free(cat_empty_left);
+    const cat_empty_left_eq = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        joined_520,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(cat_empty_left_eq);
+
+    const cat_empty_right = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        joined_520,
+        &[_]u8{},
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_CAT),
+    });
+    defer allocator.free(cat_empty_right);
+    const cat_empty_right_eq = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        joined_520,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(cat_empty_right_eq);
+
+    const oversized_cat = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        &[_]u8{'a'},
+        joined_520,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_CAT),
+    });
+    defer allocator.free(oversized_cat);
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 791, .name = "go row 791: cat concatenates to the maximum script element size", .unlocking_hex = cat_520, .locking_hex = cat_520_eq, .expected = .{ .success = true } },
+        .{ .row = 792, .name = "go row 792: cat with empty left operand keeps maximum-sized right operand", .unlocking_hex = cat_empty_left, .locking_hex = cat_empty_left_eq, .expected = .{ .success = true } },
+        .{ .row = 793, .name = "go row 793: cat with empty right operand keeps maximum-sized left operand", .unlocking_hex = cat_empty_right, .locking_hex = cat_empty_right_eq, .expected = .{ .success = true } },
+        .{ .row = 794, .name = "go row 794: cat rejects oversized result above the maximum script element size", .unlocking_hex = oversized_cat, .locking_hex = "", .expected = .{ .err = error.ElementTooBig } },
+    });
+}
+
 test "go direct script rows: split parity" {
     const allocator = std.testing.allocator;
     const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
@@ -163,5 +248,91 @@ test "go direct script rows: split parity" {
         .{ .row = 973, .name = "split at payload length keeps left side intact", .unlocking_hex = abc_split_3, .locking_hex = "7f00880361626387", .expected = .{ .success = true } },
         .{ .row = 974, .name = "split rejects upper out of bounds", .unlocking_hex = abc_split_4, .locking_hex = "7f", .expected = .{ .err = error.InvalidSplitPosition } },
         .{ .row = 975, .name = "split rejects negative index", .unlocking_hex = abc_split_neg1, .locking_hex = "7f", .expected = .{ .err = error.InvalidStackIndex } },
+    });
+}
+
+test "go direct script rows: split max length parity" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    const left_145 = try builders.repeatedHexByte(allocator, 145, 'a');
+    defer allocator.free(left_145);
+    const right_375 = try builders.repeatedHexByte(allocator, 375, 'b');
+    defer allocator.free(right_375);
+    const joined_520 = try allocator.alloc(u8, 520);
+    defer allocator.free(joined_520);
+    @memcpy(joined_520[0..145], left_145);
+    @memcpy(joined_520[145..], right_375);
+    const split_zero = try scriptNumBytes(allocator, 0);
+    defer allocator.free(split_zero);
+    const split_145 = try scriptNumBytes(allocator, 145);
+    defer allocator.free(split_145);
+    const split_520 = try scriptNumBytes(allocator, 520);
+    defer allocator.free(split_520);
+
+    const split_mid = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        joined_520,
+        split_145,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SPLIT),
+    });
+    defer allocator.free(split_mid);
+    const split_mid_eq = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        right_375,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUALVERIFY),
+    });
+    defer allocator.free(split_mid_eq);
+    const split_mid_tail = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        left_145,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(split_mid_tail);
+
+    const split_zero_case = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        joined_520,
+        split_zero,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SPLIT),
+    });
+    defer allocator.free(split_zero_case);
+    const split_zero_eq = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        joined_520,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUALVERIFY),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(split_zero_eq);
+
+    const split_full_case = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        joined_520,
+        split_520,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SPLIT),
+    });
+    defer allocator.free(split_full_case);
+    const split_full_eq = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        &[_]u8{},
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUALVERIFY),
+    });
+    defer allocator.free(split_full_eq);
+    const split_full_tail = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        joined_520,
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(split_full_tail);
+    const split_mid_lock = try std.mem.concat(allocator, u8, &[_][]const u8{ split_mid_eq, split_mid_tail });
+    defer allocator.free(split_mid_lock);
+    const split_full_lock = try std.mem.concat(allocator, u8, &[_][]const u8{ split_full_eq, split_full_tail });
+    defer allocator.free(split_full_lock);
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 804, .name = "go row 804: split divides a maximum-sized element at an interior boundary", .unlocking_hex = split_mid, .locking_hex = split_mid_lock, .expected = .{ .success = true } },
+        .{ .row = 805, .name = "go row 805: split at zero keeps the full right half and empty left half", .unlocking_hex = split_zero_case, .locking_hex = split_zero_eq, .expected = .{ .success = true } },
+        .{ .row = 806, .name = "go row 806: split at full length keeps the full left half and empty right half", .unlocking_hex = split_full_case, .locking_hex = split_full_lock, .expected = .{ .success = true } },
     });
 }
