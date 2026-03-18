@@ -25,6 +25,8 @@ pub const ScriptError = error{
     SigPushOnly,
     CleanStack,
     MinimalIf,
+    InvalidSigHashType,
+    HighS,
     UnknownOpcode,
     InvalidSignatureEncoding,
     InvalidPublicKeyEncoding,

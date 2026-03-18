@@ -20,6 +20,13 @@ const ActiveScript = enum {
     locking,
 };
 
+const secp256k1_half_order_be = [_]u8{
+    0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d,
+    0xdf, 0xe9, 0x2f, 0x46, 0x68, 0x1b, 0x20, 0xa0,
+};
+
 pub const ExecutionContext = context.ExecutionContext;
 pub const ExecutionFlags = context.ExecutionFlags;
 pub const ExecutionState = context.ExecutionState;
@@ -737,8 +744,9 @@ fn verifyChecksig(
     pubkey_bytes: []const u8,
 ) Error!bool {
     const signing_script = ctx.previous_locking_script orelse current_script;
-    const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch return error.InvalidSignatureEncoding;
-    const legacy_normalization = !sighash.SigHashType.hasForkId(tx_signature.sighash_type);
+    if (sig_bytes.len < 1) return false;
+    try checkHashTypeEncoding(ctx, sig_bytes[sig_bytes.len - 1]);
+    const legacy_normalization = !sighash.SigHashType.hasForkId(sig_bytes[sig_bytes.len - 1]);
 
     const script_code = try buildScriptCode(
         ctx.allocator,
@@ -749,7 +757,7 @@ fn verifyChecksig(
     );
     defer ctx.allocator.free(script_code.bytes);
 
-    return verifyChecksigWithScriptCode(ctx, script_code, tx_signature, pubkey_bytes);
+    return verifyChecksigWithScriptCode(ctx, script_code, sig_bytes, pubkey_bytes);
 }
 
 fn verifyCheckmultisig(
@@ -794,8 +802,7 @@ fn verifyCheckmultisig(
     for (signatures) |sig_bytes| {
         var matched = false;
         while (key_index < pubkeys.len) : (key_index += 1) {
-            const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch return error.InvalidSignatureEncoding;
-            if (try verifyChecksigWithScriptCode(ctx, script_code, tx_signature, pubkeys[key_index])) {
+            if (try verifyChecksigWithScriptCode(ctx, script_code, sig_bytes, pubkeys[key_index])) {
                 matched = true;
                 key_index += 1;
                 break;
@@ -817,11 +824,33 @@ fn verifyCheckmultisig(
 fn verifyChecksigWithScriptCode(
     ctx: ExecutionContext,
     script_code: Script,
-    tx_signature: crypto.TxSignature,
+    sig_bytes: []const u8,
     pubkey_bytes: []const u8,
 ) Error!bool {
     const tx = ctx.tx orelse return error.MissingChecksigContext;
-    const public_key = crypto.PublicKey.fromSec1(pubkey_bytes) catch return error.InvalidPublicKeyEncoding;
+    if (sig_bytes.len < 1) return false;
+    const hash_type = sig_bytes[sig_bytes.len - 1];
+    const der_bytes = sig_bytes[0 .. sig_bytes.len - 1];
+
+    try checkHashTypeEncoding(ctx, hash_type);
+    if (shouldCheckSignatureEncoding(ctx)) {
+        try checkSignatureEncoding(ctx, der_bytes);
+    }
+    if (shouldCheckPubKeyEncoding(ctx)) {
+        try checkPubKeyEncoding(pubkey_bytes);
+    }
+
+    const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch |err| switch (err) {
+        error.InvalidEncoding => {
+            if (shouldCheckSignatureEncoding(ctx)) return error.InvalidSignatureEncoding;
+            return false;
+        },
+        else => return err,
+    };
+    const public_key = crypto.PublicKey.fromSec1(pubkey_bytes) catch {
+        if (shouldCheckPubKeyEncoding(ctx)) return error.InvalidPublicKeyEncoding;
+        return false;
+    };
 
     const digest = try sighash.digest(
         ctx.allocator,
@@ -831,7 +860,71 @@ fn verifyChecksigWithScriptCode(
         ctx.previous_satoshis,
         tx_signature.sighash_type,
     );
-    return public_key.verifyDigest256(digest.bytes, tx_signature.der) catch return error.InvalidPublicKeyEncoding;
+    return public_key.verifyDigest256(digest.bytes, tx_signature.der) catch {
+        if (shouldCheckSignatureEncoding(ctx)) return error.InvalidSignatureEncoding;
+        return false;
+    };
+}
+
+fn shouldCheckSignatureEncoding(ctx: ExecutionContext) bool {
+    return ctx.flags.strict_encoding or ctx.flags.der_signatures or ctx.flags.low_s;
+}
+
+fn shouldCheckPubKeyEncoding(ctx: ExecutionContext) bool {
+    return ctx.flags.strict_encoding or ctx.flags.strict_pubkey_encoding;
+}
+
+fn checkHashTypeEncoding(ctx: ExecutionContext, hash_type: u8) Error!void {
+    if (!ctx.flags.strict_encoding) return;
+    const base_type = sighash.SigHashType.baseType(hash_type);
+    if (base_type < sighash.SigHashType.all or base_type > sighash.SigHashType.single) {
+        return error.InvalidSigHashType;
+    }
+}
+
+fn checkPubKeyEncoding(pubkey: []const u8) Error!void {
+    if (pubkey.len == 33 and (pubkey[0] == 0x02 or pubkey[0] == 0x03)) return;
+    if (pubkey.len == 65 and pubkey[0] == 0x04) return;
+    return error.InvalidPublicKeyEncoding;
+}
+
+fn checkSignatureEncoding(ctx: ExecutionContext, sig: []const u8) Error!void {
+    if (sig.len < 8) return error.InvalidSignatureEncoding;
+    if (sig.len > crypto.signature.max_der_signature_len) return error.InvalidSignatureEncoding;
+    if (sig[0] != 0x30) return error.InvalidSignatureEncoding;
+    if (sig[1] != sig.len - 2) return error.InvalidSignatureEncoding;
+    if (sig[2] != 0x02) return error.InvalidSignatureEncoding;
+
+    const r_len = sig[3];
+    const s_type_offset = 4 + r_len;
+    const s_len_offset = s_type_offset + 1;
+    if (s_type_offset >= sig.len) return error.InvalidSignatureEncoding;
+    if (s_len_offset >= sig.len) return error.InvalidSignatureEncoding;
+    if (sig[s_type_offset] != 0x02) return error.InvalidSignatureEncoding;
+
+    const s_len = sig[s_len_offset];
+    const s_offset = s_len_offset + 1;
+    if (s_offset + s_len != sig.len) return error.InvalidSignatureEncoding;
+    if (r_len == 0 or s_len == 0) return error.InvalidSignatureEncoding;
+
+    const r_offset = 4;
+    if ((sig[r_offset] & 0x80) != 0) return error.InvalidSignatureEncoding;
+    if (r_len > 1 and sig[r_offset] == 0x00 and (sig[r_offset + 1] & 0x80) == 0) return error.InvalidSignatureEncoding;
+    if ((sig[s_offset] & 0x80) != 0) return error.InvalidSignatureEncoding;
+    if (s_len > 1 and sig[s_offset] == 0x00 and (sig[s_offset + 1] & 0x80) == 0) return error.InvalidSignatureEncoding;
+
+    if (ctx.flags.low_s) {
+        const s_bytes = sig[s_offset .. s_offset + s_len];
+        if (std.mem.order(u8, trimLeadingZeroes(s_bytes), trimLeadingZeroes(&secp256k1_half_order_be)) == .gt) {
+            return error.HighS;
+        }
+    }
+}
+
+fn trimLeadingZeroes(bytes: []const u8) []const u8 {
+    var index: usize = 0;
+    while (index < bytes.len and bytes[index] == 0) : (index += 1) {}
+    return bytes[index..];
 }
 
 fn buildScriptCode(
@@ -1781,6 +1874,176 @@ test "engine verifies p2pkh end to end through checksig" {
         .previous_satoshis = 999,
         .flags = .{ .null_fail = true },
     }, unlocking_script, previous_locking_script));
+}
+
+test "engine treats malformed pubkeys as false unless strict pubkey policy is enabled" {
+    const allocator = std.testing.allocator;
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    };
+    const previous_locking_script = Script.init(&locking_script_bytes);
+
+    var tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x22} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = previous_locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const tx_signature = try @import("../transaction/templates/p2pkh_spend.zig").signInput(
+        allocator,
+        &tx,
+        0,
+        previous_locking_script,
+        1_000,
+        private_key,
+        @import("../transaction/templates/p2pkh_spend.zig").default_scope,
+    );
+    const checksig_bytes = try tx_signature.toChecksigFormat(allocator);
+    defer allocator.free(checksig_bytes);
+    const sig_push = try encodePushDataElement(allocator, checksig_bytes);
+    defer allocator.free(sig_push);
+    const pubkey_push = try encodePushDataElement(allocator, &public_key.bytes);
+    defer allocator.free(pubkey_push);
+
+    var malformed_unlocking = try allocator.alloc(u8, sig_push.len + pubkey_push.len);
+    defer allocator.free(malformed_unlocking);
+    @memcpy(malformed_unlocking[0..sig_push.len], sig_push);
+    @memcpy(malformed_unlocking[sig_push.len..], pubkey_push);
+    malformed_unlocking[sig_push.len + 1] = 0x05;
+
+    try std.testing.expect(!(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{ .strict_encoding = false, .strict_pubkey_encoding = false },
+    }, Script.init(malformed_unlocking), previous_locking_script)));
+
+    try std.testing.expectError(error.InvalidPublicKeyEncoding, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{ .strict_encoding = false, .strict_pubkey_encoding = true },
+    }, Script.init(malformed_unlocking), previous_locking_script));
+}
+
+test "engine treats malformed DER signatures as false unless DER policy is enabled" {
+    const allocator = std.testing.allocator;
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_CHECKSIG),
+    };
+    const previous_locking_script = Script.init(&locking_script_bytes);
+
+    var tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x23} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = previous_locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const tx_signature = try @import("../transaction/templates/p2pkh_spend.zig").signInput(
+        allocator,
+        &tx,
+        0,
+        previous_locking_script,
+        1_000,
+        private_key,
+        @import("../transaction/templates/p2pkh_spend.zig").default_scope,
+    );
+    const checksig_bytes = try tx_signature.toChecksigFormat(allocator);
+    defer allocator.free(checksig_bytes);
+    const sig_push = try encodePushDataElement(allocator, checksig_bytes);
+    defer allocator.free(sig_push);
+    const pubkey_push = try encodePushDataElement(allocator, &public_key.bytes);
+    defer allocator.free(pubkey_push);
+
+    var malformed_unlocking = try allocator.alloc(u8, sig_push.len + pubkey_push.len);
+    defer allocator.free(malformed_unlocking);
+    @memcpy(malformed_unlocking[0..sig_push.len], sig_push);
+    @memcpy(malformed_unlocking[sig_push.len..], pubkey_push);
+    malformed_unlocking[1] = 0x31;
+
+    try std.testing.expect(!(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{ .strict_encoding = false, .der_signatures = false },
+    }, Script.init(malformed_unlocking), previous_locking_script)));
+
+    try std.testing.expectError(error.InvalidSignatureEncoding, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+        .flags = .{ .strict_encoding = false, .der_signatures = true },
+    }, Script.init(malformed_unlocking), previous_locking_script));
+}
+
+test "engine can enforce low-S policy on DER signatures" {
+    const allocator = std.testing.allocator;
+    const high_s_der = [_]u8{
+        0x30, 0x25,
+        0x02, 0x01, 0x01,
+        0x02, 0x20,
+        0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d,
+        0xdf, 0xe9, 0x2f, 0x46, 0x68, 0x1b, 0x20, 0xa1,
+    };
+
+    try checkSignatureEncoding(.{
+        .allocator = allocator,
+        .flags = .{ .strict_encoding = false, .low_s = false },
+    }, &high_s_der);
+    try std.testing.expectError(error.HighS, checkSignatureEncoding(.{
+        .allocator = allocator,
+        .flags = .{ .strict_encoding = false, .low_s = true },
+    }, &high_s_der));
 }
 
 test "engine honors op_codeseparator in checksig subscript" {
