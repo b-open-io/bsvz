@@ -1,0 +1,877 @@
+const std = @import("std");
+const context = @import("context.zig");
+const crypto = @import("../crypto/lib.zig");
+const errors = @import("errors.zig");
+const hash = @import("../crypto/hash.zig");
+const num = @import("num.zig");
+const opcode = @import("opcode.zig");
+const parser = @import("parser.zig");
+const chunk = @import("chunk.zig");
+const Script = @import("script.zig").Script;
+const sighash = @import("../transaction/sighash.zig");
+
+pub const Error = errors.ScriptError || sighash.Error || num.Error || error{
+    OutOfMemory,
+};
+
+const ActiveScript = enum {
+    unlocking,
+    locking,
+};
+
+pub const ExecutionContext = context.ExecutionContext;
+pub const ExecutionFlags = context.ExecutionFlags;
+pub const ExecutionState = context.ExecutionState;
+pub const ExecutionResult = context.ExecutionResult;
+
+pub fn isTruthy(item: []const u8) bool {
+    if (item.len == 0) return false;
+
+    for (item, 0..) |byte, index| {
+        if (byte != 0) {
+            return !(index == item.len - 1 and byte == 0x80);
+        }
+    }
+
+    return false;
+}
+
+pub fn parseScript(allocator: std.mem.Allocator, bytes: []const u8) Error![]chunk.ScriptChunk {
+    return parser.parseAlloc(allocator, Script.init(bytes));
+}
+
+pub fn serializeScript(allocator: std.mem.Allocator, chunks: []const chunk.ScriptChunk) Error![]u8 {
+    return parser.serializeAlloc(allocator, chunks);
+}
+
+pub fn isPushOnly(script: Script) Error!bool {
+    return parser.isPushOnly(script);
+}
+
+pub fn executeScript(ctx: ExecutionContext, script: Script) Error!ExecutionResult {
+    var state: ExecutionState = .{};
+    errdefer state.deinit(ctx.allocator);
+
+    try executeIntoState(ctx, &state, .locking, script);
+    if (state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
+
+    return .{
+        .success = state.stack.items.len > 0 and isTruthy(state.stack.items[state.stack.items.len - 1]),
+        .state = state,
+    };
+}
+
+pub fn executeUnlockingScript(ctx: ExecutionContext, state: *ExecutionState, script: Script) Error!void {
+    try executeIntoState(ctx, state, .unlocking, script);
+}
+
+pub fn executeLockingScript(ctx: ExecutionContext, state: *ExecutionState, script: Script) Error!void {
+    try executeIntoState(ctx, state, .locking, script);
+}
+
+pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_script: Script) Error!bool {
+    var state: ExecutionState = .{};
+    defer state.deinit(ctx.allocator);
+
+    executeIntoState(ctx, &state, .unlocking, unlocking_script) catch |err| switch (err) {
+        error.VerifyFailed, error.ReturnEncountered => return false,
+        else => return err,
+    };
+    state.clearAltStack(ctx.allocator);
+    executeIntoState(ctx, &state, .locking, locking_script) catch |err| switch (err) {
+        error.VerifyFailed, error.ReturnEncountered => return false,
+        else => return err,
+    };
+
+    if (state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
+    if (state.stack.items.len == 0) return false;
+    return isTruthy(state.stack.items[state.stack.items.len - 1]);
+}
+
+fn executeIntoState(
+    ctx: ExecutionContext,
+    state: *ExecutionState,
+    active_script: ActiveScript,
+    script: Script,
+) Error!void {
+    var cursor: usize = 0;
+    state.last_code_separator = 0;
+
+    while (cursor < script.bytes.len) {
+        const byte = script.bytes[cursor];
+        cursor += 1;
+
+        if (byte >= 0x01 and byte <= 0x4b) {
+            if (shouldExecute(state)) {
+                if (script.bytes.len < cursor + byte) return error.InvalidPushData;
+                try pushCopy(ctx, state, script.bytes[cursor .. cursor + byte]);
+            } else if (script.bytes.len < cursor + byte) {
+                return error.InvalidPushData;
+            }
+            cursor += byte;
+            continue;
+        }
+
+        if (byte == @intFromEnum(opcode.Opcode.OP_0)) {
+            if (shouldExecute(state)) try pushBool(ctx, state, false);
+            continue;
+        }
+
+        if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA1)) {
+            const len = try readPushLength(u8, script.bytes, &cursor);
+            if (script.bytes.len < cursor + len) return error.InvalidPushData;
+            if (shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            cursor += len;
+            continue;
+        }
+
+        if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA2)) {
+            const len = try readPushLength(u16, script.bytes, &cursor);
+            if (script.bytes.len < cursor + len) return error.InvalidPushData;
+            if (shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            cursor += len;
+            continue;
+        }
+
+        if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA4)) {
+            const len = try readPushLength(u32, script.bytes, &cursor);
+            if (script.bytes.len < cursor + len) return error.InvalidPushData;
+            if (shouldExecute(state)) try pushCopy(ctx, state, script.bytes[cursor .. cursor + len]);
+            cursor += len;
+            continue;
+        }
+
+        const op = opcode.Opcode.fromByte(byte);
+        if (op.smallIntegerValue()) |small_int| {
+            if (shouldExecute(state)) try pushNum(ctx, state, small_int);
+            continue;
+        }
+
+        switch (op) {
+            .OP_IF, .OP_NOTIF => {
+                try countOp(ctx, state);
+                if (shouldExecute(state)) {
+                    const cond_bytes = try popOwned(state);
+                    defer ctx.allocator.free(cond_bytes);
+                    const cond = isTruthy(cond_bytes);
+                    try state.condition_stack.append(ctx.allocator, if (op == .OP_IF) cond else !cond);
+                } else {
+                    try state.condition_stack.append(ctx.allocator, false);
+                }
+                continue;
+            },
+            .OP_ELSE => {
+                if (state.condition_stack.items.len == 0) return error.UnexpectedElse;
+                const last_index = state.condition_stack.items.len - 1;
+                const parent_exec = if (last_index == 0) true else allTrue(state.condition_stack.items[0..last_index]);
+                state.condition_stack.items[last_index] = parent_exec and !state.condition_stack.items[last_index];
+                continue;
+            },
+            .OP_ENDIF => {
+                if (state.condition_stack.items.len == 0) return error.UnexpectedEndIf;
+                _ = state.condition_stack.pop();
+                continue;
+            },
+            else => {},
+        }
+
+        if (!shouldExecute(state)) continue;
+
+        switch (op) {
+            .OP_0, .OP_PUSHDATA1, .OP_PUSHDATA2, .OP_PUSHDATA4, .OP_1NEGATE, .OP_1, .OP_2, .OP_3, .OP_4, .OP_5, .OP_6, .OP_7, .OP_8, .OP_9, .OP_10, .OP_11, .OP_12, .OP_13, .OP_14, .OP_15, .OP_16, .OP_IF, .OP_NOTIF, .OP_ELSE, .OP_ENDIF => unreachable,
+            .OP_NOP => try countOp(ctx, state),
+            .OP_VERIFY => {
+                try countOp(ctx, state);
+                const value = try popOwned(state);
+                defer ctx.allocator.free(value);
+                if (!isTruthy(value)) return error.VerifyFailed;
+            },
+            .OP_RETURN => return error.ReturnEncountered,
+            .OP_CODESEPARATOR => {
+                try countOp(ctx, state);
+                if (active_script == .locking) state.last_code_separator = cursor;
+            },
+            .OP_TOALTSTACK => {
+                try countOp(ctx, state);
+                const item = try popOwned(state);
+                try state.alt_stack.append(ctx.allocator, item);
+                try checkStackSize(ctx, state);
+            },
+            .OP_FROMALTSTACK => {
+                try countOp(ctx, state);
+                if (state.alt_stack.items.len == 0) return error.AltStackUnderflow;
+                const item = state.alt_stack.pop() orelse unreachable;
+                try state.stack.append(ctx.allocator, item);
+                try checkStackSize(ctx, state);
+            },
+            .OP_2DROP => {
+                try countOp(ctx, state);
+                const a = try popOwned(state);
+                defer ctx.allocator.free(a);
+                const b = try popOwned(state);
+                defer ctx.allocator.free(b);
+            },
+            .OP_2DUP => {
+                try countOp(ctx, state);
+                const a = try peek(state, 1);
+                const b = try peek(state, 0);
+                try pushCopy(ctx, state, a);
+                try pushCopy(ctx, state, b);
+            },
+            .OP_3DUP => {
+                try countOp(ctx, state);
+                try pushCopy(ctx, state, try peek(state, 2));
+                try pushCopy(ctx, state, try peek(state, 1));
+                try pushCopy(ctx, state, try peek(state, 0));
+            },
+            .OP_2OVER => {
+                try countOp(ctx, state);
+                try pushCopy(ctx, state, try peek(state, 3));
+                try pushCopy(ctx, state, try peek(state, 2));
+            },
+            .OP_2ROT => {
+                try countOp(ctx, state);
+                if (state.stack.items.len < 6) return error.StackUnderflow;
+                const index = state.stack.items.len - 6;
+                const a = state.stack.orderedRemove(index);
+                const b = state.stack.orderedRemove(index);
+                try state.stack.append(ctx.allocator, a);
+                try state.stack.append(ctx.allocator, b);
+                try checkStackSize(ctx, state);
+            },
+            .OP_2SWAP => {
+                try countOp(ctx, state);
+                if (state.stack.items.len < 4) return error.StackUnderflow;
+                const len = state.stack.items.len;
+                const a = state.stack.items[len - 4];
+                const b = state.stack.items[len - 3];
+                const c = state.stack.items[len - 2];
+                const d = state.stack.items[len - 1];
+                state.stack.items[len - 4] = c;
+                state.stack.items[len - 3] = d;
+                state.stack.items[len - 2] = a;
+                state.stack.items[len - 1] = b;
+            },
+            .OP_IFDUP => {
+                try countOp(ctx, state);
+                const top = try peek(state, 0);
+                if (isTruthy(top)) try pushCopy(ctx, state, top);
+            },
+            .OP_DEPTH => {
+                try countOp(ctx, state);
+                try pushNum(ctx, state, @intCast(state.stack.items.len));
+            },
+            .OP_DROP => {
+                try countOp(ctx, state);
+                const value = try popOwned(state);
+                defer ctx.allocator.free(value);
+            },
+            .OP_DUP => {
+                try countOp(ctx, state);
+                try pushCopy(ctx, state, try peek(state, 0));
+            },
+            .OP_NIP => {
+                try countOp(ctx, state);
+                if (state.stack.items.len < 2) return error.StackUnderflow;
+                const value = state.stack.orderedRemove(state.stack.items.len - 2);
+                ctx.allocator.free(value);
+            },
+            .OP_OVER => {
+                try countOp(ctx, state);
+                try pushCopy(ctx, state, try peek(state, 1));
+            },
+            .OP_PICK => {
+                try countOp(ctx, state);
+                const n = try popIndex(ctx, state);
+                try pushCopy(ctx, state, try peek(state, n));
+            },
+            .OP_ROLL => {
+                try countOp(ctx, state);
+                const n = try popIndex(ctx, state);
+                const index = state.stack.items.len - 1 - n;
+                const item = state.stack.orderedRemove(index);
+                try state.stack.append(ctx.allocator, item);
+            },
+            .OP_ROT => {
+                try countOp(ctx, state);
+                if (state.stack.items.len < 3) return error.StackUnderflow;
+                const index = state.stack.items.len - 3;
+                const item = state.stack.orderedRemove(index);
+                try state.stack.append(ctx.allocator, item);
+            },
+            .OP_SWAP => {
+                try countOp(ctx, state);
+                if (state.stack.items.len < 2) return error.StackUnderflow;
+                const len = state.stack.items.len;
+                std.mem.swap([]u8, &state.stack.items[len - 1], &state.stack.items[len - 2]);
+            },
+            .OP_TUCK => {
+                try countOp(ctx, state);
+                if (state.stack.items.len < 2) return error.StackUnderflow;
+                const copy = try ctx.allocator.dupe(u8, state.stack.items[state.stack.items.len - 1]);
+                errdefer ctx.allocator.free(copy);
+                try state.stack.insert(ctx.allocator, state.stack.items.len - 1, copy);
+                try checkStackSize(ctx, state);
+            },
+            .OP_CAT => {
+                try countOp(ctx, state);
+                const right = try popOwned(state);
+                defer ctx.allocator.free(right);
+                const left = try popOwned(state);
+                defer ctx.allocator.free(left);
+                var out = try ctx.allocator.alloc(u8, left.len + right.len);
+                @memcpy(out[0..left.len], left);
+                @memcpy(out[left.len..], right);
+                try pushOwned(ctx, state, out);
+            },
+            .OP_SPLIT => {
+                try countOp(ctx, state);
+                const position = try popIndex(ctx, state);
+                const data = try popOwned(state);
+                defer ctx.allocator.free(data);
+                if (position > data.len) return error.InvalidSplitPosition;
+                try pushCopy(ctx, state, data[0..position]);
+                try pushCopy(ctx, state, data[position..]);
+            },
+            .OP_NUM2BIN => {
+                try countOp(ctx, state);
+                const size = try popIndex(ctx, state);
+                const value_bytes = try popOwned(state);
+                defer ctx.allocator.free(value_bytes);
+                const value = try num.ScriptNum.decode(value_bytes);
+                const encoded = try num.ScriptNum.num2bin(ctx.allocator, value, size);
+                try pushOwned(ctx, state, encoded);
+            },
+            .OP_BIN2NUM => {
+                try countOp(ctx, state);
+                const value_bytes = try popOwned(state);
+                defer ctx.allocator.free(value_bytes);
+                const value = try num.ScriptNum.bin2num(value_bytes);
+                const minimal = try num.ScriptNum.encode(ctx.allocator, value);
+                try pushOwned(ctx, state, minimal);
+            },
+            .OP_SIZE => {
+                try countOp(ctx, state);
+                try pushNum(ctx, state, @intCast((try peek(state, 0)).len));
+            },
+            .OP_INVERT => {
+                try countOp(ctx, state);
+                const data = try popOwned(state);
+                defer ctx.allocator.free(data);
+                var out = try ctx.allocator.alloc(u8, data.len);
+                for (data, 0..) |byte_value, index| out[index] = ~byte_value;
+                try pushOwned(ctx, state, out);
+            },
+            .OP_AND, .OP_OR, .OP_XOR => {
+                try countOp(ctx, state);
+                const right = try popOwned(state);
+                defer ctx.allocator.free(right);
+                const left = try popOwned(state);
+                defer ctx.allocator.free(left);
+                if (left.len != right.len) return error.InvalidOperandSize;
+                var out = try ctx.allocator.alloc(u8, left.len);
+                for (left, right, 0..) |left_byte, right_byte, index| {
+                    out[index] = switch (op) {
+                        .OP_AND => left_byte & right_byte,
+                        .OP_OR => left_byte | right_byte,
+                        .OP_XOR => left_byte ^ right_byte,
+                        else => unreachable,
+                    };
+                }
+                try pushOwned(ctx, state, out);
+            },
+            .OP_EQUAL => {
+                try countOp(ctx, state);
+                const right = try popOwned(state);
+                defer ctx.allocator.free(right);
+                const left = try popOwned(state);
+                defer ctx.allocator.free(left);
+                try pushBool(ctx, state, std.mem.eql(u8, left, right));
+            },
+            .OP_EQUALVERIFY => {
+                try countOp(ctx, state);
+                const right = try popOwned(state);
+                defer ctx.allocator.free(right);
+                const left = try popOwned(state);
+                defer ctx.allocator.free(left);
+                if (!std.mem.eql(u8, left, right)) return error.VerifyFailed;
+            },
+            .OP_1ADD, .OP_1SUB, .OP_NEGATE, .OP_ABS, .OP_NOT, .OP_0NOTEQUAL => {
+                try countOp(ctx, state);
+                const value = try popNum(ctx, state);
+                const out: i64 = switch (op) {
+                    .OP_1ADD => value + 1,
+                    .OP_1SUB => value - 1,
+                    .OP_NEGATE => -value,
+                    .OP_ABS => if (value < 0) -value else value,
+                    .OP_NOT => if (value == 0) 1 else 0,
+                    .OP_0NOTEQUAL => if (value != 0) 1 else 0,
+                    else => unreachable,
+                };
+                if (op == .OP_NOT or op == .OP_0NOTEQUAL) {
+                    try pushBool(ctx, state, out != 0);
+                } else {
+                    try pushNum(ctx, state, out);
+                }
+            },
+            .OP_ADD, .OP_SUB, .OP_MUL, .OP_DIV, .OP_MOD => {
+                try countOp(ctx, state);
+                const right = try popNum(ctx, state);
+                const left = try popNum(ctx, state);
+                const out = switch (op) {
+                    .OP_ADD => left + right,
+                    .OP_SUB => left - right,
+                    .OP_MUL => left * right,
+                    .OP_DIV => blk: {
+                        if (right == 0) return error.DivisionByZero;
+                        break :blk @divTrunc(left, right);
+                    },
+                    .OP_MOD => blk: {
+                        if (right == 0) return error.DivisionByZero;
+                        break :blk @mod(left, right);
+                    },
+                    else => unreachable,
+                };
+                try pushNum(ctx, state, out);
+            },
+            .OP_LSHIFT, .OP_RSHIFT => {
+                try countOp(ctx, state);
+                const shift = try popIndex(ctx, state);
+                const data = try popOwned(state);
+                defer ctx.allocator.free(data);
+                const out = try shiftBytes(ctx.allocator, data, shift, op == .OP_LSHIFT);
+                try pushOwned(ctx, state, out);
+            },
+            .OP_BOOLAND, .OP_BOOLOR => {
+                try countOp(ctx, state);
+                const right = try popNum(ctx, state);
+                const left = try popNum(ctx, state);
+                try pushBool(ctx, state, switch (op) {
+                    .OP_BOOLAND => left != 0 and right != 0,
+                    .OP_BOOLOR => left != 0 or right != 0,
+                    else => unreachable,
+                });
+            },
+            .OP_NUMEQUAL, .OP_NUMNOTEQUAL, .OP_LESSTHAN, .OP_GREATERTHAN, .OP_LESSTHANOREQUAL, .OP_GREATERTHANOREQUAL => {
+                try countOp(ctx, state);
+                const right = try popNum(ctx, state);
+                const left = try popNum(ctx, state);
+                try pushBool(ctx, state, switch (op) {
+                    .OP_NUMEQUAL => left == right,
+                    .OP_NUMNOTEQUAL => left != right,
+                    .OP_LESSTHAN => left < right,
+                    .OP_GREATERTHAN => left > right,
+                    .OP_LESSTHANOREQUAL => left <= right,
+                    .OP_GREATERTHANOREQUAL => left >= right,
+                    else => unreachable,
+                });
+            },
+            .OP_NUMEQUALVERIFY => {
+                try countOp(ctx, state);
+                const right = try popNum(ctx, state);
+                const left = try popNum(ctx, state);
+                if (left != right) return error.VerifyFailed;
+            },
+            .OP_MIN, .OP_MAX => {
+                try countOp(ctx, state);
+                const right = try popNum(ctx, state);
+                const left = try popNum(ctx, state);
+                try pushNum(ctx, state, switch (op) {
+                    .OP_MIN => @min(left, right),
+                    .OP_MAX => @max(left, right),
+                    else => unreachable,
+                });
+            },
+            .OP_WITHIN => {
+                try countOp(ctx, state);
+                const max = try popNum(ctx, state);
+                const min = try popNum(ctx, state);
+                const value = try popNum(ctx, state);
+                try pushBool(ctx, state, value >= min and value < max);
+            },
+            .OP_RIPEMD160, .OP_SHA1, .OP_SHA256, .OP_HASH160, .OP_HASH256 => {
+                try countOp(ctx, state);
+                const data = try popOwned(state);
+                defer ctx.allocator.free(data);
+                try pushOwned(ctx, state, try hashOp(ctx.allocator, op, data));
+            },
+            .OP_CHECKSIG, .OP_CHECKSIGVERIFY => {
+                try countOp(ctx, state);
+                const pubkey_bytes = try popOwned(state);
+                defer ctx.allocator.free(pubkey_bytes);
+                const sig_bytes = try popOwned(state);
+                defer ctx.allocator.free(sig_bytes);
+                const valid = try verifyChecksig(ctx, script, state.last_code_separator, sig_bytes, pubkey_bytes);
+                if (op == .OP_CHECKSIGVERIFY) {
+                    if (!valid) return error.VerifyFailed;
+                } else {
+                    try pushBool(ctx, state, valid);
+                }
+            },
+            .OP_CHECKMULTISIG, .OP_CHECKMULTISIGVERIFY => {
+                try countOp(ctx, state);
+                const valid = try verifyCheckmultisig(ctx, state, script);
+                if (op == .OP_CHECKMULTISIGVERIFY) {
+                    if (!valid) return error.VerifyFailed;
+                } else {
+                    try pushBool(ctx, state, valid);
+                }
+            },
+            _ => return error.UnknownOpcode,
+        }
+    }
+}
+
+fn readPushLength(comptime Int: type, bytes: []const u8, cursor: *usize) Error!usize {
+    if (bytes.len < cursor.* + @sizeOf(Int)) return error.InvalidPushData;
+    const value = std.mem.readInt(Int, bytes[cursor.*..][0..@sizeOf(Int)], .little);
+    cursor.* += @sizeOf(Int);
+    return std.math.cast(usize, value) orelse error.Overflow;
+}
+
+fn allTrue(values: []const bool) bool {
+    for (values) |value| {
+        if (!value) return false;
+    }
+    return true;
+}
+
+fn shouldExecute(state: *const ExecutionState) bool {
+    return allTrue(state.condition_stack.items);
+}
+
+fn countOp(ctx: ExecutionContext, state: *ExecutionState) Error!void {
+    state.ops_executed += 1;
+    if (state.ops_executed > ctx.flags.max_ops) return error.OpCountLimitExceeded;
+}
+
+fn checkStackSize(ctx: ExecutionContext, state: *ExecutionState) Error!void {
+    const depth = state.stack.items.len + state.alt_stack.items.len;
+    if (depth > ctx.flags.max_stack_items) return error.StackSizeLimitExceeded;
+    if (depth > state.max_stack_depth) state.max_stack_depth = depth;
+}
+
+fn pushOwned(ctx: ExecutionContext, state: *ExecutionState, item: []u8) Error!void {
+    errdefer ctx.allocator.free(item);
+    try state.stack.append(ctx.allocator, item);
+    try checkStackSize(ctx, state);
+}
+
+fn pushCopy(ctx: ExecutionContext, state: *ExecutionState, item: []const u8) Error!void {
+    const duped = try ctx.allocator.dupe(u8, item);
+    try pushOwned(ctx, state, duped);
+}
+
+fn pushBool(ctx: ExecutionContext, state: *ExecutionState, value: bool) Error!void {
+    const bytes = if (value) try ctx.allocator.dupe(u8, &[_]u8{0x01}) else try ctx.allocator.alloc(u8, 0);
+    try pushOwned(ctx, state, bytes);
+}
+
+fn pushNum(ctx: ExecutionContext, state: *ExecutionState, value: i64) Error!void {
+    const encoded = try num.ScriptNum.encode(ctx.allocator, value);
+    try pushOwned(ctx, state, encoded);
+}
+
+fn popOwned(state: *ExecutionState) Error![]u8 {
+    if (state.stack.items.len == 0) return error.StackUnderflow;
+    return state.stack.pop() orelse unreachable;
+}
+
+fn peek(state: *const ExecutionState, offset: usize) Error![]const u8 {
+    if (state.stack.items.len <= offset) return error.StackUnderflow;
+    return state.stack.items[state.stack.items.len - 1 - offset];
+}
+
+fn popNum(ctx: ExecutionContext, state: *ExecutionState) Error!i64 {
+    const value_bytes = try popOwned(state);
+    defer ctx.allocator.free(value_bytes);
+    return num.ScriptNum.decode(value_bytes);
+}
+
+fn popIndex(ctx: ExecutionContext, state: *ExecutionState) Error!usize {
+    const value = try popNum(ctx, state);
+    if (value < 0) return error.InvalidStackIndex;
+    return std.math.cast(usize, value) orelse error.Overflow;
+}
+
+fn shiftBytes(allocator: std.mem.Allocator, data: []const u8, shift: usize, left: bool) Error![]u8 {
+    var out = try allocator.alloc(u8, data.len);
+    @memset(out, 0);
+    if (data.len == 0 or shift == 0) {
+        @memcpy(out, data);
+        return out;
+    }
+
+    const byte_shift = shift / 8;
+    const bit_shift = shift % 8;
+
+    if (byte_shift >= data.len) return out;
+
+    if (left) {
+        for (out, 0..) |*dest, dest_index| {
+            const src_index = dest_index + byte_shift;
+            if (src_index >= data.len) continue;
+            var value: u16 = @as(u16, data[src_index]) << @intCast(bit_shift);
+            if (bit_shift != 0 and src_index + 1 < data.len) {
+                value |= @as(u16, data[src_index + 1]) >> @intCast(8 - bit_shift);
+            }
+            dest.* = @truncate(value & 0xff);
+        }
+    } else {
+        var dest_index: usize = 0;
+        while (dest_index < data.len) : (dest_index += 1) {
+            if (dest_index + byte_shift >= data.len) continue;
+            const src_index = dest_index + byte_shift;
+            var value: u16 = @as(u16, data[src_index]) >> @intCast(bit_shift);
+            if (bit_shift != 0 and src_index > 0) {
+                value |= (@as(u16, data[src_index - 1]) << @intCast(8 - bit_shift)) & 0xff;
+            }
+            out[dest_index] = @truncate(value & 0xff);
+        }
+    }
+
+    return out;
+}
+
+fn hashOp(allocator: std.mem.Allocator, op: opcode.Opcode, data: []const u8) Error![]u8 {
+    return switch (op) {
+        .OP_RIPEMD160 => try allocator.dupe(u8, &hash.ripemd160(data).bytes),
+        .OP_SHA1 => blk: {
+            var out: [20]u8 = undefined;
+            std.crypto.hash.Sha1.hash(data, &out, .{});
+            break :blk try allocator.dupe(u8, &out);
+        },
+        .OP_SHA256 => try allocator.dupe(u8, &hash.sha256(data).bytes),
+        .OP_HASH160 => try allocator.dupe(u8, &hash.hash160(data).bytes),
+        .OP_HASH256 => try allocator.dupe(u8, &hash.hash256(data).bytes),
+        else => unreachable,
+    };
+}
+
+fn verifyChecksig(
+    ctx: ExecutionContext,
+    current_script: Script,
+    last_code_separator: usize,
+    sig_bytes: []const u8,
+    pubkey_bytes: []const u8,
+) Error!bool {
+    const tx = ctx.tx orelse return error.MissingChecksigContext;
+    const previous_locking_script = ctx.previous_locking_script orelse return error.MissingChecksigContext;
+    _ = previous_locking_script;
+
+    const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch return error.InvalidSignatureEncoding;
+    const public_key = crypto.PublicKey.fromSec1(pubkey_bytes) catch return error.InvalidPublicKeyEncoding;
+
+    if (last_code_separator > current_script.bytes.len) return error.InvalidPushData;
+    const script_code = Script.init(current_script.bytes[last_code_separator..]);
+
+    const preimage = try sighash.formatPreimage(
+        ctx.allocator,
+        tx,
+        ctx.input_index,
+        script_code,
+        ctx.previous_satoshis,
+        tx_signature.sighash_type,
+    );
+    defer ctx.allocator.free(preimage);
+
+    return public_key.verifyHash256(preimage, tx_signature.der) catch return error.InvalidPublicKeyEncoding;
+}
+
+fn verifyCheckmultisig(
+    ctx: ExecutionContext,
+    state: *ExecutionState,
+    current_script: Script,
+) Error!bool {
+    const key_count = try popIndex(ctx, state);
+    if (key_count > 20) return error.InvalidMultisigKeyCount;
+
+    const pubkeys = try ctx.allocator.alloc([]u8, key_count);
+    defer ctx.allocator.free(pubkeys);
+    for (pubkeys) |*slot| {
+        slot.* = try popOwned(state);
+    }
+    defer {
+        for (pubkeys) |item| ctx.allocator.free(item);
+    }
+
+    const signature_count = try popIndex(ctx, state);
+    if (signature_count > key_count) return error.InvalidMultisigSignatureCount;
+
+    const signatures = try ctx.allocator.alloc([]u8, signature_count);
+    defer ctx.allocator.free(signatures);
+    for (signatures) |*slot| {
+        slot.* = try popOwned(state);
+    }
+    defer {
+        for (signatures) |item| ctx.allocator.free(item);
+    }
+
+    const dummy = try popOwned(state);
+    defer ctx.allocator.free(dummy);
+
+    var key_index: usize = 0;
+    for (signatures) |sig_bytes| {
+        var matched = false;
+        while (key_index < pubkeys.len) : (key_index += 1) {
+            if (try verifyChecksig(ctx, current_script, state.last_code_separator, sig_bytes, pubkeys[key_index])) {
+                matched = true;
+                key_index += 1;
+                break;
+            }
+        }
+        if (!matched) return false;
+    }
+
+    return true;
+}
+
+test "engine executes arithmetic and boolean flow" {
+    const allocator = std.testing.allocator;
+    const script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_ADD),
+        @intFromEnum(opcode.Opcode.OP_5),
+        @intFromEnum(opcode.Opcode.OP_NUMEQUAL),
+    });
+
+    var result = try executeScript(.{ .allocator = allocator }, script);
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.success);
+    try std.testing.expectEqual(@as(usize, 1), result.state.stack.items.len);
+    try std.testing.expect(isTruthy(result.state.stack.items[0]));
+}
+
+test "engine supports runar critical byte ops" {
+    const allocator = std.testing.allocator;
+    const script = Script.init(&[_]u8{
+        0x01,                                    0x2a,
+        @intFromEnum(opcode.Opcode.OP_1),        @intFromEnum(opcode.Opcode.OP_NUM2BIN),
+        @intFromEnum(opcode.Opcode.OP_SIZE),     @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_NUMEQUAL),
+    });
+
+    var result = try executeScript(.{ .allocator = allocator }, script);
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.success);
+}
+
+test "engine verifies p2pkh end to end through checksig" {
+    const allocator = std.testing.allocator;
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+    const pubkey_hash = crypto.hash.hash160(&public_key.bytes);
+    const previous_locking_script_bytes = @import("templates/p2pkh.zig").encode(pubkey_hash);
+    const previous_locking_script = Script.init(&previous_locking_script_bytes);
+
+    var tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x33} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = previous_locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const unlocking_script = try @import("../transaction/templates/p2pkh_spend.zig").signAndBuildUnlockingScript(
+        allocator,
+        &tx,
+        0,
+        previous_locking_script,
+        1_000,
+        private_key,
+        @import("../transaction/templates/p2pkh_spend.zig").default_scope,
+    );
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 1_000,
+    }, unlocking_script, previous_locking_script));
+
+    try std.testing.expect(!(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = previous_locking_script,
+        .previous_satoshis = 999,
+    }, unlocking_script, previous_locking_script)));
+}
+
+test "engine honors op_codeseparator in checksig subscript" {
+    const allocator = std.testing.allocator;
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+    const pubkey_hash = crypto.hash.hash160(&public_key.bytes);
+    const p2pkh_script = @import("templates/p2pkh.zig").encode(pubkey_hash);
+
+    var locking_script_bytes: [1 + p2pkh_script.len]u8 = undefined;
+    locking_script_bytes[0] = @intFromEnum(opcode.Opcode.OP_CODESEPARATOR);
+    @memcpy(locking_script_bytes[1..], &p2pkh_script);
+    const locking_script = Script.init(&locking_script_bytes);
+    const signing_subscript = Script.init(locking_script_bytes[1..]);
+
+    var tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x44} ** 32 },
+                    .index = 1,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 500,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const unlocking_script = try @import("../transaction/templates/p2pkh_spend.zig").signAndBuildUnlockingScript(
+        allocator,
+        &tx,
+        0,
+        signing_subscript,
+        700,
+        private_key,
+        @import("../transaction/templates/p2pkh_spend.zig").default_scope,
+    );
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 700,
+    }, unlocking_script, locking_script));
+}

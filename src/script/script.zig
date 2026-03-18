@@ -13,3 +13,6 @@ pub const Script = struct {
         return self.bytes.len == 0;
     }
 };
+
+pub const LockingScript = Script;
+pub const UnlockingScript = Script;

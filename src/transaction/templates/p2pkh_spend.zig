@@ -2,7 +2,6 @@ const std = @import("std");
 const crypto = @import("../../crypto/lib.zig");
 const Script = @import("../../script/script.zig").Script;
 const p2pkh = @import("../../script/templates/p2pkh.zig");
-const interpreter = @import("../../script/interpreter.zig");
 const sighash = @import("../sighash.zig");
 const Transaction = @import("../transaction.zig").Transaction;
 
@@ -172,6 +171,7 @@ test "p2pkh spend rejects sighash values that do not fit the checksig byte" {
 }
 
 test "p2pkh interpreter verifies the signed unlocking script end to end" {
+    const interpreter = @import("../../script/interpreter.zig");
     const allocator = std.testing.allocator;
     var key_bytes = [_]u8{0} ** 32;
     key_bytes[31] = 1;
