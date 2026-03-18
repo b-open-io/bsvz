@@ -216,6 +216,22 @@ test "go direct checksig rows: additional bip66 result shapes" {
         .flags = dersig_flags,
         .expected = .{ .err = error.InvalidSignatureEncoding },
     });
+
+    try harness.runCase(allocator, .{
+        .name = "bip66 example 6 without dersig",
+        .unlocking_hex = "51",
+        .locking_hex = locking_hex ++ "91",
+        .flags = relaxed_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "bip66 example 6 with dersig",
+        .unlocking_hex = "51",
+        .locking_hex = locking_hex ++ "91",
+        .flags = dersig_flags,
+        .expected = .{ .err = error.InvalidSignatureEncoding },
+    });
 }
 
 test "go direct checksig rows: padding-related dersig policy rows" {
@@ -377,6 +393,34 @@ test "go direct script rows: sighash policy gates" {
         .expected = .{ .err = error.InvalidSigHashType },
     });
 
+    try harness.runCase(allocator, .{
+        .name = "p2pk rejects invalid forkid under legacy strict policy",
+        .unlocking_hex = "4730440220368d68340dfbebf99d5ec87d77fba899763e466c0a7ab2fa0221fb868ab0f3ef0220266c1a52a8e5b7b597613b80cf53814d3925dfb6715dce712c8e7a25e63a044041",
+        .locking_hex =
+            "41"
+            ++ "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
+            ++ "ac",
+        .flags = legacy_strict,
+        .expected = .{ .err = error.IllegalForkId },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "p2pkh rejects invalid sighash type under legacy strict policy",
+        .unlocking_hex =
+            "4730440220647a83507454f15f85f7e24de6e70c9d7b1d4020c71d0e53f4412425487e1dde022015737290670b4ab17b6783697a88ddd581c2d9c9efe26a59ac213076fc67f53021"
+            ++ "41"
+            ++ "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
+        .locking_hex =
+            "76"
+            ++ "a9"
+            ++ "14"
+            ++ "91b24bf9f5288532960ac687abb035127b1d28a5"
+            ++ "88"
+            ++ "ac",
+        .flags = legacy_strict,
+        .expected = .{ .err = error.InvalidSigHashType },
+    });
+
     const checkmultisig_not_locking_hex =
         "51"
         ++ "21"
@@ -469,6 +513,26 @@ test "go direct checkmultisig rows: nullfail and nulldummy matrix" {
         .name = "20-of-20 not non-null der-compliant invalid signature with nullfail",
         .unlocking_hex = nonempty_sig_case.unlocking_hex,
         .locking_hex = nonempty_sig_case.locking_hex,
+        .flags = nullfail_flags,
+        .expected = .{ .err = error.NullFail },
+    });
+
+    const leading_nonempty_sig_case = try buildSyntheticCheckmultisigNotHexes(allocator, 0x00, 0);
+    defer allocator.free(leading_nonempty_sig_case.unlocking_hex);
+    defer allocator.free(leading_nonempty_sig_case.locking_hex);
+
+    try harness.runCase(allocator, .{
+        .name = "20-of-20 not leading non-null der-compliant invalid signature with dersig",
+        .unlocking_hex = leading_nonempty_sig_case.unlocking_hex,
+        .locking_hex = leading_nonempty_sig_case.locking_hex,
+        .flags = dersig_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "20-of-20 not leading non-null der-compliant invalid signature with nullfail",
+        .unlocking_hex = leading_nonempty_sig_case.unlocking_hex,
+        .locking_hex = leading_nonempty_sig_case.locking_hex,
         .flags = nullfail_flags,
         .expected = .{ .err = error.NullFail },
     });
@@ -838,5 +902,73 @@ test "go direct script rows: minimaldata multisig counts" {
         .locking_hex = checkmultisigverify_1,
         .flags = flags,
         .expected = .{ .err = error.MinimalData },
+    });
+}
+
+test "go direct script-pair rows: control flow cannot span scripts" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    try harness.runCase(allocator, .{
+        .name = "if endif cannot span unlocking and locking scripts",
+        .unlocking_hex = "5163",
+        .locking_hex = "5168",
+        .flags = flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "opening conditional in unlocking script remains unbalanced",
+        .unlocking_hex = "51630068",
+        .locking_hex = "5168",
+        .flags = flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "else branch cannot begin in unlocking script and end in locking script",
+        .unlocking_hex = "51670068",
+        .locking_hex = "51",
+        .flags = flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "notif branch cannot remain open across script boundary",
+        .unlocking_hex = "0064",
+        .locking_hex = "017b",
+        .flags = flags,
+        .expected = .{ .err = error.UnbalancedConditionals },
+    });
+}
+
+test "go direct script-pair rows: op_return seam behavior" {
+    const allocator = std.testing.allocator;
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis unlocking op_return is still an op_return error",
+        .unlocking_hex = "6a",
+        .locking_hex = "51",
+        .flags = bsvz.script.engine.ExecutionFlags.legacyReference(),
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis unlocking op_return can still satisfy a simple lock",
+        .unlocking_hex = "6a",
+        .locking_hex = "51",
+        .flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv(),
+        .expected = .{ .success = true },
+    });
+
+    var push_only_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+    push_only_flags.sig_push_only = true;
+
+    try harness.runCase(allocator, .{
+        .name = "sigpushonly rejects op_return in unlocking script after genesis",
+        .unlocking_hex = "6a",
+        .locking_hex = "51",
+        .flags = push_only_flags,
+        .expected = .{ .err = error.SigPushOnly },
     });
 }

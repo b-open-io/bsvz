@@ -178,7 +178,8 @@ pub fn isPushOnly(script: Script) Error!bool {
         cursor += 1;
         const op = Opcode.fromByte(opcode_byte);
 
-        if (updateConditionalDepth(op, &conditional_depth)) return true;
+        if (op == .OP_RETURN and conditional_depth == 0) return false;
+        _ = updateConditionalDepth(op, &conditional_depth);
 
         if (opcode_byte >= 0x01 and opcode_byte <= 0x4b) {
             if (script.bytes.len < cursor + opcode_byte) return error.InvalidPushData;
@@ -376,21 +377,21 @@ test "isPushOnly rejects non-push opcodes and malformed pushes" {
     try std.testing.expectError(error.InvalidPushData, isPushOnly(Script.init(&[_]u8{ 0x02, 0xaa })));
 }
 
-test "isPushOnly stops at top-level op_return like go-sdk parsing" {
-    try std.testing.expect(try isPushOnly(Script.init(&[_]u8{
+test "isPushOnly treats top-level op_return as non-push without parsing the tail" {
+    try std.testing.expect(!(try isPushOnly(Script.init(&[_]u8{
         @intFromEnum(Opcode.OP_RETURN),
         @intFromEnum(Opcode.OP_DUP),
         @intFromEnum(Opcode.OP_CODESEPARATOR),
         @intFromEnum(Opcode.OP_PUSHDATA1),
-    })));
+    }))));
 }
 
 test "isPushOnly ignores malformed pushdata tails after top-level op_return" {
-    try std.testing.expect(try isPushOnly(Script.init(&[_]u8{
+    try std.testing.expect(!(try isPushOnly(Script.init(&[_]u8{
         @intFromEnum(Opcode.OP_RETURN),
         @intFromEnum(Opcode.OP_PUSHDATA2),
         0x01,
-    })));
+    }))));
 }
 
 test "hasCodeSeparator detects separators and malformed pushdata" {

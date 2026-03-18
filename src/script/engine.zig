@@ -84,12 +84,15 @@ pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_sc
     if (ctx.flags.sig_push_only and !(try isPushOnly(unlocking_script))) return error.SigPushOnly;
 
     executeIntoState(ctx, &state, .unlocking, unlocking_script) catch |err| switch (err) {
-        error.VerifyFailed, error.ReturnEncountered => return false,
+        error.VerifyFailed => return false,
+        error.ReturnEncountered => if (ctx.flags.utxo_after_genesis) return false else return err,
         else => return err,
     };
+    if (state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
     state.clearAltStack(ctx.allocator);
     executeIntoState(ctx, &state, .locking, locking_script) catch |err| switch (err) {
-        error.VerifyFailed, error.ReturnEncountered => return false,
+        error.VerifyFailed => return false,
+        error.ReturnEncountered => if (ctx.flags.utxo_after_genesis) return false else return err,
         else => return err,
     };
 
@@ -194,16 +197,18 @@ fn executeIntoState(
                 continue;
             },
             .OP_ELSE => {
-                if (state.condition_stack.items.len == 0) return error.UnexpectedElse;
+                if (state.condition_stack.items.len == 0) return error.UnbalancedConditionals;
                 const last_index = state.condition_stack.items.len - 1;
-                if (state.else_seen_stack.items[last_index]) return error.UnexpectedElse;
+                if (state.else_seen_stack.items[last_index] and ctx.flags.utxo_after_genesis) {
+                    return error.UnbalancedConditionals;
+                }
                 const parent_exec = if (last_index == 0) true else allTrue(state.condition_stack.items[0..last_index]);
                 state.condition_stack.items[last_index] = parent_exec and !state.condition_stack.items[last_index];
                 state.else_seen_stack.items[last_index] = true;
                 continue;
             },
             .OP_ENDIF => {
-                if (state.condition_stack.items.len == 0) return error.UnexpectedEndIf;
+                if (state.condition_stack.items.len == 0) return error.UnbalancedConditionals;
                 _ = state.condition_stack.pop();
                 _ = state.else_seen_stack.pop();
                 continue;
@@ -1565,21 +1570,53 @@ test "engine executes runar-style dispatch branches" {
     try std.testing.expect(second_result.success);
 }
 
-test "engine rejects duplicate else in the same conditional block" {
+test "engine matches go multiple else legacy and post-genesis behavior" {
     const allocator = std.testing.allocator;
+    const multiple_else_false = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_IF),
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_ELSE),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_ELSE),
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+    });
 
-    try std.testing.expectError(error.UnexpectedElse, executeScript(.{
+    var legacy_false_result = try executeScript(.{
         .allocator = allocator,
-    }, Script.init(&[_]u8{
+        .flags = ExecutionFlags.legacyReference(),
+    }, multiple_else_false);
+    defer legacy_false_result.deinit(allocator);
+    try std.testing.expect(legacy_false_result.success);
+
+    try std.testing.expectError(error.UnbalancedConditionals, executeScript(.{
+        .allocator = allocator,
+        .flags = ExecutionFlags.postGenesisBsv(),
+    }, multiple_else_false));
+
+    const multiple_else_true = Script.init(&[_]u8{
         @intFromEnum(opcode.Opcode.OP_1),
         @intFromEnum(opcode.Opcode.OP_IF),
         @intFromEnum(opcode.Opcode.OP_1),
         @intFromEnum(opcode.Opcode.OP_ELSE),
-        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_0),
         @intFromEnum(opcode.Opcode.OP_ELSE),
         @intFromEnum(opcode.Opcode.OP_1),
         @intFromEnum(opcode.Opcode.OP_ENDIF),
-    })));
+    });
+
+    var legacy_true_result = try executeScript(.{
+        .allocator = allocator,
+        .flags = ExecutionFlags.legacyReference(),
+    }, multiple_else_true);
+    defer legacy_true_result.deinit(allocator);
+    try std.testing.expect(legacy_true_result.success);
+
+    try std.testing.expectError(error.UnbalancedConditionals, executeScript(.{
+        .allocator = allocator,
+        .flags = ExecutionFlags.postGenesisBsv(),
+    }, multiple_else_true));
 }
 
 test "engine supports skipped nested branches without executing side effects" {
@@ -3432,7 +3469,7 @@ test "engine matches the go-sdk nop/codeseparator sanity row" {
 test "engine surfaces malformed control flow and bounds errors" {
     const allocator = std.testing.allocator;
 
-    try std.testing.expectError(error.UnexpectedEndIf, executeScript(.{
+    try std.testing.expectError(error.UnbalancedConditionals, executeScript(.{
         .allocator = allocator,
     }, Script.init(&[_]u8{@intFromEnum(opcode.Opcode.OP_ENDIF)})));
 
