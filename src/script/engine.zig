@@ -1948,6 +1948,224 @@ test "engine checkmultisig errors on the first checked malformed signature under
     }, unlocking_script, locking_script));
 }
 
+test "engine checkmultisig ignores later hybrid pubkeys when an earlier key already satisfies the signature" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+    const std_public_key = try std.crypto.sign.ecdsa.EcdsaSecp256k1Sha256.PublicKey.fromSec1(&public_key.bytes);
+    const uncompressed = std_public_key.toUncompressedSec1();
+
+    var hybrid_pubkey = uncompressed;
+    hybrid_pubkey[0] = 0x06;
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        65,
+    } ++ hybrid_pubkey ++ [_]u8{
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x59} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 1_200,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const p2pkh_spend = @import("../transaction/templates/p2pkh_spend.zig");
+    const sig = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_500,
+        private_key,
+        p2pkh_spend.default_scope,
+    );
+    const unlocking_script = try buildMultisigUnlockingScript(allocator, &[_]crypto.TxSignature{sig});
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{
+            .strict_encoding = true,
+            .strict_pubkey_encoding = true,
+        },
+    }, unlocking_script, locking_script));
+}
+
+test "engine checkmultisig errors on the first checked hybrid pubkey under strict policy" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+    const std_public_key = try std.crypto.sign.ecdsa.EcdsaSecp256k1Sha256.PublicKey.fromSec1(&public_key.bytes);
+    const uncompressed = std_public_key.toUncompressedSec1();
+
+    var hybrid_pubkey = uncompressed;
+    hybrid_pubkey[0] = 0x06;
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        65,
+    } ++ hybrid_pubkey ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x5a} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 1_200,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const p2pkh_spend = @import("../transaction/templates/p2pkh_spend.zig");
+    const sig = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_500,
+        private_key,
+        p2pkh_spend.default_scope,
+    );
+    const unlocking_script = try buildMultisigUnlockingScript(allocator, &[_]crypto.TxSignature{sig});
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expectError(error.InvalidPublicKeyEncoding, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{
+            .strict_encoding = true,
+            .strict_pubkey_encoding = true,
+        },
+    }, unlocking_script, locking_script));
+}
+
+test "engine checkmultisig rejects illegal forkid under legacy strict policy" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const locking_script_bytes = [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    };
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x5b} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 1_200,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const tx_signature = try @import("../transaction/templates/p2pkh_spend.zig").signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_500,
+        private_key,
+        @intCast(sighash.SigHashType.forkid | sighash.SigHashType.all),
+    );
+    const checksig_bytes = try tx_signature.toChecksigFormat(allocator);
+    defer allocator.free(checksig_bytes);
+
+    var unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer unlocking_bytes.deinit(allocator);
+    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    const sig_push = try encodePushDataElement(allocator, checksig_bytes);
+    defer allocator.free(sig_push);
+    try unlocking_bytes.appendSlice(allocator, sig_push);
+    const unlocking_script = Script.init(try unlocking_bytes.toOwnedSlice(allocator));
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expectError(error.IllegalForkId, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = .{
+            .strict_encoding = true,
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+        },
+    }, unlocking_script, locking_script));
+}
+
 test "engine legacy checksig removes pushed signature copies from script code when legacy mode is enabled" {
     const allocator = std.testing.allocator;
 
