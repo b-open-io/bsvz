@@ -1,10 +1,12 @@
 const std = @import("std");
+const limits = @import("limits.zig");
 const Script = @import("script.zig").Script;
 const Transaction = @import("../transaction/transaction.zig").Transaction;
 
 pub const ExecutionFlags = struct {
     max_ops: usize = 500_000,
     max_stack_items: usize = 1_000,
+    max_script_size: usize = std.math.maxInt(i32),
     max_script_element_size: usize = std.math.maxInt(i32),
     max_script_number_length: usize = 750_000,
     utxo_after_genesis: bool = true,
@@ -21,6 +23,34 @@ pub const ExecutionFlags = struct {
     clean_stack: bool = false,
     minimal_data: bool = false,
     minimal_if: bool = false,
+
+    pub fn postGenesisBsv() ExecutionFlags {
+        return .{};
+    }
+
+    pub fn legacyReference() ExecutionFlags {
+        return .{
+            .max_ops = 500,
+            .max_script_size = limits.default_max_script_size,
+            .max_stack_items = 1_000,
+            .max_script_element_size = 520,
+            .max_script_number_length = 4,
+            .utxo_after_genesis = false,
+            .enable_reenabled_opcodes = true,
+            .enable_sighash_forkid = false,
+            .verify_bip143_sighash = false,
+            .strict_encoding = false,
+            .der_signatures = false,
+            .low_s = false,
+            .strict_pubkey_encoding = false,
+            .null_dummy = false,
+            .null_fail = false,
+            .sig_push_only = false,
+            .clean_stack = false,
+            .minimal_data = false,
+            .minimal_if = false,
+        };
+    }
 };
 
 pub const ExecutionContext = struct {
@@ -65,3 +95,22 @@ pub const ExecutionResult = struct {
         self.state.deinit(allocator);
     }
 };
+
+test "execution flag presets expose legacy and BSV policy envelopes" {
+    const legacy = ExecutionFlags.legacyReference();
+    try std.testing.expectEqual(@as(usize, 500), legacy.max_ops);
+    try std.testing.expectEqual(limits.default_max_script_size, legacy.max_script_size);
+    try std.testing.expectEqual(@as(usize, 520), legacy.max_script_element_size);
+    try std.testing.expectEqual(@as(usize, 4), legacy.max_script_number_length);
+    try std.testing.expect(!legacy.utxo_after_genesis);
+    try std.testing.expect(!legacy.enable_sighash_forkid);
+    try std.testing.expect(!legacy.verify_bip143_sighash);
+    try std.testing.expect(!legacy.strict_encoding);
+
+    const bsv = ExecutionFlags.postGenesisBsv();
+    try std.testing.expectEqual(std.math.maxInt(i32), bsv.max_script_size);
+    try std.testing.expect(bsv.utxo_after_genesis);
+    try std.testing.expect(bsv.enable_sighash_forkid);
+    try std.testing.expect(bsv.verify_bip143_sighash);
+    try std.testing.expect(bsv.strict_encoding);
+}

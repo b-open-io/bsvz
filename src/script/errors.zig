@@ -2,6 +2,7 @@ pub const ScriptError = error{
     Overflow,
     UnsupportedLockingScript,
     InvalidPushData,
+    ScriptTooBig,
     ElementTooBig,
     InvalidUnlockingScript,
     StackUnderflow,

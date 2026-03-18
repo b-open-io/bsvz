@@ -105,6 +105,8 @@ fn executeIntoState(
     active_script: ActiveScript,
     script: Script,
 ) Error!void {
+    try checkScriptSize(ctx, script);
+
     var cursor: usize = 0;
     var early_return_after_genesis = false;
     state.last_code_separator = 0;
@@ -633,6 +635,10 @@ fn ensureCanGrow(ctx: ExecutionContext, state: *const ExecutionState, extra_item
     const depth = state.stack.items.len + state.alt_stack.items.len;
     const next_depth = depth + extra_items;
     if (next_depth > ctx.flags.max_stack_items) return error.StackSizeLimitExceeded;
+}
+
+fn checkScriptSize(ctx: ExecutionContext, script: Script) Error!void {
+    if (script.bytes.len > ctx.flags.max_script_size) return error.ScriptTooBig;
 }
 
 fn pushOwned(ctx: ExecutionContext, state: *ExecutionState, item: []u8) Error!void {
@@ -1963,7 +1969,7 @@ test "engine checkmultisig errors on the first checked malformed signature under
 
     var unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
     defer unlocking_bytes.deinit(allocator);
-    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_1));
     const valid_push = try encodePushDataElement(allocator, valid_sig_bytes);
     defer allocator.free(valid_push);
     try unlocking_bytes.appendSlice(allocator, valid_push);
@@ -2030,7 +2036,7 @@ test "engine checkmultisig not turns a malformed signature into true without der
 
     var unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
     defer unlocking_bytes.deinit(allocator);
-    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_1));
     const invalid_push = try encodePushDataElement(allocator, &invalid_sig_bytes);
     defer allocator.free(invalid_push);
     try unlocking_bytes.appendSlice(allocator, invalid_push);
@@ -2169,7 +2175,7 @@ test "engine checkmultisig treats a malformed signature as false without dersig"
 
     var unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
     defer unlocking_bytes.deinit(allocator);
-    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_1));
     const invalid_push = try encodePushDataElement(allocator, &invalid_sig_bytes);
     defer allocator.free(invalid_push);
     try unlocking_bytes.appendSlice(allocator, invalid_push);
@@ -3121,6 +3127,153 @@ test "engine multisig nulldummy takes precedence over nullfail" {
     }, unlocking_script, locking_script));
 }
 
+test "engine checkmultisig not ignores nonzero dummy under nullfail when nulldummy is disabled" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const locking_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+        @intFromEnum(opcode.Opcode.OP_NOT),
+    });
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x94} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = .{ .bytes = &[_]u8{0x6a} },
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const unlocking_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_0),
+    });
+
+    var flags = ExecutionFlags.legacyReference();
+    flags.der_signatures = true;
+    flags.null_fail = true;
+    flags.null_dummy = false;
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_000,
+        .flags = flags,
+    }, unlocking_script, locking_script));
+
+    flags.null_dummy = true;
+    try std.testing.expectError(error.NullDummy, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_000,
+        .flags = flags,
+    }, unlocking_script, locking_script));
+}
+
+test "engine checkmultisig not reports nullfail before false but after nulldummy precedence" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try crypto.PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+
+    const locking_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        33,
+    } ++ public_key.bytes ++ [_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+        @intFromEnum(opcode.Opcode.OP_NOT),
+    });
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x95} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 900,
+                .locking_script = .{ .bytes = &[_]u8{0x6a} },
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const nonempty_invalid_signature = [_]u8{
+        0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01,
+        @intCast(@import("../transaction/templates/p2pkh_spend.zig").default_scope),
+    };
+
+    var unlocking_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer unlocking_bytes.deinit(allocator);
+    try unlocking_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_1));
+    const malformed_push = try encodePushDataElement(allocator, &nonempty_invalid_signature);
+    defer allocator.free(malformed_push);
+    try unlocking_bytes.appendSlice(allocator, malformed_push);
+    const unlocking_script = Script.init(try unlocking_bytes.toOwnedSlice(allocator));
+    defer allocator.free(unlocking_script.bytes);
+
+    var flags = ExecutionFlags.legacyReference();
+    flags.der_signatures = true;
+    flags.null_fail = true;
+    flags.null_dummy = false;
+
+    try std.testing.expectError(error.NullFail, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_000,
+        .flags = flags,
+    }, unlocking_script, locking_script));
+
+    flags.null_dummy = true;
+    try std.testing.expectError(error.NullDummy, verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_000,
+        .flags = flags,
+    }, unlocking_script, locking_script));
+}
+
 test "engine allows more than 20 multisig pubkeys after genesis" {
     const allocator = std.testing.allocator;
 
@@ -3357,6 +3510,15 @@ test "engine enforces op and stack limits" {
 
 test "engine enforces script element and script number length limits" {
     const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.ScriptTooBig, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .max_script_size = 2 },
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_1),
+    })));
 
     try std.testing.expectError(error.ElementTooBig, executeScript(.{
         .allocator = allocator,
@@ -3793,7 +3955,7 @@ test "engine checksig accepts a valid hybrid pubkey when strict encoding is disa
         .previous_satoshis = 1_000,
         .flags = .{
             .strict_encoding = true,
-            .strict_pubkey_encoding = true,
+            .strict_pubkey_encoding = false,
         },
     }, Script.init(unlocking), previous_locking_script));
 }
@@ -3878,7 +4040,7 @@ test "engine checksig not treats an invalid hybrid pubkey as false unless strict
         .previous_satoshis = 1_000,
         .flags = .{
             .strict_encoding = true,
-            .strict_pubkey_encoding = true,
+            .strict_pubkey_encoding = false,
         },
     }, Script.init(unlocking), previous_locking_script));
 }
