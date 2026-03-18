@@ -464,6 +464,88 @@ fn buildAuctionBidFixture(allocator: std.mem.Allocator) !std.json.Parsed(SpendFi
     });
 }
 
+fn buildAuctionCloseFixture(allocator: std.mem.Allocator, deadline: u64) !std.json.Parsed(SpendFixtureJson) {
+    const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "examples/ts/auction/Auction.runar.ts",
+    });
+    defer allocator.free(source_abs_rel);
+    try accessOrSkip(source_abs_rel);
+
+    const sdk_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "packages/runar-sdk/dist/index.js",
+    });
+    defer allocator.free(sdk_abs_rel);
+    try accessOrSkip(sdk_abs_rel);
+
+    const code = try std.fmt.allocPrint(allocator,
+        \\(async () => {{
+        \\  const fs = require('fs');
+        \\  const {{ compile }} = await import('./packages/runar-compiler/dist/index.js');
+        \\  const {{ RunarContract, MockProvider, LocalSigner }} = await import('./packages/runar-sdk/dist/index.js');
+        \\  const source = fs.readFileSync('examples/ts/auction/Auction.runar.ts', 'utf-8');
+        \\  const result = compile(source, {{ fileName: 'Auction.runar.ts' }});
+        \\  if (!result.artifact) {{
+        \\    console.error(JSON.stringify(result));
+        \\    process.exit(1);
+        \\  }}
+        \\  const provider = new MockProvider();
+        \\  const auctioneerSigner = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000001');
+        \\  const bidderSigner = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000002');
+        \\  const auctioneerAddress = await auctioneerSigner.getAddress();
+        \\  const auctioneerPubKey = await auctioneerSigner.getPublicKey();
+        \\  const bidderPubKey = await bidderSigner.getPublicKey();
+        \\  provider.addUtxo(auctioneerAddress, {{
+        \\    txid: 'de'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  }});
+        \\  const contract = new RunarContract(result.artifact, [
+        \\    auctioneerPubKey,
+        \\    bidderPubKey,
+        \\    100n,
+        \\    {d}n,
+        \\  ]);
+        \\  await contract.deploy(provider, auctioneerSigner, {{ satoshis: 50000 }});
+        \\  await contract.call('close', [null], provider, auctioneerSigner);
+        \\  const txs = provider.getBroadcastedTxs();
+        \\  process.stdout.write(JSON.stringify({{
+        \\    deploy_tx_hex: txs[0],
+        \\    call_tx_hex: txs[1],
+        \\  }}));
+        \\}})();
+    , .{deadline});
+    defer allocator.free(code);
+
+    const run_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "node", "-e", code },
+        .cwd = runar_root,
+        .max_output_bytes = 512 * 1024,
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.CurrentWorkingDirectoryUnlinked => return error.SkipZigTest,
+        else => return err,
+    };
+    defer allocator.free(run_result.stderr);
+    defer allocator.free(run_result.stdout);
+
+    switch (run_result.term) {
+        .Exited => |code_value| {
+            if (code_value != 0) {
+                std.log.err("auction close fixture build failed: {s}", .{run_result.stderr});
+                return error.RunarCompileFailed;
+            }
+        },
+        else => return error.RunarCompileFailed,
+    }
+
+    return std.json.parseFromSlice(SpendFixtureJson, allocator, run_result.stdout, .{
+        .allocate = .alloc_always,
+    });
+}
+
 fn buildAuctionTwoBidFixture(allocator: std.mem.Allocator) !std.json.Parsed(ThreeTxFixtureJson) {
     const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
         runar_root,
@@ -1185,6 +1267,30 @@ test "local runar auction bid spend verifies through bsvz" {
         fixture.value.deploy_tx_hex,
         fixture.value.call_tx_hex,
     ));
+}
+
+test "local runar auction close after deadline verifies through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildAuctionCloseFixture(allocator, 0);
+    defer fixture.deinit();
+
+    try std.testing.expect(try verifyFirstInputAgainstFirstOutput(
+        allocator,
+        fixture.value.deploy_tx_hex,
+        fixture.value.call_tx_hex,
+    ));
+}
+
+test "local runar auction close before deadline fails through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildAuctionCloseFixture(allocator, 1);
+    defer fixture.deinit();
+
+    try std.testing.expect(!(try verifyFirstInputAgainstFirstOutput(
+        allocator,
+        fixture.value.deploy_tx_hex,
+        fixture.value.call_tx_hex,
+    )));
 }
 
 test "local runar auction sequential bids verify through bsvz" {
