@@ -52,6 +52,36 @@ Current construction zones:
 - the script interpreter is now general enough for real progress, but it is not yet at full Go/TS SDK parity
 - native execution coverage for compiled Runar contracts is still in progress
 
+## Script Interpreter Coverage
+
+This is the current interpreter map for `bsvz.script`.
+
+| Area | Coverage | Notes |
+| --- | --- | --- |
+| Script bytes, chunks, parser, serializer | implemented | direct pushes, `PUSHDATA1/2/4`, chunk roundtrip, malformed pushdata rejection |
+| Push-only and script inspection helpers | implemented | `isPushOnly`, `hasCodeSeparator` |
+| Execution core | implemented | stack, altstack, condition stack, truthiness, op counting, stack limits |
+| Control flow | implemented | `IF`, `NOTIF`, `ELSE`, `ENDIF`, `VERIFY`, post-Genesis `OP_RETURN`, `CODESEPARATOR` |
+| Stack ops | broad coverage | includes `DUP`, `DROP`, `SWAP`, `ROT`, `ROLL`, `PICK`, `2DUP`, `2DROP`, `2OVER`, `2ROT`, `2SWAP`, `3DUP`, `IFDUP`, `TOALTSTACK`, `FROMALTSTACK` |
+| Byte/splice ops | broad coverage | `CAT`, `SPLIT`, `NUM2BIN`, `BIN2NUM`, `SIZE` |
+| Bitwise ops | implemented | `INVERT`, `AND`, `OR`, `XOR`, `LSHIFT`, `RSHIFT` |
+| Numeric and boolean ops | broad coverage | `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, comparisons, min/max, within, boolean logic |
+| Hash ops | implemented | `RIPEMD160`, `SHA1`, `SHA256`, `HASH160`, `HASH256` |
+| `ScriptNum` | implemented | small-or-big numeric core using Zig stdlib bigint for promoted values |
+| `CHECKSIG` | implemented | transaction-aware, BSV-only, legacy and ForkID paths, `CODESEPARATOR` handling |
+| `CHECKMULTISIG` | implemented | transaction-aware, post-Genesis behavior, `NULLDUMMY` / `NULLFAIL` policy coverage |
+| Policy flags | partial parity | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if` |
+| Go parity vectors | partial | many direct interpreter parity tests are in place, but not the full Go vector corpus |
+| Runar local acceptance | partial | broad real-contract coverage exists, but native execution parity is still expanding |
+| SPV / script-adjacent proof tooling | construction zone | not part of the interpreter core yet |
+
+BSV-specific scope rules:
+
+- supported: modern BSV script execution and post-Genesis behavior
+- not supported: SegWit, Taproot, and BTC witness semantics
+- not supported: P2SH as a modern BSV feature
+- not supported: BCH-specific script or transaction semantics
+
 Project direction:
 
 - BSV-only, not BTC-compatible
