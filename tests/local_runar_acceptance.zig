@@ -289,6 +289,87 @@ fn buildStatefulSignedCounterFixture(allocator: std.mem.Allocator) !std.json.Par
     });
 }
 
+fn buildCovenantVaultFixture(allocator: std.mem.Allocator) !std.json.Parsed(SpendFixtureJson) {
+    const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "examples/ts/covenant-vault/CovenantVault.runar.ts",
+    });
+    defer allocator.free(source_abs_rel);
+    try accessOrSkip(source_abs_rel);
+
+    const sdk_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "packages/runar-sdk/dist/index.js",
+    });
+    defer allocator.free(sdk_abs_rel);
+    try accessOrSkip(sdk_abs_rel);
+
+    const code =
+        \\(async () => {
+        \\  const fs = require('fs');
+        \\  const { compile } = await import('./packages/runar-compiler/dist/index.js');
+        \\  const { RunarContract, MockProvider, LocalSigner } = await import('./packages/runar-sdk/dist/index.js');
+        \\  const { Hash, Utils } = await import('@bsv/sdk');
+        \\  const source = fs.readFileSync('examples/ts/covenant-vault/CovenantVault.runar.ts', 'utf-8');
+        \\  const result = compile(source, { fileName: 'CovenantVault.runar.ts' });
+        \\  if (!result.artifact) {
+        \\    console.error(JSON.stringify(result));
+        \\    process.exit(1);
+        \\  }
+        \\  const provider = new MockProvider();
+        \\  const signer = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000001');
+        \\  const address = await signer.getAddress();
+        \\  const pubKeyHex = await signer.getPublicKey();
+        \\  const recipientSigner = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000002');
+        \\  const recipientPubKey = await recipientSigner.getPublicKey();
+        \\  const recipientPKH = Utils.toHex(Hash.hash160(Utils.toArray(recipientPubKey, 'hex')));
+        \\  provider.addUtxo(address, {
+        \\    txid: 'cc'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  const contract = new RunarContract(result.artifact, [pubKeyHex, recipientPKH, 1000n]);
+        \\  await contract.deploy(provider, signer, { satoshis: 50000 });
+        \\  const payoutScript = '76a914' + recipientPKH + '88ac';
+        \\  await contract.call('spend', [null, null], provider, signer, {
+        \\    terminalOutputs: [{ scriptHex: payoutScript, satoshis: 1000 }],
+        \\  });
+        \\  const txs = provider.getBroadcastedTxs();
+        \\  process.stdout.write(JSON.stringify({
+        \\    deploy_tx_hex: txs[0],
+        \\    call_tx_hex: txs[1],
+        \\  }));
+        \\})();
+    ;
+
+    const run_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "node", "-e", code },
+        .cwd = runar_root,
+        .max_output_bytes = 512 * 1024,
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.CurrentWorkingDirectoryUnlinked => return error.SkipZigTest,
+        else => return err,
+    };
+    defer allocator.free(run_result.stderr);
+    defer allocator.free(run_result.stdout);
+
+    switch (run_result.term) {
+        .Exited => |code_value| {
+            if (code_value != 0) {
+                std.log.err("covenant vault fixture build failed: {s}", .{run_result.stderr});
+                return error.RunarCompileFailed;
+            }
+        },
+        else => return error.RunarCompileFailed,
+    }
+
+    return std.json.parseFromSlice(SpendFixtureJson, allocator, run_result.stdout, .{
+        .allocate = .alloc_always,
+    });
+}
+
 fn verifyFirstInputAgainstFirstOutput(
     allocator: std.mem.Allocator,
     deploy_tx_hex: []const u8,
@@ -543,6 +624,18 @@ test "local runar stateful-counter increment spend verifies through bsvz" {
 test "local runar stateful signed reset spend verifies through bsvz" {
     const allocator = std.testing.allocator;
     const fixture = try buildStatefulSignedCounterFixture(allocator);
+    defer fixture.deinit();
+
+    try std.testing.expect(try verifyFirstInputAgainstFirstOutput(
+        allocator,
+        fixture.value.deploy_tx_hex,
+        fixture.value.call_tx_hex,
+    ));
+}
+
+test "local runar covenant vault spend verifies through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildCovenantVaultFixture(allocator);
     defer fixture.deinit();
 
     try std.testing.expect(try verifyFirstInputAgainstFirstOutput(
