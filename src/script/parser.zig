@@ -172,9 +172,13 @@ pub fn serializeAlloc(allocator: std.mem.Allocator, chunks: []const chunk.Script
 
 pub fn isPushOnly(script: Script) Error!bool {
     var cursor: usize = 0;
+    var conditional_depth: usize = 0;
     while (cursor < script.bytes.len) {
         const opcode_byte = script.bytes[cursor];
         cursor += 1;
+        const op = Opcode.fromByte(opcode_byte);
+
+        if (updateConditionalDepth(op, &conditional_depth)) return true;
 
         if (opcode_byte >= 0x01 and opcode_byte <= 0x4b) {
             if (script.bytes.len < cursor + opcode_byte) return error.InvalidPushData;
@@ -221,9 +225,13 @@ pub fn isPushOnly(script: Script) Error!bool {
 
 pub fn hasCodeSeparator(script: Script) Error!bool {
     var cursor: usize = 0;
+    var conditional_depth: usize = 0;
     while (cursor < script.bytes.len) {
         const opcode_byte = script.bytes[cursor];
         cursor += 1;
+        const op = Opcode.fromByte(opcode_byte);
+
+        if (updateConditionalDepth(op, &conditional_depth)) return false;
 
         if (opcode_byte >= 0x01 and opcode_byte <= 0x4b) {
             if (script.bytes.len < cursor + opcode_byte) return error.InvalidPushData;
@@ -329,6 +337,15 @@ test "isPushOnly rejects non-push opcodes and malformed pushes" {
     try std.testing.expectError(error.InvalidPushData, isPushOnly(Script.init(&[_]u8{ 0x02, 0xaa })));
 }
 
+test "isPushOnly stops at top-level op_return like go-sdk parsing" {
+    try std.testing.expect(try isPushOnly(Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_RETURN),
+        @intFromEnum(Opcode.OP_DUP),
+        @intFromEnum(Opcode.OP_CODESEPARATOR),
+        @intFromEnum(Opcode.OP_PUSHDATA1),
+    })));
+}
+
 test "hasCodeSeparator detects separators and malformed pushdata" {
     try std.testing.expect(try hasCodeSeparator(Script.init(&[_]u8{
         @intFromEnum(Opcode.OP_CODESEPARATOR),
@@ -336,6 +353,15 @@ test "hasCodeSeparator detects separators and malformed pushdata" {
     })));
     try std.testing.expect(!(try hasCodeSeparator(Script.init(&[_]u8{@intFromEnum(Opcode.OP_DUP)}))));
     try std.testing.expectError(error.InvalidPushData, hasCodeSeparator(Script.init(&[_]u8{ 0x02, 0xaa })));
+}
+
+test "hasCodeSeparator ignores trailing bytes after top-level op_return" {
+    try std.testing.expect(!(try hasCodeSeparator(Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_RETURN),
+        @intFromEnum(Opcode.OP_CODESEPARATOR),
+        @intFromEnum(Opcode.OP_DUP),
+        @intFromEnum(Opcode.OP_PUSHDATA1),
+    }))));
 }
 
 test "parser rejects malformed pushdata length prefixes" {
