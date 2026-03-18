@@ -14,6 +14,8 @@ pub const UnlockingScript = @import("script.zig").UnlockingScript;
 pub const ScriptNum = @import("num.zig").ScriptNum;
 pub const cat = bytes.cat;
 pub const substr = bytes.substr;
+pub const findStateSeparatorOpReturnOffset = bytes.findStateSeparatorOpReturnOffset;
+pub const executableCodePart = bytes.executableCodePart;
 
 pub const templates = struct {
     pub const p2pkh = @import("templates/p2pkh.zig");

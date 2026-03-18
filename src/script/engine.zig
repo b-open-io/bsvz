@@ -704,9 +704,9 @@ fn verifyChecksig(
     sig_bytes: []const u8,
     pubkey_bytes: []const u8,
 ) Error!bool {
-    _ = ctx.previous_locking_script orelse return error.MissingChecksigContext;
+    const signing_script = ctx.previous_locking_script orelse current_script;
 
-    const script_code = try buildScriptCode(ctx.allocator, current_script, last_code_separator, &[_][]const u8{sig_bytes});
+    const script_code = try buildScriptCode(ctx.allocator, signing_script, last_code_separator, &[_][]const u8{sig_bytes});
     defer ctx.allocator.free(script_code.bytes);
 
     return verifyChecksigWithScriptCode(ctx, script_code, sig_bytes, pubkey_bytes);
@@ -717,6 +717,8 @@ fn verifyCheckmultisig(
     state: *ExecutionState,
     current_script: Script,
 ) Error!bool {
+    const signing_script = ctx.previous_locking_script orelse current_script;
+
     const key_count = try popIndex(ctx, state);
     if (key_count > 20) return error.InvalidMultisigKeyCount;
 
@@ -745,7 +747,7 @@ fn verifyCheckmultisig(
     defer ctx.allocator.free(dummy);
     if (ctx.flags.strict_encoding and dummy.len != 0) return error.NullDummy;
 
-    const script_code = try buildScriptCode(ctx.allocator, current_script, state.last_code_separator, signatures);
+    const script_code = try buildScriptCode(ctx.allocator, signing_script, state.last_code_separator, signatures);
     defer ctx.allocator.free(script_code.bytes);
 
     var key_index: usize = 0;
