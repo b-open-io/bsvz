@@ -177,6 +177,27 @@ fn executeIntoState(
 
         if (!shouldExecute(state)) continue;
 
+        if (!ctx.flags.enable_reenabled_opcodes) {
+            switch (op) {
+                .OP_CAT,
+                .OP_SPLIT,
+                .OP_NUM2BIN,
+                .OP_BIN2NUM,
+                .OP_SIZE,
+                .OP_INVERT,
+                .OP_AND,
+                .OP_OR,
+                .OP_XOR,
+                .OP_MUL,
+                .OP_DIV,
+                .OP_MOD,
+                .OP_LSHIFT,
+                .OP_RSHIFT,
+                => return error.UnknownOpcode,
+                else => {},
+            }
+        }
+
         switch (op) {
             .OP_0, .OP_PUSHDATA1, .OP_PUSHDATA2, .OP_PUSHDATA4, .OP_1NEGATE, .OP_1, .OP_2, .OP_3, .OP_4, .OP_5, .OP_6, .OP_7, .OP_8, .OP_9, .OP_10, .OP_11, .OP_12, .OP_13, .OP_14, .OP_15, .OP_16, .OP_IF, .OP_NOTIF, .OP_ELSE, .OP_ENDIF => unreachable,
             .OP_NOP => try countOp(ctx, state),
@@ -308,10 +329,13 @@ fn executeIntoState(
             .OP_TUCK => {
                 try countOp(ctx, state);
                 if (state.stack.items.len < 2) return error.StackUnderflow;
+                try ensureCanGrow(ctx, state, 1);
                 const copy = try ctx.allocator.dupe(u8, state.stack.items[state.stack.items.len - 1]);
                 errdefer ctx.allocator.free(copy);
                 try state.stack.insert(ctx.allocator, state.stack.items.len - 1, copy);
-                try checkStackSize(ctx, state);
+                if (state.stack.items.len + state.alt_stack.items.len > state.max_stack_depth) {
+                    state.max_stack_depth = state.stack.items.len + state.alt_stack.items.len;
+                }
             },
             .OP_CAT => {
                 try countOp(ctx, state);
@@ -551,10 +575,18 @@ fn checkStackSize(ctx: ExecutionContext, state: *ExecutionState) Error!void {
     if (depth > state.max_stack_depth) state.max_stack_depth = depth;
 }
 
+fn ensureCanGrow(ctx: ExecutionContext, state: *const ExecutionState, extra_items: usize) Error!void {
+    const depth = state.stack.items.len + state.alt_stack.items.len;
+    const next_depth = depth + extra_items;
+    if (next_depth > ctx.flags.max_stack_items) return error.StackSizeLimitExceeded;
+}
+
 fn pushOwned(ctx: ExecutionContext, state: *ExecutionState, item: []u8) Error!void {
     errdefer ctx.allocator.free(item);
+    try ensureCanGrow(ctx, state, 1);
     try state.stack.append(ctx.allocator, item);
-    try checkStackSize(ctx, state);
+    const depth = state.stack.items.len + state.alt_stack.items.len;
+    if (depth > state.max_stack_depth) state.max_stack_depth = depth;
 }
 
 fn pushCopy(ctx: ExecutionContext, state: *ExecutionState, item: []const u8) Error!void {
@@ -726,6 +758,51 @@ fn verifyCheckmultisig(
     return true;
 }
 
+fn buildTwoOfTwoLockingScript(pubkey_a: crypto.PublicKey, pubkey_b: crypto.PublicKey) [71]u8 {
+    var out: [71]u8 = undefined;
+    out[0] = @intFromEnum(opcode.Opcode.OP_2);
+    out[1] = 33;
+    @memcpy(out[2..35], &pubkey_a.bytes);
+    out[35] = 33;
+    @memcpy(out[36..69], &pubkey_b.bytes);
+    out[69] = @intFromEnum(opcode.Opcode.OP_2);
+    out[70] = @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG);
+    return out;
+}
+
+fn buildMultisigUnlockingScript(
+    allocator: std.mem.Allocator,
+    signatures: []const crypto.TxSignature,
+) !Script {
+    var total_len: usize = 1;
+    var encoded_sigs: std.ArrayListUnmanaged([]u8) = .empty;
+    defer {
+        for (encoded_sigs.items) |encoded| allocator.free(encoded);
+        encoded_sigs.deinit(allocator);
+    }
+
+    for (signatures) |signature| {
+        const encoded = try signature.toChecksigFormat(allocator);
+        errdefer allocator.free(encoded);
+        try encoded_sigs.append(allocator, encoded);
+        total_len += 1 + encoded.len;
+    }
+
+    var bytes = try allocator.alloc(u8, total_len);
+    bytes[0] = @intFromEnum(opcode.Opcode.OP_0);
+
+    var cursor: usize = 1;
+    for (encoded_sigs.items) |encoded| {
+        if (encoded.len > 75) return error.InvalidPushData;
+        bytes[cursor] = @intCast(encoded.len);
+        cursor += 1;
+        @memcpy(bytes[cursor .. cursor + encoded.len], encoded);
+        cursor += encoded.len;
+    }
+
+    return Script.init(bytes);
+}
+
 test "engine executes arithmetic and boolean flow" {
     const allocator = std.testing.allocator;
     const script = Script.init(&[_]u8{
@@ -757,6 +834,223 @@ test "engine supports runar critical byte ops" {
     defer result.deinit(allocator);
 
     try std.testing.expect(result.success);
+}
+
+test "engine executes runar-style dispatch branches" {
+    const allocator = std.testing.allocator;
+    const select_first = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_DUP),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_NUMEQUAL),
+        @intFromEnum(opcode.Opcode.OP_IF),
+        @intFromEnum(opcode.Opcode.OP_DROP),
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_ELSE),
+        @intFromEnum(opcode.Opcode.OP_DROP),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_NUMEQUAL),
+    });
+
+    var first_result = try executeScript(.{ .allocator = allocator }, select_first);
+    defer first_result.deinit(allocator);
+    try std.testing.expect(first_result.success);
+
+    const select_second = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_DUP),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_NUMEQUAL),
+        @intFromEnum(opcode.Opcode.OP_IF),
+        @intFromEnum(opcode.Opcode.OP_DROP),
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_ELSE),
+        @intFromEnum(opcode.Opcode.OP_DROP),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_ENDIF),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_NUMEQUAL),
+    });
+
+    var second_result = try executeScript(.{ .allocator = allocator }, select_second);
+    defer second_result.deinit(allocator);
+    try std.testing.expect(second_result.success);
+}
+
+test "engine supports altstack and deep stack access opcodes" {
+    const allocator = std.testing.allocator;
+
+    const altstack_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_TOALTSTACK),
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_FROMALTSTACK),
+        @intFromEnum(opcode.Opcode.OP_ADD),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_NUMEQUAL),
+    });
+
+    var altstack_result = try executeScript(.{ .allocator = allocator }, altstack_script);
+    defer altstack_result.deinit(allocator);
+    try std.testing.expect(altstack_result.success);
+
+    const deep_stack_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_PICK),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_NUMEQUALVERIFY),
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_ROLL),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_NUMEQUAL),
+    });
+
+    var deep_stack_result = try executeScript(.{ .allocator = allocator }, deep_stack_script);
+    defer deep_stack_result.deinit(allocator);
+    try std.testing.expect(deep_stack_result.success);
+}
+
+test "engine verifies 2-of-2 checksig ordering with checkmultisig" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes_a = [_]u8{0} ** 32;
+    key_bytes_a[31] = 1;
+    var key_bytes_b = [_]u8{0} ** 32;
+    key_bytes_b[31] = 2;
+
+    const private_key_a = try crypto.PrivateKey.fromBytes(key_bytes_a);
+    const private_key_b = try crypto.PrivateKey.fromBytes(key_bytes_b);
+    const public_key_a = try private_key_a.publicKey();
+    const public_key_b = try private_key_b.publicKey();
+
+    const locking_script_bytes = buildTwoOfTwoLockingScript(public_key_a, public_key_b);
+    const locking_script = Script.init(&locking_script_bytes);
+
+    const tx = @import("../transaction/transaction.zig").Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x55} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]@import("../transaction/output.zig").Output{
+            .{
+                .satoshis = 1_200,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const p2pkh_spend = @import("../transaction/templates/p2pkh_spend.zig");
+    const sig_a = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_500,
+        private_key_a,
+        p2pkh_spend.default_scope,
+    );
+    const sig_b = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_500,
+        private_key_b,
+        p2pkh_spend.default_scope,
+    );
+
+    const unlocking_script = try buildMultisigUnlockingScript(allocator, &[_]crypto.TxSignature{ sig_a, sig_b });
+    defer allocator.free(unlocking_script.bytes);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+    }, unlocking_script, locking_script));
+
+    const wrong_unlocking_script = try buildMultisigUnlockingScript(allocator, &[_]crypto.TxSignature{ sig_b, sig_a });
+    defer allocator.free(wrong_unlocking_script.bytes);
+
+    try std.testing.expect(!(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+    }, wrong_unlocking_script, locking_script)));
+}
+
+test "engine surfaces malformed control flow and bounds errors" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.UnexpectedEndIf, executeScript(.{
+        .allocator = allocator,
+    }, Script.init(&[_]u8{@intFromEnum(opcode.Opcode.OP_ENDIF)})));
+
+    try std.testing.expectError(error.UnbalancedConditionals, executeScript(.{
+        .allocator = allocator,
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_IF),
+        @intFromEnum(opcode.Opcode.OP_1),
+    })));
+
+    try std.testing.expectError(error.InvalidSplitPosition, executeScript(.{
+        .allocator = allocator,
+    }, Script.init(&[_]u8{
+        0x02,                             0xaa,                                 0xbb,
+        @intFromEnum(opcode.Opcode.OP_3), @intFromEnum(opcode.Opcode.OP_SPLIT),
+    })));
+}
+
+test "engine enforces op and stack limits" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.OpCountLimitExceeded, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .max_ops = 1 },
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_DUP),
+        @intFromEnum(opcode.Opcode.OP_DUP),
+    })));
+
+    try std.testing.expectError(error.StackSizeLimitExceeded, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .max_stack_items = 2 },
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_1),
+    })));
+}
+
+test "engine can disable re-enabled BSV opcodes through flags" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.UnknownOpcode, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .enable_reenabled_opcodes = false },
+    }, Script.init(&[_]u8{
+        0x01,                               0xaa,
+        0x01,                               0xbb,
+        @intFromEnum(opcode.Opcode.OP_CAT),
+    })));
 }
 
 test "engine verifies p2pkh end to end through checksig" {

@@ -267,3 +267,12 @@ test "isPushOnly rejects non-push opcodes and malformed pushes" {
     try std.testing.expect(!(try isPushOnly(Script.init(&[_]u8{@intFromEnum(Opcode.OP_DUP)}))));
     try std.testing.expectError(error.InvalidPushData, isPushOnly(Script.init(&[_]u8{ 0x02, 0xaa })));
 }
+
+test "hasCodeSeparator detects separators and malformed pushdata" {
+    try std.testing.expect(try hasCodeSeparator(Script.init(&[_]u8{
+        @intFromEnum(Opcode.OP_CODESEPARATOR),
+        @intFromEnum(Opcode.OP_DUP),
+    })));
+    try std.testing.expect(!(try hasCodeSeparator(Script.init(&[_]u8{@intFromEnum(Opcode.OP_DUP)}))));
+    try std.testing.expectError(error.InvalidPushData, hasCodeSeparator(Script.init(&[_]u8{ 0x02, 0xaa })));
+}
