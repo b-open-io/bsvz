@@ -16,6 +16,8 @@ Non-goals for the first milestone:
 - full node functionality
 - full wallet product APIs
 - broad application-layer protocol coverage
+- HD wallet derivation (`bip32`, `bip39`, `bip44`)
+- SegWit, Taproot, and other post-fork BTC transaction formats
 
 ## Zig Version
 
@@ -30,7 +32,6 @@ Non-goals for the first milestone:
 - `bsvz.spv`
 - `bsvz.broadcast`
 - `bsvz.compat`
-- `bsvz.wallet_core`
 
 ## Status
 

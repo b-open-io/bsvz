@@ -6,6 +6,8 @@ pub const interpreter = @import("interpreter.zig");
 
 pub const Script = @import("script.zig").Script;
 pub const ScriptNum = @import("num.zig").ScriptNum;
+pub const cat = bytes.cat;
+pub const substr = bytes.substr;
 
 pub const templates = struct {
     pub const p2pkh = @import("templates/p2pkh.zig");
