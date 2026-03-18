@@ -1547,6 +1547,44 @@ test "go direct script rows: minimaldata not parity" {
     });
 }
 
+test "go direct script rows: bitwise or parity" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.strict_encoding = true;
+
+    try harness.runCase(allocator, .{
+        .name = "or with two equal byte vectors stays equal to the same vector",
+        .unlocking_hex = "020100020100",
+        .locking_hex = "8502010087",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "or with two one-byte scalars yields one-byte true",
+        .unlocking_hex = "5151",
+        .locking_hex = "855187",
+        .flags = flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "or with one stack item underflows",
+        .unlocking_hex = "00",
+        .locking_hex = "855087",
+        .flags = flags,
+        .expected = .{ .err = error.StackUnderflow },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "or with empty stack underflows",
+        .unlocking_hex = "",
+        .locking_hex = "855087",
+        .flags = flags,
+        .expected = .{ .err = error.StackUnderflow },
+    });
+}
+
 test "go direct script rows: size parity" {
     const allocator = std.testing.allocator;
     var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
