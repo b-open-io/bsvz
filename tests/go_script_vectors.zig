@@ -948,6 +948,62 @@ test "go direct script-pair rows: op_return seam behavior" {
     const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
 
     try harness.runCase(allocator, .{
+        .name = "post-genesis if return bad opcode endif is still ok when return is taken",
+        .unlocking_hex = "51",
+        .locking_hex = "63556aba68",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "legacy if return endif bad opcode tail is still bad opcode when branch is not taken",
+        .unlocking_hex = "00",
+        .locking_hex = "636a68ba",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.UnknownOpcode },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis if return endif bad opcode tail is still bad opcode when branch is not taken",
+        .unlocking_hex = "00",
+        .locking_hex = "636a68ba",
+        .flags = post_genesis_flags,
+        .expected = .{ .err = error.UnknownOpcode },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "pre-genesis taken if return endif followed by taken return still errors",
+        .unlocking_hex = "51",
+        .locking_hex = "63556a68556aba",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "post-genesis taken if return endif followed by taken return is still ok",
+        .unlocking_hex = "51",
+        .locking_hex = "63556a68556aba",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "legacy if return bad opcode endif tail is ok when branch is not taken",
+        .unlocking_hex = "00",
+        .locking_hex = "636a68ba55",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.UnknownOpcode },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "legacy taken if return bad opcode endif tail still errors",
+        .unlocking_hex = "51",
+        .locking_hex = "63556aba6855",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
         .name = "pre-genesis unlocking op_return is still an op_return error",
         .unlocking_hex = "6a",
         .locking_hex = "51",
