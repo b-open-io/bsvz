@@ -1742,6 +1742,49 @@ test "go direct script rows: minimaldata ignored in untaken branches" {
         .{ .row = 572, .name = "non-minimal pusdata4 is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "634e000000006851", .expected = .{ .success = true } },
         .{ .row = 573, .name = "1negate-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301816851", .expected = .{ .success = true } },
         .{ .row = 574, .name = "op_1-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301016851", .expected = .{ .success = true } },
+        .{ .row = 575, .name = "op_2-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301026851", .expected = .{ .success = true } },
+        .{ .row = 576, .name = "op_3-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301036851", .expected = .{ .success = true } },
+        .{ .row = 577, .name = "op_4-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301046851", .expected = .{ .success = true } },
+        .{ .row = 578, .name = "op_5-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301056851", .expected = .{ .success = true } },
+        .{ .row = 579, .name = "op_6-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301066851", .expected = .{ .success = true } },
+        .{ .row = 580, .name = "op_7-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301076851", .expected = .{ .success = true } },
+        .{ .row = 581, .name = "op_8-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301086851", .expected = .{ .success = true } },
+        .{ .row = 582, .name = "op_9-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301096851", .expected = .{ .success = true } },
+        .{ .row = 583, .name = "op_10-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "63010a6851", .expected = .{ .success = true } },
+        .{ .row = 584, .name = "op_11-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "63010b6851", .expected = .{ .success = true } },
+        .{ .row = 585, .name = "op_12-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "63010c6851", .expected = .{ .success = true } },
+        .{ .row = 586, .name = "op_13-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "63010d6851", .expected = .{ .success = true } },
+        .{ .row = 587, .name = "op_14-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "63010e6851", .expected = .{ .success = true } },
+        .{ .row = 588, .name = "op_15-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "63010f6851", .expected = .{ .success = true } },
+        .{ .row = 589, .name = "op_16-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301106851", .expected = .{ .success = true } },
+    });
+}
+
+test "go direct script rows: minimaldata non-minimal unlocking pushes can still satisfy a simple lock" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.minimal_data = true;
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 591, .name = "non-minimal zero push still satisfies simple lock", .unlocking_hex = "0100", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 592, .name = "negative zero push still satisfies simple lock", .unlocking_hex = "0180", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 593, .name = "non-minimal minus one push still satisfies simple lock", .unlocking_hex = "020180", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 594, .name = "non-minimal one push still satisfies simple lock", .unlocking_hex = "020100", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 595, .name = "non-minimal two push still satisfies simple lock", .unlocking_hex = "020200", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 596, .name = "non-minimal three push still satisfies simple lock", .unlocking_hex = "020300", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 597, .name = "non-minimal four push still satisfies simple lock", .unlocking_hex = "020400", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 598, .name = "non-minimal five push still satisfies simple lock", .unlocking_hex = "020500", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 599, .name = "non-minimal six push still satisfies simple lock", .unlocking_hex = "020600", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 600, .name = "non-minimal seven push still satisfies simple lock", .unlocking_hex = "020700", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 601, .name = "non-minimal eight push still satisfies simple lock", .unlocking_hex = "020800", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 602, .name = "non-minimal nine push still satisfies simple lock", .unlocking_hex = "020900", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 603, .name = "non-minimal ten push still satisfies simple lock", .unlocking_hex = "020a00", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 604, .name = "non-minimal eleven push still satisfies simple lock", .unlocking_hex = "020b00", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 605, .name = "non-minimal twelve push still satisfies simple lock", .unlocking_hex = "020c00", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 606, .name = "non-minimal thirteen push still satisfies simple lock", .unlocking_hex = "020d00", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 607, .name = "non-minimal fourteen push still satisfies simple lock", .unlocking_hex = "020e00", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 608, .name = "non-minimal fifteen push still satisfies simple lock", .unlocking_hex = "020f00", .locking_hex = "51", .expected = .{ .success = true } },
+        .{ .row = 609, .name = "non-minimal sixteen push still satisfies simple lock", .unlocking_hex = "021000", .locking_hex = "51", .expected = .{ .success = true } },
     });
 }
 
