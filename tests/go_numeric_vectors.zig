@@ -341,6 +341,47 @@ test "go numeric rows: exact modulo result rows" {
     });
 }
 
+test "go numeric rows: exact false and overflow result rows" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    const row1030_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ 0, 1 }, &[_]Opcode{});
+    defer allocator.free(row1030_unlocking);
+    const row1030_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{}, &[_]Opcode{.OP_EQUAL});
+    defer allocator.free(row1030_locking);
+
+    const row1031_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ 1, 1 }, &[_]Opcode{.OP_ADD});
+    defer allocator.free(row1031_unlocking);
+    const row1031_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{0}, &[_]Opcode{.OP_EQUAL});
+    defer allocator.free(row1031_locking);
+
+    const row1032_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ 11, 1, 12 }, &[_]Opcode{ .OP_ADD, .OP_SUB });
+    defer allocator.free(row1032_unlocking);
+    const row1032_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{11}, &[_]Opcode{.OP_EQUAL});
+    defer allocator.free(row1032_locking);
+
+    const row1033_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ 2_147_483_648, 0 }, &[_]Opcode{.OP_ADD});
+    defer allocator.free(row1033_unlocking);
+    const row1034_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ -2_147_483_648, 0 }, &[_]Opcode{.OP_ADD});
+    defer allocator.free(row1034_unlocking);
+    const row1035_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ 2_147_483_647 }, &[_]Opcode{ .OP_DUP, .OP_ADD });
+    defer allocator.free(row1035_unlocking);
+    const row1035_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{4_294_967_294}, &[_]Opcode{.OP_NUMEQUAL});
+    defer allocator.free(row1035_locking);
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 1028, .name = "go row 1028: equal not errors on empty stack", .unlocking_hex = "", .locking_hex = "8791", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1029, .name = "go row 1029: equal not errors on single stack item", .unlocking_hex = "00", .locking_hex = "8791", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1030, .name = "go row 1030: equal over zero and one yields false", .unlocking_hex = row1030_unlocking, .locking_hex = row1030_locking, .expected = .{ .success = false } },
+        .{ .row = 1031, .name = "go row 1031: add then equal against zero yields false", .unlocking_hex = row1031_unlocking, .locking_hex = row1031_locking, .expected = .{ .success = false } },
+        .{ .row = 1032, .name = "go row 1032: chained arithmetic equal against eleven yields false", .unlocking_hex = row1032_unlocking, .locking_hex = row1032_locking, .expected = .{ .success = false } },
+        .{ .row = 1033, .name = "go row 1033: add rejects positive five-byte operand", .unlocking_hex = row1033_unlocking, .locking_hex = "61", .expected = .{ .err = error.NumberTooBig } },
+        .{ .row = 1034, .name = "go row 1034: add rejects negative five-byte operand", .unlocking_hex = row1034_unlocking, .locking_hex = "61", .expected = .{ .err = error.NumberTooBig } },
+        .{ .row = 1035, .name = "go row 1035: numnotequal comparison over overflowing arithmetic errors first", .unlocking_hex = row1035_unlocking, .locking_hex = row1035_locking, .expected = .{ .err = error.NumberTooBig } },
+        .{ .row = 1036, .name = "go row 1036: not rejects non-numeric raw bytes", .unlocking_hex = "0661626364656691", .locking_hex = "0087", .expected = .{ .err = error.NumberTooBig } },
+    });
+}
+
 test "go numeric rows: exact stack underflow result rows" {
     const allocator = std.testing.allocator;
 
