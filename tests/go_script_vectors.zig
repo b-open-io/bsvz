@@ -146,6 +146,12 @@ fn scriptNumBytes(allocator: std.mem.Allocator, value: i64) ![]u8 {
     return bsvz.script.ScriptNum.encode(allocator, value);
 }
 
+fn repeatedHexByte(allocator: std.mem.Allocator, count: usize, byte: u8) ![]u8 {
+    const bytes = try allocator.alloc(u8, count);
+    @memset(bytes, byte);
+    return bytes;
+}
+
 fn runRows(
     allocator: std.mem.Allocator,
     flags: bsvz.script.engine.ExecutionFlags,
@@ -1736,6 +1742,65 @@ test "go direct script rows: minimaldata ignored in untaken branches" {
         .{ .row = 572, .name = "non-minimal pusdata4 is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "634e000000006851", .expected = .{ .success = true } },
         .{ .row = 573, .name = "1negate-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301816851", .expected = .{ .success = true } },
         .{ .row = 574, .name = "op_1-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301016851", .expected = .{ .success = true } },
+    });
+}
+
+test "go direct script rows: minimaldata push form boundaries" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.minimal_data = true;
+
+    const push72 = try repeatedHexByte(allocator, 72, 0x11);
+    defer allocator.free(push72);
+    const push255 = try repeatedHexByte(allocator, 255, 0x11);
+    defer allocator.free(push255);
+    const push256 = try repeatedHexByte(allocator, 256, 0x11);
+    defer allocator.free(push256);
+
+    var row1245_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer row1245_bytes.deinit(allocator);
+    try row1245_bytes.append(allocator, @intFromEnum(bsvz.script.opcode.Opcode.OP_PUSHDATA1));
+    try row1245_bytes.append(allocator, 0x48);
+    try row1245_bytes.appendSlice(allocator, push72);
+    try row1245_bytes.appendSlice(allocator, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_DROP),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+    });
+    const row1245_hex = try scriptHexFromBytes(allocator, row1245_bytes.items);
+    defer allocator.free(row1245_hex);
+
+    var row1246_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer row1246_bytes.deinit(allocator);
+    try row1246_bytes.append(allocator, @intFromEnum(bsvz.script.opcode.Opcode.OP_PUSHDATA2));
+    try row1246_bytes.appendSlice(allocator, &[_]u8{ 0xff, 0x00 });
+    try row1246_bytes.appendSlice(allocator, push255);
+    try row1246_bytes.appendSlice(allocator, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_DROP),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+    });
+    const row1246_hex = try scriptHexFromBytes(allocator, row1246_bytes.items);
+    defer allocator.free(row1246_hex);
+
+    var row1247_bytes: std.ArrayListUnmanaged(u8) = .empty;
+    defer row1247_bytes.deinit(allocator);
+    try row1247_bytes.append(allocator, @intFromEnum(bsvz.script.opcode.Opcode.OP_PUSHDATA4));
+    try row1247_bytes.appendSlice(allocator, &[_]u8{ 0x00, 0x01, 0x00, 0x00 });
+    try row1247_bytes.appendSlice(allocator, push256);
+    try row1247_bytes.appendSlice(allocator, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_DROP),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+    });
+    const row1247_hex = try scriptHexFromBytes(allocator, row1247_bytes.items);
+    defer allocator.free(row1247_hex);
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 1227, .name = "minimaldata rejects pusdata1 empty vector", .unlocking_hex = "", .locking_hex = "4c007551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1228, .name = "minimaldata rejects explicit -1 push", .unlocking_hex = "", .locking_hex = "01817551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1229, .name = "minimaldata rejects explicit 1 push", .unlocking_hex = "", .locking_hex = "01017551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1238, .name = "minimaldata rejects explicit 10 push", .unlocking_hex = "", .locking_hex = "010a7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1245, .name = "minimaldata rejects pusdata1 of 72 bytes", .unlocking_hex = "", .locking_hex = row1245_hex, .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1246, .name = "minimaldata rejects pusdata2 of 255 bytes", .unlocking_hex = "", .locking_hex = row1246_hex, .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1247, .name = "minimaldata rejects pusdata4 of 256 bytes", .unlocking_hex = "", .locking_hex = row1247_hex, .expected = .{ .err = error.MinimalData } },
     });
 }
 
