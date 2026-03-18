@@ -1614,11 +1614,42 @@ test "go direct script rows: size parity" {
     var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
     flags.strict_encoding = true;
 
+    const push_32767 = try scriptNumBytes(allocator, 32_767);
+    defer allocator.free(push_32767);
+    var script_num_2147483648 = try bsvz.script.ScriptNum.fromValue(allocator, @as(i128, 2_147_483_648));
+    defer script_num_2147483648.deinit();
+    const push_2147483648 = try script_num_2147483648.encodeOwned(allocator);
+    defer allocator.free(push_2147483648);
+    const push_neg_8388608 = try scriptNumBytes(allocator, -8_388_608);
+    defer allocator.free(push_neg_8388608);
+    const size_two_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{push_32767}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SIZE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_2),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(size_two_hex);
+    const size_five_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{push_2147483648}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SIZE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_5),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(size_five_hex);
+    const size_four_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{push_neg_8388608}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SIZE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_4),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(size_four_hex);
+
     try runRows(allocator, flags, &[_]GoRow{
         .{ .row = 185, .name = "size of one-byte canonical positive number is one", .unlocking_hex = "51", .locking_hex = "825187", .expected = .{ .success = true } },
         .{ .row = 186, .name = "size of one-byte minimally encoded 127 is one", .unlocking_hex = "017f", .locking_hex = "825187", .expected = .{ .success = true } },
+        .{ .row = 188, .name = "size of 32767 is two bytes", .unlocking_hex = size_two_hex, .locking_hex = "", .expected = .{ .success = true } },
         .{ .row = 197, .name = "size of one-byte minimally encoded negative one is one", .unlocking_hex = "4f", .locking_hex = "825187", .expected = .{ .success = true } },
         .{ .row = 198, .name = "size of one-byte minimally encoded negative 127 is one", .unlocking_hex = "01ff", .locking_hex = "825187", .expected = .{ .success = true } },
+        .{ .row = 193, .name = "size of 2147483648 is five bytes", .unlocking_hex = size_five_hex, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 203, .name = "size of -8388608 is four bytes", .unlocking_hex = size_four_hex, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 209, .name = "size of alphabet payload is twenty six", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = "82011a87", .expected = .{ .success = true } },
         .{ .row = 210, .name = "size does not consume its argument", .unlocking_hex = "012a", .locking_hex = "825188012a87", .expected = .{ .success = true } },
         .{ .row = 848, .name = "size with one stack item underflows at equal", .unlocking_hex = "61", .locking_hex = "8251", .expected = .{ .err = error.StackUnderflow } },
     });
@@ -1639,5 +1670,13 @@ test "go direct script rows: skipped disabled opcode exact row" {
         .locking_hex = "639668",
         .flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv(),
         .expected = .{ .success = true },
+    });
+}
+
+test "go direct script rows: small integer opcode push sanity" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 552, .name = "op_10 pushes byte 0x0a", .unlocking_hex = "010a", .locking_hex = "5a87", .expected = .{ .success = true } },
     });
 }
