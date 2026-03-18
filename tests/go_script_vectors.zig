@@ -1568,12 +1568,19 @@ test "go direct script rows: minimaldata not parity" {
     var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
     flags.minimal_data = true;
 
-    try harness.runCase(allocator, .{
-        .name = "not rejects non-minimally encoded operand",
-        .unlocking_hex = "03ff7f00",
-        .locking_hex = "917551",
-        .flags = flags,
-        .expected = .{ .err = error.MinimalData },
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 1249, .name = "not rejects explicit zero push", .unlocking_hex = "0100", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1250, .name = "not rejects non-minimal zero push", .unlocking_hex = "020000", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1251, .name = "not rejects negative zero push", .unlocking_hex = "0180", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1252, .name = "not rejects non-minimal negative zero push", .unlocking_hex = "020080", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1253, .name = "not rejects non-minimal positive five push", .unlocking_hex = "020500", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1254, .name = "not rejects longer non-minimal positive five push", .unlocking_hex = "03050000", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1255, .name = "not rejects non-minimal negative five push", .unlocking_hex = "020580", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1256, .name = "not rejects longer non-minimal negative five push", .unlocking_hex = "03050080", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1257, .name = "not rejects non-minimal ffff encoding", .unlocking_hex = "03ff7f80", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1258, .name = "not rejects non-minimal ff7f encoding", .unlocking_hex = "03ff7f00", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1259, .name = "not rejects non-minimal ffffff encoding", .unlocking_hex = "04ffff7f80", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1260, .name = "not rejects non-minimal ffff7f encoding", .unlocking_hex = "04ffff7f00", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
     });
 }
 
@@ -1860,5 +1867,49 @@ test "go direct script rows: boolean and minmaxwithin parity" {
         .{ .row = 645, .name = "within with non-minimal false lower bound still drops to true tail", .unlocking_hex = "0200000000", .locking_hex = "a57551", .expected = .{ .success = true } },
         .{ .row = 646, .name = "within with non-minimal false upper bound still drops to true tail", .unlocking_hex = "0002000000", .locking_hex = "a57551", .expected = .{ .success = true } },
         .{ .row = 647, .name = "within with non-minimal false tested value still drops to true tail", .unlocking_hex = "0000020000", .locking_hex = "a57551", .expected = .{ .success = true } },
+    });
+}
+
+test "go direct script rows: minimaldata numeric argument matrix" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.minimal_data = true;
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 1264, .name = "1add rejects non-minimal operand", .unlocking_hex = "020000", .locking_hex = "8b7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1265, .name = "1sub rejects non-minimal operand", .unlocking_hex = "020000", .locking_hex = "8c7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1266, .name = "negate rejects non-minimal operand", .unlocking_hex = "020000", .locking_hex = "8f7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1267, .name = "abs rejects non-minimal operand", .unlocking_hex = "020000", .locking_hex = "907551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1268, .name = "not exact minimaldata matrix row", .unlocking_hex = "020000", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1269, .name = "0notequal rejects non-minimal operand", .unlocking_hex = "020000", .locking_hex = "927551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1270, .name = "add rejects non-minimal left operand", .unlocking_hex = "00020000", .locking_hex = "937551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1271, .name = "add rejects non-minimal right operand", .unlocking_hex = "02000000", .locking_hex = "937551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1272, .name = "sub rejects non-minimal left operand", .unlocking_hex = "00020000", .locking_hex = "947551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1273, .name = "sub rejects non-minimal right operand", .unlocking_hex = "02000000", .locking_hex = "947551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1274, .name = "booland exact minimaldata matrix left row", .unlocking_hex = "00020000", .locking_hex = "9a7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1275, .name = "booland exact minimaldata matrix right row", .unlocking_hex = "02000000", .locking_hex = "9a7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1276, .name = "boolor exact minimaldata matrix left row", .unlocking_hex = "00020000", .locking_hex = "9b7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1277, .name = "boolor exact minimaldata matrix right row", .unlocking_hex = "02000000", .locking_hex = "9b7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1278, .name = "numequal rejects non-minimal left operand", .unlocking_hex = "00020000", .locking_hex = "9c7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1279, .name = "numequal rejects non-minimal right operand", .unlocking_hex = "02000051", .locking_hex = "9c7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1280, .name = "numequalverify rejects non-minimal left operand", .unlocking_hex = "00020000", .locking_hex = "9d51", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1281, .name = "numequalverify rejects non-minimal right operand", .unlocking_hex = "02000000", .locking_hex = "9d51", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1282, .name = "numnotequal rejects non-minimal left operand", .unlocking_hex = "00020000", .locking_hex = "9e7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1283, .name = "numnotequal rejects non-minimal right operand", .unlocking_hex = "02000000", .locking_hex = "9e7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1284, .name = "lessthan rejects non-minimal left operand", .unlocking_hex = "00020000", .locking_hex = "9f7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1285, .name = "lessthan rejects non-minimal right operand", .unlocking_hex = "02000000", .locking_hex = "9f7551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1286, .name = "greaterthan rejects non-minimal left operand", .unlocking_hex = "00020000", .locking_hex = "a07551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1287, .name = "greaterthan rejects non-minimal right operand", .unlocking_hex = "02000000", .locking_hex = "a07551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1288, .name = "lessthanorequal rejects non-minimal left operand", .unlocking_hex = "00020000", .locking_hex = "a17551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1289, .name = "lessthanorequal rejects non-minimal right operand", .unlocking_hex = "02000000", .locking_hex = "a17551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1290, .name = "greaterthanorequal rejects non-minimal left operand", .unlocking_hex = "00020000", .locking_hex = "a27551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1291, .name = "greaterthanorequal rejects non-minimal right operand", .unlocking_hex = "02000000", .locking_hex = "a27551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1292, .name = "min rejects non-minimal left operand", .unlocking_hex = "00020000", .locking_hex = "a37551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1293, .name = "min rejects non-minimal right operand", .unlocking_hex = "02000000", .locking_hex = "a37551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1294, .name = "max rejects non-minimal left operand", .unlocking_hex = "00020000", .locking_hex = "a47551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1295, .name = "max rejects non-minimal right operand", .unlocking_hex = "02000000", .locking_hex = "a47551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1296, .name = "within rejects non-minimal tested value", .unlocking_hex = "0200000000", .locking_hex = "a57551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1297, .name = "within rejects non-minimal lower bound", .unlocking_hex = "0002000000", .locking_hex = "a57551", .expected = .{ .err = error.MinimalData } },
+        .{ .row = 1298, .name = "within rejects non-minimal upper bound", .unlocking_hex = "0000020000", .locking_hex = "a57551", .expected = .{ .err = error.MinimalData } },
     });
 }
