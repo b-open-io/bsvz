@@ -318,6 +318,37 @@ test "go direct script rows: nested else else legacy versus post-genesis" {
     });
 }
 
+test "go direct script rows: malformed conditional sequences" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    try runRows(allocator, &[_]GoRow{
+        .{ .name = "row 874 endif alone is unbalanced", .unlocking_hex = "51", .locking_hex = "68", .flags = flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "row 875 else endif is unbalanced", .unlocking_hex = "51", .locking_hex = "6768", .flags = flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "row 876 endif else is unbalanced", .unlocking_hex = "51", .locking_hex = "6867", .flags = flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "row 877 endif else if is unbalanced", .unlocking_hex = "51", .locking_hex = "686763", .flags = flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "row 878 if else endif else is unbalanced", .unlocking_hex = "51", .locking_hex = "63676867", .flags = flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "row 879 if else endif else endif is unbalanced", .unlocking_hex = "51", .locking_hex = "6367686768", .flags = flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "row 880 if endif endif is unbalanced", .unlocking_hex = "51", .locking_hex = "636868", .flags = flags, .expected = .{ .err = error.UnbalancedConditionals } },
+    });
+}
+
+test "go direct script rows: compact exact return and seam rows" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try runRows(allocator, &[_]GoRow{
+        .{ .name = "row 883 dup if return endif errors before genesis", .unlocking_hex = "51", .locking_hex = "76636a68", .flags = legacy_flags, .expected = .{ .err = error.ReturnEncountered } },
+        .{ .name = "row 884 dup if return endif succeeds after genesis", .unlocking_hex = "51", .locking_hex = "76636a68", .flags = post_genesis_flags, .expected = .{ .success = true } },
+        .{ .name = "row 886 return data errors before genesis", .unlocking_hex = "51", .locking_hex = "6a0464617461", .flags = legacy_flags, .expected = .{ .err = error.ReturnEncountered } },
+        .{ .name = "row 887 return data succeeds after genesis", .unlocking_hex = "51", .locking_hex = "6a0464617461", .flags = post_genesis_flags, .expected = .{ .success = true } },
+        .{ .name = "row 888 if endif cannot span scripts before genesis", .unlocking_hex = "0063", .locking_hex = "6a6851", .flags = legacy_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "row 889 if endif cannot span scripts after genesis", .unlocking_hex = "0063", .locking_hex = "6a6851", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "row 890 untaken if return leaves final one after genesis", .unlocking_hex = "00", .locking_hex = "63006a6851", .flags = post_genesis_flags, .expected = .{ .success = true } },
+    });
+}
+
 test "go direct script rows: op_return in different branches" {
     const allocator = std.testing.allocator;
     const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();

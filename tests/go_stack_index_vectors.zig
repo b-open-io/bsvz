@@ -83,6 +83,9 @@ test "go direct script rows: stack-index invalid operations" {
         .{ .row = 1171, .name = "go row 1171: pick needs an index item even when the data stack is empty", .unlocking_hex = "00", .locking_hex = "7951", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1172, .name = "go row 1172: roll cannot address beyond the available four items", .unlocking_hex = "51515153", .locking_hex = "7a", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1173, .name = "go row 1173: roll needs an index item even when the data stack is empty", .unlocking_hex = "00", .locking_hex = "7a51", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 746, .name = "go row 746: dup underflows before depth can observe the stack", .unlocking_hex = "", .locking_hex = "76740087", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 756, .name = "go row 756: pick rejects a negative index", .unlocking_hex = "51", .locking_hex = "4f79", .expected = .{ .err = error.InvalidStackIndex } },
+        .{ .row = 761, .name = "go row 761: roll rejects a negative index", .unlocking_hex = "51", .locking_hex = "4f7a", .expected = .{ .err = error.InvalidStackIndex } },
     });
 }
 
@@ -104,6 +107,7 @@ test "go direct script rows: exact depth and stack-index false results" {
         .{ .row = 685, .name = "go row 685: unlocking nop leaves bare depth false", .unlocking_hex = "61", .locking_hex = "74", .expected = .{ .success = false } },
         .{ .row = 687, .name = "go row 687: double nop still leaves bare depth false", .unlocking_hex = "61", .locking_hex = "6174", .expected = .{ .success = false } },
         .{ .row = 688, .name = "go row 688: depth in unlocking script alone leaves false at the seam", .unlocking_hex = "74", .locking_hex = "", .expected = .{ .success = false } },
+        .{ .row = 753, .name = "go row 753: over depth equalverify leaves a false result on the wrong stack shape", .unlocking_hex = "0051", .locking_hex = "78745388", .expected = .{ .success = false } },
         .{ .row = 757, .name = "go row 757: pick zero fails equality against the wrong value", .unlocking_hex = "011301140115", .locking_hex = "0079011488745387", .expected = .{ .success = false } },
         .{ .row = 758, .name = "go row 758: pick one fails equality against the wrong value", .unlocking_hex = "011301140115", .locking_hex = "5179011588745387", .expected = .{ .success = false } },
         .{ .row = 759, .name = "go row 759: pick two fails equality against the wrong value", .unlocking_hex = "011301140115", .locking_hex = "5279011688745387", .expected = .{ .success = false } },

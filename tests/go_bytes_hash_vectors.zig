@@ -568,3 +568,32 @@ test "go direct script rows: exact hash vectors" {
         .{ .row = 341, .name = "go row 341: hash256 of alphabet with explicit pushdata1 digest push", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = hash256_eq_alpha, .expected = .{ .success = true } },
     });
 }
+
+test "go direct script rows: compact hash result shapes" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    const ripemd160_only = try builders.scriptHexForOps(allocator, &[_]bsvz.script.opcode.Opcode{.OP_RIPEMD160});
+    defer allocator.free(ripemd160_only);
+    const sha1_only = try builders.scriptHexForOps(allocator, &[_]bsvz.script.opcode.Opcode{.OP_SHA1});
+    defer allocator.free(sha1_only);
+    const sha256_only = try builders.scriptHexForOps(allocator, &[_]bsvz.script.opcode.Opcode{.OP_SHA256});
+    defer allocator.free(sha256_only);
+    const hash160_only = try builders.scriptHexForOps(allocator, &[_]bsvz.script.opcode.Opcode{.OP_HASH160});
+    defer allocator.free(hash160_only);
+    const hash256_only = try builders.scriptHexForOps(allocator, &[_]bsvz.script.opcode.Opcode{.OP_HASH256});
+    defer allocator.free(hash256_only);
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 466, .name = "go row 466: ripemd160 of raw zero leaves a truthy digest", .unlocking_hex = "00", .locking_hex = ripemd160_only, .expected = .{ .success = true } },
+        .{ .row = 467, .name = "go row 467: sha1 of raw zero leaves a truthy digest", .unlocking_hex = "00", .locking_hex = sha1_only, .expected = .{ .success = true } },
+        .{ .row = 468, .name = "go row 468: sha256 of raw zero leaves a truthy digest", .unlocking_hex = "00", .locking_hex = sha256_only, .expected = .{ .success = true } },
+        .{ .row = 469, .name = "go row 469: hash160 of raw zero leaves a truthy digest", .unlocking_hex = "00", .locking_hex = hash160_only, .expected = .{ .success = true } },
+        .{ .row = 470, .name = "go row 470: hash256 of raw zero leaves a truthy digest", .unlocking_hex = "00", .locking_hex = hash256_only, .expected = .{ .success = true } },
+        .{ .row = 1124, .name = "go row 1124: nop then ripemd160 underflows", .unlocking_hex = "61", .locking_hex = ripemd160_only, .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1125, .name = "go row 1125: nop then sha1 underflows", .unlocking_hex = "61", .locking_hex = sha1_only, .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1126, .name = "go row 1126: nop then sha256 underflows", .unlocking_hex = "61", .locking_hex = sha256_only, .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1127, .name = "go row 1127: nop then hash160 underflows", .unlocking_hex = "61", .locking_hex = hash160_only, .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 1128, .name = "go row 1128: nop then hash256 underflows", .unlocking_hex = "61", .locking_hex = hash256_only, .expected = .{ .err = error.StackUnderflow } },
+    });
+}
