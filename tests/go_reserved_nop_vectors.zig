@@ -532,14 +532,16 @@ test "go csv corpus rows map onto the legacy verify_check_sequence surface" {
 
     try runRows(allocator, &[_]GoRow{
         .{
-            .name = "go row 2345 csv fails on empty stack",
+            .row = 1421,
+            .name = "go row 1421 csv fails on empty stack",
             .unlocking_hex = "",
             .locking_hex = "b2",
             .flags = flags,
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .name = "go row 2346 csv fails on negative operand",
+            .row = 1422,
+            .name = "go row 1422 csv fails on negative operand",
             .unlocking_hex = "4f",
             .locking_hex = "b2",
             .flags = flags,
@@ -553,7 +555,8 @@ test "go csv corpus rows map onto the legacy verify_check_sequence surface" {
             .expected = .{ .err = error.MinimalData },
         },
         .{
-            .name = "go row 2348 csv fails when tx version is below two",
+            .row = 1424,
+            .name = "go row 1424 csv fails when tx version is below two",
             .unlocking_hex = "00",
             .locking_hex = "b2",
             .flags = flags,
@@ -561,13 +564,16 @@ test "go csv corpus rows map onto the legacy verify_check_sequence surface" {
             .tx_version = 1,
         },
         .{
-            .name = "go row 2349 csv fails when operand exceeds uint32",
+            .row = 1425,
+            .name = "go row 1425 csv fails when operand exceeds uint32",
             .unlocking_hex = "050000000001",
             .locking_hex = "b2",
             .flags = flags,
             .expected = .{ .err = error.UnsatisfiedLockTime },
+            .tx_version = 1,
         },
         .{
+            .row = 676,
             .name = "go row 676 csv passes when the disable flag bit is set in the operand",
             .unlocking_hex = "050000008000",
             .locking_hex = "b2",

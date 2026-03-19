@@ -479,7 +479,7 @@ fn executeIntoState(
             },
             .OP_NUM2BIN => {
                 try countOp(ctx, state);
-                const size = try popIndex(ctx, state);
+                const size = try popElementSize(ctx, state);
                 if (size > ctx.flags.max_script_element_size) return error.NumberTooBig;
                 const value_bytes = try popOwned(state);
                 defer ctx.allocator.free(value_bytes);
@@ -585,7 +585,7 @@ fn executeIntoState(
             },
             .OP_LSHIFT, .OP_RSHIFT => {
                 try countOp(ctx, state);
-                const shift = try popIndex(ctx, state);
+                const shift = try popShiftCount(ctx, state);
                 const data = try popOwned(state);
                 defer ctx.allocator.free(data);
                 const out = try shiftBytes(ctx.allocator, data, shift, op == .OP_LSHIFT);
@@ -818,6 +818,22 @@ fn popIndex(ctx: ExecutionContext, state: *ExecutionState) Error!usize {
     var value = try popNum(ctx, state);
     defer value.deinit();
     return value.toIndex() catch error.InvalidStackIndex;
+}
+
+fn popElementSize(ctx: ExecutionContext, state: *ExecutionState) Error!usize {
+    var value = try popNum(ctx, state);
+    defer value.deinit();
+    const signed = scriptNumToI64(&value) catch return error.NumberTooBig;
+    if (signed < 0) return error.NumberTooBig;
+    return std.math.cast(usize, signed) orelse error.NumberTooBig;
+}
+
+fn popShiftCount(ctx: ExecutionContext, state: *ExecutionState) Error!usize {
+    var value = try popNum(ctx, state);
+    defer value.deinit();
+    const signed = scriptNumToI64(&value) catch return error.InvalidStackIndex;
+    if (signed < 0) return error.NegativeShift;
+    return std.math.cast(usize, signed) orelse error.InvalidStackIndex;
 }
 
 fn scriptNumToI64(value: *const num.ScriptNum) Error!i64 {

@@ -4,6 +4,7 @@ const harness = @import("support/go_script_harness.zig");
 const builders = @import("support/go_vector_builders.zig");
 
 const GoRow = struct {
+    row: ?usize = null,
     name: []const u8,
     unlocking_hex: []const u8,
     locking_hex: []const u8,
@@ -544,7 +545,7 @@ test "go direct script rows: num2bin parity" {
         .{ .name = "go row 816: num2bin canonical negative forty-two at size ten materializes padding", .unlocking_hex = neg42_ten, .locking_hex = "", .expected = .{ .success = true } },
         .{ .name = "go row 817: num2bin allows pushing exactly five hundred twenty bytes", .unlocking_hex = neg42_520, .locking_hex = "", .expected = .{ .success = true } },
         .{ .name = "go row 818: num2bin rejects pushing five hundred twenty one bytes", .unlocking_hex = neg42_521, .locking_hex = "", .expected = .{ .err = error.NumberTooBig } },
-        .{ .name = "go row 819: num2bin rejects negative sizes", .unlocking_hex = neg42_neg3, .locking_hex = "", .expected = .{ .err = error.InvalidStackIndex } },
+        .{ .row = 819, .name = "go row 819: num2bin rejects negative sizes", .unlocking_hex = neg42_neg3, .locking_hex = "", .expected = .{ .err = error.NumberTooBig } },
         .{ .name = "go row 820: num2bin shrinks value bytes while preserving sign bit", .unlocking_hex = shrink_case, .locking_hex = "", .expected = .{ .success = true } },
         .{ .name = "go row 821: num2bin normalizes negative zero to empty at size zero", .unlocking_hex = neg_zero_zero, .locking_hex = "", .expected = .{ .success = true } },
         .{ .name = "go row 822: num2bin normalizes negative zero to zero bytes at larger size", .unlocking_hex = neg_zero_three, .locking_hex = "", .expected = .{ .success = true } },

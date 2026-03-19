@@ -103,6 +103,14 @@ fn parseFlags(text: []const u8) ?bsvz.script.engine.ExecutionFlags {
             flags.discourage_upgradable_nops = true;
             continue;
         }
+        if (std.mem.eql(u8, part, "CHECKLOCKTIMEVERIFY")) {
+            flags.verify_check_locktime = true;
+            continue;
+        }
+        if (std.mem.eql(u8, part, "CHECKSEQUENCEVERIFY")) {
+            flags.verify_check_sequence = true;
+            continue;
+        }
         if (std.mem.eql(u8, part, "SIGHASH_FORKID")) {
             flags.enable_sighash_forkid = true;
             flags.verify_bip143_sighash = true;
@@ -389,6 +397,7 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 620 },
         .{ .row = 621 },
         .{ .row = 622 },
+        .{ .row = 676 },
         .{ .row = 681 },
         .{ .row = 682 },
         .{ .row = 684 },
@@ -510,6 +519,7 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 863 },
         .{ .row = 864 },
         .{ .row = 897 },
+        .{ .row = 898 },
         .{ .row = 899 },
         .{ .row = 900 },
         .{ .row = 901 },
@@ -528,6 +538,7 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 914 },
         .{ .row = 915 },
         .{ .row = 917 },
+        .{ .row = 918 },
         .{ .row = 919 },
         .{ .row = 920 },
         .{ .row = 921 },
@@ -733,6 +744,10 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 1441 },
         .{ .row = 1442 },
         .{ .row = 1443 },
+        .{ .row = 1421 },
+        .{ .row = 1422 },
+        .{ .row = 1424 },
+        .{ .row = 1425 },
         .{ .row = 84 },
         .{ .row = 211 },
         .{ .row = 212 },
