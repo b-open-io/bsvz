@@ -281,8 +281,7 @@ pub const PublicKey = struct {
 
     pub fn verifyDigest256Relaxed(self: PublicKey, digest: [32]u8, der_bytes: []const u8) !bool {
         const public_key = EcdsaSha256d.PublicKey.fromSec1(&self.bytes) catch return error.InvalidEncoding;
-        const normalized = normalizeLaxDer(der_bytes) catch return error.InvalidEncoding;
-        const parsed_sig = EcdsaSha256d.Signature.fromDer(normalized) catch return error.InvalidEncoding;
+        const parsed_sig = parseLaxDerSignature(der_bytes) catch return error.InvalidEncoding;
         parsed_sig.verifyPrehashed(digest, public_key) catch |err| switch (err) {
             error.SignatureVerificationFailed => return false,
             else => return error.InvalidEncoding,
@@ -291,13 +290,54 @@ pub const PublicKey = struct {
     }
 };
 
-fn normalizeLaxDer(der_bytes: []const u8) Error![]const u8 {
-    if (der_bytes.len < 2) return error.InvalidEncoding;
+fn parseLaxDerSignature(der_bytes: []const u8) Error!EcdsaSha256d.Signature {
+    if (der_bytes.len < 8) return error.InvalidEncoding;
     if (der_bytes[0] != 0x30) return error.InvalidEncoding;
-    const total_len = 2 + der_bytes[1];
-    if (total_len > der_bytes.len) return error.InvalidEncoding;
+
+    const total_len = 2 + @as(usize, der_bytes[1]);
+    if (total_len > der_bytes.len or total_len < 8) return error.InvalidEncoding;
     if (total_len > signature.max_der_signature_len) return error.InvalidEncoding;
-    return der_bytes[0..total_len];
+
+    const der = der_bytes[0..total_len];
+    var index: usize = 2;
+
+    if (der[index] != 0x02) return error.InvalidEncoding;
+    index += 1;
+
+    const r_len = @as(usize, der[index]);
+    index += 1;
+    if (r_len == 0 or r_len > der.len - index - 3) return error.InvalidEncoding;
+    const r_bytes = der[index .. index + r_len];
+    index += r_len;
+
+    if (der[index] != 0x02) return error.InvalidEncoding;
+    index += 1;
+
+    const s_len = @as(usize, der[index]);
+    index += 1;
+    if (s_len == 0 or s_len > der.len - index) return error.InvalidEncoding;
+    const s_bytes = der[index .. index + s_len];
+    index += s_len;
+
+    if (index != der.len) return error.InvalidEncoding;
+
+    return .{
+        .r = try normalizeLaxDerInt(r_bytes),
+        .s = try normalizeLaxDerInt(s_bytes),
+    };
+}
+
+fn normalizeLaxDerInt(raw: []const u8) Error![32]u8 {
+    var bytes = raw;
+    while (bytes.len > 1 and bytes[0] == 0x00) {
+        bytes = bytes[1..];
+    }
+    if (bytes.len > 32) return error.InvalidEncoding;
+
+    var out = [_]u8{0} ** 32;
+    @memcpy(out[32 - bytes.len ..], bytes);
+    if (std.mem.allEqual(u8, &out, 0)) return error.InvalidEncoding;
+    return out;
 }
 
 test "public key derivation and sha256 sign/verify roundtrip" {
@@ -320,6 +360,16 @@ test "public key derivation and sha256 sign/verify roundtrip" {
 
     try std.testing.expect(try public_key.verifySha256("bsvz", sig));
     try std.testing.expect(!(try public_key.verifySha256("wrong", sig)));
+}
+
+test "relaxed der parser accepts padded integers that strict der rejects" {
+    const lax_sig =
+        "\x30\x44\x02\x20\x00\x5e\xce\x13\x35\xe7\xf6\x57\xa1\xa1\xf4\x76\xa7\xfb\x5b\xd9\x09\x64\xe8\xa0\x22\x48\x9f\x89\x06\x14\xa0\x4a\xcf\xb7\x34\xc0" ++
+        "\x02\x20\x6c\x12\xb8\x29\x4a\x65\x13\xc7\x71\x0e\x8c\x82\xd3\xc2\x3d\x75\xcd\xbf\xe8\x32\x00\xeb\x7e\xfb\x49\x57\x01\x95\x85\x01\xa5\xd6";
+
+    const parsed = try parseLaxDerSignature(lax_sig);
+    try std.testing.expect(!std.mem.allEqual(u8, &parsed.r, 0));
+    try std.testing.expect(!std.mem.allEqual(u8, &parsed.s, 0));
 }
 
 test "point sec1 and arithmetic wrap stdlib secp256k1" {

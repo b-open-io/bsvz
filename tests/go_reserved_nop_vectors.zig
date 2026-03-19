@@ -152,7 +152,6 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .expected = .{ .success = true },
         },
         .{
-            .row = 299,
             .name = "row 299 nop and locktime aliases preserve one in the permissive legacy profile",
             .unlocking_hex = "51",
             .locking_hex = "b0b1b2b3b4b5b6b7b8b95187",
@@ -160,7 +159,6 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .expected = .{ .success = true },
         },
         .{
-            .row = 300,
             .name = "row 300 nop and locktime aliases preserve the exact marker string in the permissive legacy profile",
             .unlocking_hex = "0b4e4f505f315f746f5f3130b0b1b2b3b4b5b6b7b8b9",
             .locking_hex = "0b4e4f505f315f746f5f313087",
@@ -182,7 +180,6 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .expected = .{ .success = true },
         },
         .{
-            .row = 473,
             .name = "go row 473 checkscript sees cltv alias as nop when verify flag is off",
             .unlocking_hex = "61",
             .locking_hex = "b151",
@@ -190,7 +187,6 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .expected = .{ .success = true },
         },
         .{
-            .row = 474,
             .name = "go row 474 checkscript sees csv alias as nop when verify flag is off",
             .unlocking_hex = "61",
             .locking_hex = "b251",
@@ -221,7 +217,6 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .expected = .{ .success = true },
         },
         .{
-            .row = 1037,
             .name = "row 1037 nop and locktime aliases compare false against two in the permissive legacy profile",
             .unlocking_hex = "51",
             .locking_hex = "b0b1b2b3b4b5b6b7b8b95287",
@@ -229,7 +224,6 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .expected = .{ .success = false },
         },
         .{
-            .row = 1038,
             .name = "row 1038 nop and locktime aliases compare false against a different marker string",
             .unlocking_hex = "0b4e4f505f315f746f5f3130b0b1b2b3b4b5b6b7b8b9",
             .locking_hex = "0b4e4f505f315f746f5f313187",
@@ -237,7 +231,6 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .expected = .{ .success = false },
         },
         .{
-            .row = 1041,
             .name = "row 1041 cltv is discouraged when discourage upgradable nops is enabled",
             .unlocking_hex = "51",
             .locking_hex = "b1",
@@ -249,7 +242,6 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .expected = .{ .err = error.DiscourageUpgradableNops },
         },
         .{
-            .row = 1042,
             .name = "row 1042 csv is discouraged when discourage upgradable nops is enabled",
             .unlocking_hex = "51",
             .locking_hex = "b2",

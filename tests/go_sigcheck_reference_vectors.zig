@@ -146,3 +146,102 @@ test "filtered go sigcheck reference rows execute through bsvz" {
     std.debug.print("filtered go sigcheck rows executed={}, skipped={}\n", .{ executed, skipped });
     try std.testing.expect(executed >= 25);
 }
+
+test "exact go sigcheck reference rows execute through bsvz" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    const ExactRow = struct {
+        row: usize,
+        name: []const u8,
+        unlocking_asm: []const u8,
+        locking_asm: []const u8,
+        flags: bsvz.script.engine.ExecutionFlags,
+        expected: harness.Expectation,
+    };
+
+    const rows = [_]ExactRow{
+        .{
+            .row = 1341,
+            .name = "row 1341 p2pk not with bad sig too much r padding but no dersig",
+            .unlocking_asm = "0x47 0x30440220005ece1335e7f757a1a1f476a7fb5bd90964e8a022489f890614a04acfb734c002206c12b8294a6513c7710e8c82d3c23d75cdbfe83200eb7efb495701958501a5d601",
+            .locking_asm = "0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 CHECKSIG NOT",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1343,
+            .name = "row 1343 p2pk not with too much r padding but no dersig",
+            .unlocking_asm = "0x47 0x30440220005ece1335e7f657a1a1f476a7fb5bd90964e8a022489f890614a04acfb734c002206c12b8294a6513c7710e8c82d3c23d75cdbfe83200eb7efb495701958501a5d601",
+            .locking_asm = "0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 CHECKSIG NOT",
+            .flags = flags,
+            .expected = .{ .success = false },
+        },
+        .{
+            .row = 1374,
+            .name = "row 1374 p2pk with high s but no low_s",
+            .unlocking_asm = "0x48 0x304502203e4516da7253cf068effec6b95c41221c0cf3a8e6ccb8cbf1725b562e9afde2c022100ab1e3da73d67e32045a20e0b999e049978ea8d6ee5480d485fcf2ce0d03b2ef001",
+            .locking_asm = "0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 CHECKSIG",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1376,
+            .name = "row 1376 p2pk with hybrid pubkey but no strictenc",
+            .unlocking_asm = "0x47 0x3044022057292e2d4dfe775becdd0a9e6547997c728cdf35390f6a017da56d654d374e4902206b643be2fc53763b4e284845bfea2c597d2dc7759941dce937636c9d341b71ed01",
+            .locking_asm = "0x41 0x0679be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8 CHECKSIG",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1378,
+            .name = "row 1378 p2pk not with hybrid pubkey but no strictenc",
+            .unlocking_asm = "0x47 0x30440220035d554e3153c14950c9993f41c496607a8e24093db0595be7bf875cf64fcf1f02204731c8c4e5daf15e706cec19cdd8f2c5b1d05490e11dab8465ed426569b6e92101",
+            .locking_asm = "0x41 0x0679be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8 CHECKSIG NOT",
+            .flags = flags,
+            .expected = .{ .success = false },
+        },
+        .{
+            .row = 1380,
+            .name = "row 1380 p2pk not with invalid hybrid pubkey but no strictenc",
+            .unlocking_asm = "0x47 0x30440220035d554e3153c04950c9993f41c496607a8e24093db0595be7bf875cf64fcf1f02204731c8c4e5daf15e706cec19cdd8f2c5b1d05490e11dab8465ed426569b6e92101",
+            .locking_asm = "0x41 0x0679be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8 CHECKSIG NOT",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1385,
+            .name = "row 1385 p2pk with undefined hashtype but no strictenc",
+            .unlocking_asm = "0x47 0x304402206177d513ec2cda444c021a1f4f656fc4c72ba108ae063e157eb86dc3575784940220666fc66702815d0e5413bb9b1df22aed44f5f1efb8b99d41dd5dc9a5be6d205205",
+            .locking_asm = "0x41 0x048282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f5150811f8a8098557dfe45e8256e830b60ace62d613ac2f7b17bed31b6eaff6e26caf CHECKSIG",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1387,
+            .name = "row 1387 p2pkh with invalid sighashtype but no strictenc",
+            .unlocking_asm = "0x47 0x30440220647a83507454f15f85f7e24de6e70c9d7b1d4020c71d0e53f4412425487e1dde022015737290670b4ab17b6783697a88ddd581c2d9c9efe26a59ac213076fc67f53021 0x41 0x0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
+            .locking_asm = "DUP HASH160 0x14 0x91b24bf9f5288532960ac687abb035127b1d28a5 EQUALVERIFY CHECKSIG",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1391,
+            .name = "row 1391 p2pk not with invalid sig and undefined hashtype but no strictenc",
+            .unlocking_asm = "0x47 0x304402207409b5b320296e5e2136a7b281a7f803028ca4ca44e2b83eebd46932677725de02202d4eea1c8d3c98e6f42614f54764e6e5e6542e213eb4d079737e9a8b6e9812ec05",
+            .locking_asm = "0x41 0x048282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f5150811f8a8098557dfe45e8256e830b60ace62d613ac2f7b17bed31b6eaff6e26caf CHECKSIG NOT",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+    };
+
+    for (rows) |row| {
+        try harness.runCase(allocator, .{
+            .name = row.name,
+            .unlocking_asm = row.unlocking_asm,
+            .locking_asm = row.locking_asm,
+            .flags = row.flags,
+            .expected = row.expected,
+        });
+    }
+}
