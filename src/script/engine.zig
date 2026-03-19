@@ -67,6 +67,13 @@ pub fn isPushOnly(script: Script) Error!bool {
     return parser.isPushOnly(script);
 }
 
+pub fn isPayToScriptHash(script: Script) bool {
+    return script.bytes.len == 23 and
+        script.bytes[0] == @intFromEnum(opcode.Opcode.OP_HASH160) and
+        script.bytes[1] == 0x14 and
+        script.bytes[22] == @intFromEnum(opcode.Opcode.OP_EQUAL);
+}
+
 pub fn executeScript(ctx: ExecutionContext, script: Script) Error!ExecutionResult {
     var state: ExecutionState = .{};
     errdefer state.deinit(ctx.allocator);
@@ -208,6 +215,7 @@ fn executeIntoState(
             .OP_IF, .OP_NOTIF => {
                 try countOp(ctx, state);
                 if (shouldExecute(state)) {
+                    if (state.stack.items.len == 0) return error.UnbalancedConditionals;
                     const cond_bytes = try popOwned(state);
                     defer ctx.allocator.free(cond_bytes);
                     if (ctx.flags.minimal_if) {
@@ -244,6 +252,12 @@ fn executeIntoState(
 
         if (!shouldExecute(state)) {
             if (!ctx.flags.utxo_after_genesis and (op == .OP_VERIF or op == .OP_VERNOTIF)) {
+                return error.UnknownOpcode;
+            }
+            // Pre-Genesis, raw 0x8d/0x8e bytes (2MUL/2DIV) stay invalid even in
+            // untaken branches. Keep this phase-agnostic rather than treating it
+            // as an unlocking-script quirk.
+            if (!ctx.flags.utxo_after_genesis and (byte == 0x8d or byte == 0x8e)) {
                 return error.UnknownOpcode;
             }
             continue;

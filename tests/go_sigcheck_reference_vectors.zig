@@ -6,6 +6,7 @@ const corpus_path = "../go-sdk/script/interpreter/data/script_tests.json";
 
 const DynamicRow = struct {
     index: usize,
+    input_amount: i64 = 0,
     unlocking_asm: []const u8,
     locking_asm: []const u8,
     flags_text: []const u8,
@@ -96,16 +97,27 @@ fn parseExpected(text: []const u8) ?harness.Expectation {
 fn rowFromJson(index: usize, value: std.json.Value) ?DynamicRow {
     if (value != .array) return null;
     const items = value.array.items;
-    if (items.len < 4 or items.len > 5) return null;
-    if (items[0] == .array) return null;
-    if (items[0] != .string or items[1] != .string or items[2] != .string or items[3] != .string) return null;
+    if (items.len < 4 or items.len > 6) return null;
+
+    var item_offset: usize = 0;
+    var input_amount: i64 = 0;
+    if (items[0] == .array) {
+        const amount_items = items[0].array.items;
+        if (amount_items.len == 0 or amount_items[0] != .float) return null;
+        input_amount = @intFromFloat(amount_items[0].float * 100_000_000.0);
+        item_offset = 1;
+    }
+
+    if (items.len < item_offset + 4 or items.len > item_offset + 5) return null;
+    if (items[item_offset] != .string or items[item_offset + 1] != .string or items[item_offset + 2] != .string or items[item_offset + 3] != .string) return null;
 
     const row = DynamicRow{
         .index = index,
-        .unlocking_asm = items[0].string,
-        .locking_asm = items[1].string,
-        .flags_text = items[2].string,
-        .expected_text = items[3].string,
+        .input_amount = input_amount,
+        .unlocking_asm = items[item_offset].string,
+        .locking_asm = items[item_offset + 1].string,
+        .flags_text = items[item_offset + 2].string,
+        .expected_text = items[item_offset + 3].string,
     };
     if (!rowHasSigcheck(row)) return null;
     _ = parseFlags(row.flags_text) orelse return null;
@@ -120,6 +132,7 @@ fn runDynamicRow(allocator: std.mem.Allocator, row: DynamicRow) !void {
         .locking_asm = row.locking_asm,
         .flags = parseFlags(row.flags_text).?,
         .expected = parseExpected(row.expected_text).?,
+        .output_value = row.input_amount,
     });
 }
 
@@ -191,6 +204,9 @@ test "exact go sigcheck dynamic reference rows execute through bsvz" {
         .{ .row = 1400 },
         .{ .row = 1406 },
         .{ .row = 1407 },
+        .{ .row = 1411 },
+        .{ .row = 1412 },
+        .{ .row = 1413 },
         .{ .row = 1418 },
         .{ .row = 1495 },
     };

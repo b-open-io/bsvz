@@ -177,28 +177,80 @@ pub const ScriptThread = struct {
     }
 
     pub fn verifyPairDetailed(self: *ScriptThread, unlocking_script: Script, locking_script: Script) VerificationResult {
-        return self.verifyPairImpl(unlocking_script, locking_script, null);
+        return self.verifyPairImpl(unlocking_script, locking_script, false, null);
     }
 
     pub fn verifyPairTraced(self: *ScriptThread, unlocking_script: Script, locking_script: Script) TracedVerificationResult {
         var trace: ExecutionTrace = .{};
         return .{
-            .result = self.verifyPairImpl(unlocking_script, locking_script, &trace),
+            .result = self.verifyPairImpl(unlocking_script, locking_script, false, &trace),
             .trace = trace,
         };
+    }
+
+    pub fn verifyPairWithLegacyP2SH(
+        self: *ScriptThread,
+        unlocking_script: Script,
+        locking_script: Script,
+        enable_legacy_p2sh: bool,
+    ) Error!bool {
+        var result = self.verifyPairWithLegacyP2SHDetailed(unlocking_script, locking_script, enable_legacy_p2sh);
+        defer result.deinit(self.ctx.allocator);
+        return result.toLegacy();
+    }
+
+    pub fn verifyPairWithLegacyP2SHDetailed(
+        self: *ScriptThread,
+        unlocking_script: Script,
+        locking_script: Script,
+        enable_legacy_p2sh: bool,
+    ) VerificationResult {
+        return self.verifyPairImpl(unlocking_script, locking_script, enable_legacy_p2sh, null);
     }
 
     fn verifyPairImpl(
         self: *ScriptThread,
         unlocking_script: Script,
         locking_script: Script,
+        enable_legacy_p2sh: bool,
         trace: ?*ExecutionTrace,
     ) VerificationResult {
-        if (self.checkSigPushOnly(unlocking_script)) |result| return result;
+        const use_legacy_p2sh = enable_legacy_p2sh and engine.isPayToScriptHash(locking_script);
+        if (self.checkPushOnly(unlocking_script, self.ctx.flags.sig_push_only or use_legacy_p2sh)) |result| return result;
 
         if (self.executePhaseDetailedImpl(.unlocking, unlocking_script, trace)) |result| return result;
+
+        var p2sh_stack: std.ArrayListUnmanaged([]u8) = .empty;
+        defer deinitOwnedStack(self.ctx.allocator, &p2sh_stack);
+        if (use_legacy_p2sh) {
+            cloneStackInto(self.ctx.allocator, &p2sh_stack, self.state.stack.items) catch |err| {
+                return self.finishVerification(.script_error, .unlocking, err);
+            };
+        }
+
         self.state.clearAltStack(self.ctx.allocator);
         if (self.executePhaseDetailedImpl(.locking, locking_script, trace)) |result| return result;
+
+        if (use_legacy_p2sh) {
+            if (!stackTopTruthy(&self.state)) {
+                return self.finishVerification(.false_result, .final, null);
+            }
+
+            self.state.clearAltStack(self.ctx.allocator);
+            replaceMainStack(self.ctx.allocator, &self.state, &p2sh_stack);
+            if (self.state.stack.items.len == 0) {
+                return self.finishVerification(.false_result, .locking, null);
+            }
+
+            const redeem_script = self.state.stack.pop() orelse unreachable;
+            defer self.ctx.allocator.free(redeem_script);
+
+            const previous_locking_script = self.ctx.previous_locking_script;
+            self.ctx.previous_locking_script = Script.init(redeem_script);
+            defer self.ctx.previous_locking_script = previous_locking_script;
+
+            if (self.executePhaseDetailedImpl(.locking, Script.init(redeem_script), trace)) |result| return result;
+        }
 
         const success = finalResult(self.ctx, &self.state) catch |err| {
             return self.finishVerification(.script_error, .final, err);
@@ -206,9 +258,8 @@ pub const ScriptThread = struct {
         return self.finishVerification(if (success) .success else .false_result, .final, null);
     }
 
-    fn checkSigPushOnly(self: *ScriptThread, unlocking_script: Script) ?VerificationResult {
-        if (!self.ctx.flags.sig_push_only) return null;
-
+    fn checkPushOnly(self: *ScriptThread, unlocking_script: Script, enabled: bool) ?VerificationResult {
+        if (!enabled) return null;
         const push_only = engine.isPushOnly(unlocking_script) catch |err| {
             return self.finishVerification(.script_error, .unlocking, err);
         };
@@ -228,12 +279,11 @@ pub const ScriptThread = struct {
                 .locking => engine.executeLockingScriptTraced(self.ctx, &self.state, script, execution_trace),
                 .final => unreachable,
             }
-        else
-            switch (which) {
-                .unlocking => engine.executeUnlockingScript(self.ctx, &self.state, script),
-                .locking => engine.executeLockingScript(self.ctx, &self.state, script),
-                .final => unreachable,
-            };
+        else switch (which) {
+            .unlocking => engine.executeUnlockingScript(self.ctx, &self.state, script),
+            .locking => engine.executeLockingScript(self.ctx, &self.state, script),
+            .final => unreachable,
+        };
 
         result catch |err| switch (err) {
             error.VerifyFailed => return self.finishVerification(.false_result, which, null),
@@ -289,6 +339,17 @@ pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_sc
     return result.toLegacy();
 }
 
+pub fn verifyScriptsWithLegacyP2SH(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    locking_script: Script,
+    enable_legacy_p2sh: bool,
+) Error!bool {
+    var result = verifyScriptsWithLegacyP2SHDetailed(ctx, unlocking_script, locking_script, enable_legacy_p2sh);
+    defer result.deinit(ctx.allocator);
+    return result.toLegacy();
+}
+
 pub fn verifyScriptsOutcome(
     ctx: ExecutionContext,
     unlocking_script: Script,
@@ -311,6 +372,17 @@ pub fn verifyScriptsDetailed(
     var thread = ScriptThread.init(ctx);
     defer thread.deinit();
     return thread.verifyPairDetailed(unlocking_script, locking_script);
+}
+
+pub fn verifyScriptsWithLegacyP2SHDetailed(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    locking_script: Script,
+    enable_legacy_p2sh: bool,
+) VerificationResult {
+    var thread = ScriptThread.init(ctx);
+    defer thread.deinit();
+    return thread.verifyPairWithLegacyP2SHDetailed(unlocking_script, locking_script, enable_legacy_p2sh);
 }
 
 pub fn verifyScriptsTraced(
@@ -372,9 +444,43 @@ pub fn verifyExecutableScriptsTraced(
         };
     };
     return .{
-        .result = thread.verifyPairImpl(unlocking_script, executable_locking_script, &trace),
+        .result = thread.verifyPairImpl(unlocking_script, executable_locking_script, false, &trace),
         .trace = trace,
     };
+}
+
+fn cloneStackInto(
+    allocator: std.mem.Allocator,
+    target: *std.ArrayListUnmanaged([]u8),
+    items: []const []const u8,
+) !void {
+    errdefer deinitOwnedStack(allocator, target);
+    for (items) |item| {
+        try target.append(allocator, try allocator.dupe(u8, item));
+    }
+}
+
+fn deinitOwnedStack(allocator: std.mem.Allocator, stack: *std.ArrayListUnmanaged([]u8)) void {
+    for (stack.items) |item| allocator.free(item);
+    stack.deinit(allocator);
+    stack.* = .empty;
+}
+
+fn replaceMainStack(
+    allocator: std.mem.Allocator,
+    state: *ExecutionState,
+    replacement: *std.ArrayListUnmanaged([]u8),
+) void {
+    for (state.stack.items) |item| allocator.free(item);
+    state.stack.deinit(allocator);
+    state.stack = replacement.*;
+    replacement.* = .empty;
+}
+
+fn stackTopTruthy(state: *const ExecutionState) bool {
+    if (state.condition_stack.items.len != 0) return false;
+    if (state.stack.items.len == 0) return false;
+    return engine.isTruthy(state.stack.items[state.stack.items.len - 1]);
 }
 
 pub fn verifyPrevoutSpend(

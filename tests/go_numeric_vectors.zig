@@ -475,7 +475,7 @@ test "go numeric rows: exact false and overflow result rows" {
     defer allocator.free(row1035_locking);
 
     try runRows(allocator, flags, &[_]GoRow{
-        .{ .row = 1226, .name = "go row 1226: equal not errors on empty stack", .unlocking_hex = "", .locking_hex = "8791", .expected = .{ .err = error.StackUnderflow } },
+        .{ .name = "equal not errors on empty stack", .unlocking_hex = "", .locking_hex = "8791", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1227, .name = "go row 1227: equal not errors on single stack item", .unlocking_hex = "00", .locking_hex = "8791", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1228, .name = "go row 1228: equal over zero and one yields false", .unlocking_hex = row1030_unlocking, .locking_hex = row1030_locking, .expected = .{ .success = false } },
         .{ .row = 1229, .name = "go row 1229: add then equal against zero yields false", .unlocking_hex = row1031_unlocking, .locking_hex = row1031_locking, .expected = .{ .success = false } },
@@ -493,7 +493,7 @@ test "go numeric rows: exact stack underflow result rows" {
     try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
         .{ .row = 1434, .name = "go row 1434: sub underflows with one stack item", .unlocking_hex = "51", .locking_hex = "94", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1402, .name = "go row 1402: 2drop requires two stack items", .unlocking_hex = "51", .locking_hex = "6d51", .expected = .{ .err = error.StackUnderflow } },
-        .{ .row = 1411, .name = "go row 1411: nip requires two stack items", .unlocking_hex = "51", .locking_hex = "77", .expected = .{ .err = error.StackUnderflow } },
+        .{ .name = "nip requires two stack items", .unlocking_hex = "51", .locking_hex = "77", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1417, .name = "go row 1417: rot requires three stack items", .unlocking_hex = "5151", .locking_hex = "7b", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1419, .name = "go row 1419: tuck requires two stack items", .unlocking_hex = "51", .locking_hex = "7d", .expected = .{ .err = error.StackUnderflow } },
     });

@@ -15,6 +15,7 @@ pub const Case = struct {
     locking_asm: []const u8,
     flags: bsvz.script.engine.ExecutionFlags,
     expected: Expectation,
+    enable_legacy_p2sh: bool = false,
     output_value: i64 = 0,
     tx_version: i32 = 1,
     tx_lock_time: u32 = 0,
@@ -61,7 +62,7 @@ pub fn runCase(allocator: std.mem.Allocator, case: Case) !void {
                 .txid = prev_txid,
                 .index = 0,
             },
-            .unlocking_script = empty_script,
+            .unlocking_script = Script.init(unlocking_bytes),
             .sequence = case.input_sequence,
         },
     };
@@ -87,10 +88,11 @@ pub fn runCase(allocator: std.mem.Allocator, case: Case) !void {
     exec_ctx.previous_locking_script = prev_locking_script;
     exec_ctx.flags = case.flags;
 
-    const result = bsvz.script.thread.verifyScripts(
+    const result = bsvz.script.thread.verifyScriptsWithLegacyP2SH(
         exec_ctx,
         Script.init(unlocking_bytes),
         prev_locking_script,
+        case.enable_legacy_p2sh,
     );
 
     switch (case.expected) {

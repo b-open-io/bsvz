@@ -1,0 +1,89 @@
+const std = @import("std");
+
+const corpus_path = "../go-sdk/script/interpreter/data/script_tests.json";
+
+fn accessOrSkip(rel_path: []const u8) !void {
+    std.fs.cwd().access(rel_path, .{}) catch |err| switch (err) {
+        error.FileNotFound => return error.SkipZigTest,
+        else => return err,
+    };
+}
+
+fn collectExactRowRefs(allocator: std.mem.Allocator) !std.AutoHashMap(usize, void) {
+    var rows = std.AutoHashMap(usize, void).init(allocator);
+    errdefer rows.deinit();
+
+    var dir = try std.fs.cwd().openDir("tests", .{ .iterate = true });
+    defer dir.close();
+
+    var iter = dir.iterate();
+    while (try iter.next()) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.startsWith(u8, entry.name, "go_")) continue;
+        if (!std.mem.endsWith(u8, entry.name, "_vectors.zig")) continue;
+
+        const source = try dir.readFileAlloc(allocator, entry.name, 512 * 1024);
+        defer allocator.free(source);
+
+        var cursor: usize = 0;
+        while (std.mem.indexOfPos(u8, source, cursor, ".row")) |row_pos| {
+            const eq_pos = std.mem.indexOfPos(u8, source, row_pos, "=") orelse break;
+            var digits_start = eq_pos + 1;
+            while (digits_start < source.len and std.ascii.isWhitespace(source[digits_start])) : (digits_start += 1) {}
+
+            var digits_end = digits_start;
+            while (digits_end < source.len and std.ascii.isDigit(source[digits_end])) : (digits_end += 1) {}
+            if (digits_end > digits_start) {
+                const row = try std.fmt.parseInt(usize, source[digits_start..digits_end], 10);
+                try rows.put(row, {});
+            }
+            cursor = digits_end;
+        }
+    }
+
+    return rows;
+}
+
+fn isExecutableCorpusRow(value: std.json.Value) bool {
+    if (value != .array) return false;
+    const items = value.array.items;
+    if (items.len < 4 or items.len > 6) return false;
+    if (items[0] == .array) {
+        if (items.len < 5 or items[0].array.items.len == 0 or items[0].array.items[0] != .float) return false;
+        return items[1] == .string and items[2] == .string and items[3] == .string and items[4] == .string;
+    }
+    return items[0] == .string and items[1] == .string and items[2] == .string and items[3] == .string;
+}
+
+test "all uncovered go corpus entries are non-executable shape rows" {
+    const allocator = std.testing.allocator;
+    try accessOrSkip(corpus_path);
+
+    var exact_rows = try collectExactRowRefs(allocator);
+    defer exact_rows.deinit();
+
+    const file = try std.fs.cwd().readFileAlloc(allocator, corpus_path, 8 * 1024 * 1024);
+    defer allocator.free(file);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, file, .{});
+    defer parsed.deinit();
+
+    if (parsed.value != .array) return error.InvalidEncoding;
+
+    var uncovered_count: usize = 0;
+    var uncovered_executable_count: usize = 0;
+    var first_bad_row: ?usize = null;
+
+    for (parsed.value.array.items, 0..) |value, index| {
+        if (exact_rows.contains(index)) continue;
+        uncovered_count += 1;
+        if (isExecutableCorpusRow(value)) {
+            uncovered_executable_count += 1;
+            if (first_bad_row == null) first_bad_row = index;
+        }
+    }
+
+    try std.testing.expect(uncovered_count > 0);
+    try std.testing.expectEqual(@as(usize, 0), uncovered_executable_count);
+    try std.testing.expectEqual(@as(?usize, null), first_bad_row);
+}

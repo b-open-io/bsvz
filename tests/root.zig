@@ -1,6 +1,7 @@
 comptime {
     _ = @import("smoke.zig");
     _ = @import("go_control_flow_vectors.zig");
+    _ = @import("go_corpus_accounting.zig");
     _ = @import("go_bitwise_vectors.zig");
     _ = @import("go_bin2num_vectors.zig");
     _ = @import("go_boolean_numeric_vectors.zig");

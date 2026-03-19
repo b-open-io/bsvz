@@ -10,6 +10,7 @@ const ExactRow = struct {
 
 const DynamicRow = struct {
     index: usize,
+    input_amount: i64 = 0,
     unlocking_asm: []const u8,
     locking_asm: []const u8,
     flags_text: []const u8,
@@ -43,11 +44,6 @@ fn hasBlockedOpcodeTokens(unlocking_asm: []const u8, locking_asm: []const u8) bo
         if (containsToken(unlocking_asm, token) or containsToken(locking_asm, token)) return true;
     }
     return false;
-}
-
-fn p2shMightMatter(locking_asm: []const u8) bool {
-    return containsToken(locking_asm, "HASH160") and
-        (containsToken(locking_asm, "EQUAL") or containsToken(locking_asm, "EQUALVERIFY"));
 }
 
 fn parseFlags(text: []const u8) ?bsvz.script.engine.ExecutionFlags {
@@ -143,6 +139,13 @@ fn parseExpected(text: []const u8) ?harness.Expectation {
     if (std.mem.eql(u8, text, "NEGATIVE_LOCKTIME")) return .{ .err = error.NegativeLockTime };
     if (std.mem.eql(u8, text, "UNSATISFIED_LOCKTIME")) return .{ .err = error.UnsatisfiedLockTime };
     if (std.mem.eql(u8, text, "UNBALANCED_CONDITIONAL")) return .{ .err = error.UnbalancedConditionals };
+    if (std.mem.eql(u8, text, "SIG_DER")) return .{ .err = error.InvalidSignatureEncoding };
+    if (std.mem.eql(u8, text, "PUBKEYTYPE")) return .{ .err = error.InvalidPublicKeyEncoding };
+    if (std.mem.eql(u8, text, "SIG_HASHTYPE")) return .{ .err = error.InvalidSigHashType };
+    if (std.mem.eql(u8, text, "ILLEGAL_FORKID")) return .{ .err = error.IllegalForkId };
+    if (std.mem.eql(u8, text, "NULLFAIL")) return .{ .err = error.NullFail };
+    if (std.mem.eql(u8, text, "SIG_HIGH_S")) return .{ .err = error.HighS };
+    if (std.mem.eql(u8, text, "SIG_NULLDUMMY")) return .{ .err = error.NullDummy };
     if (std.mem.eql(u8, text, "VERIFY")) return .{ .success = false };
     if (std.mem.eql(u8, text, "EQUALVERIFY")) return .{ .success = false };
     if (std.mem.eql(u8, text, "NUMBER_SIZE")) return .{ .err = error.NumberTooBig };
@@ -154,30 +157,33 @@ fn parseExpected(text: []const u8) ?harness.Expectation {
 fn loadDynamicRow(index: usize, value: std.json.Value) ?DynamicRow {
     if (value != .array) return null;
     const items = value.array.items;
-    if (items.len < 4 or items.len > 5) return null;
-    if (items[0] == .array) return null;
-    if (items[0] != .string or items[1] != .string or items[2] != .string or items[3] != .string) return null;
+    if (items.len < 4 or items.len > 6) return null;
+
+    var item_offset: usize = 0;
+    var input_amount: i64 = 0;
+    if (items[0] == .array) {
+        const amount_items = items[0].array.items;
+        if (amount_items.len == 0 or amount_items[0] != .float) return null;
+        input_amount = @intFromFloat(amount_items[0].float * 100_000_000.0);
+        item_offset = 1;
+    }
+
+    if (items.len < item_offset + 4 or items.len > item_offset + 5) return null;
+    if (items[item_offset] != .string or items[item_offset + 1] != .string or items[item_offset + 2] != .string or items[item_offset + 3] != .string) return null;
 
     const row = DynamicRow{
         .index = index,
-        .unlocking_asm = items[0].string,
-        .locking_asm = items[1].string,
-        .flags_text = items[2].string,
-        .expected_text = items[3].string,
+        .input_amount = input_amount,
+        .unlocking_asm = items[item_offset].string,
+        .locking_asm = items[item_offset + 1].string,
+        .flags_text = items[item_offset + 2].string,
+        .expected_text = items[item_offset + 3].string,
     };
 
-    if (index == 118 or index == 1051 or index == 756 or index == 761 or index == 803 or index == 831 or index == 1154 or index == 1155) return null;
+    if (index == 1051 or index == 756 or index == 761 or index == 803 or index == 831) return null;
     if (parseFlags(row.flags_text) == null) return null;
     if (parseExpected(row.expected_text) == null) return null;
     if (hasBlockedOpcodeTokens(row.unlocking_asm, row.locking_asm)) return null;
-
-    const parts = std.mem.splitScalar(u8, row.flags_text, ',');
-    var iter = parts;
-    while (iter.next()) |raw_part| {
-        const part = std.mem.trim(u8, raw_part, " \t\r\n");
-        if (part.len == 0) continue;
-        if (std.mem.eql(u8, part, "P2SH") and p2shMightMatter(row.locking_asm)) return null;
-    }
 
     return row;
 }
@@ -194,6 +200,8 @@ fn runDynamicRow(allocator: std.mem.Allocator, row: DynamicRow) !void {
         .locking_asm = row.locking_asm,
         .flags = flags,
         .expected = expected,
+        .enable_legacy_p2sh = std.mem.indexOf(u8, row.flags_text, "P2SH") != null and !flags.utxo_after_genesis,
+        .output_value = row.input_amount,
     });
 }
 
@@ -251,6 +259,7 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 86 },
         .{ .row = 87 },
         .{ .row = 88 },
+        .{ .row = 118 },
         .{ .row = 184 },
         .{ .row = 214 },
         .{ .row = 215 },
@@ -263,6 +272,8 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 321 },
         .{ .row = 323 },
         .{ .row = 324 },
+        .{ .row = 533 },
+        .{ .row = 534 },
         .{ .row = 342 },
         .{ .row = 343 },
         .{ .row = 344 },
@@ -509,6 +520,8 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 845 },
         .{ .row = 846 },
         .{ .row = 847 },
+        .{ .row = 850 },
+        .{ .row = 851 },
         .{ .row = 856 },
         .{ .row = 857 },
         .{ .row = 858 },
@@ -680,6 +693,8 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 1151 },
         .{ .row = 1152 },
         .{ .row = 1153 },
+        .{ .row = 1154 },
+        .{ .row = 1155 },
         .{ .row = 1156 },
         .{ .row = 1157 },
         .{ .row = 1161 },
@@ -722,6 +737,10 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 1202 },
         .{ .row = 1203 },
         .{ .row = 1204 },
+        .{ .row = 1221 },
+        .{ .row = 1222 },
+        .{ .row = 1223 },
+        .{ .row = 1224 },
         .{ .row = 1225 },
         .{ .row = 1230 },
         .{ .row = 1231 },
@@ -737,13 +756,65 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 1242 },
         .{ .row = 1243 },
         .{ .row = 1244 },
+        .{ .row = 1326 },
+        .{ .row = 1327 },
+        .{ .row = 1328 },
         .{ .row = 1329 },
+        .{ .row = 1330 },
+        .{ .row = 1333 },
+        .{ .row = 1334 },
+        .{ .row = 1389 },
+        .{ .row = 1390 },
         .{ .row = 1399 },
+        .{ .row = 1401 },
+        .{ .row = 1403 },
+        .{ .row = 1404 },
+        .{ .row = 1408 },
+        .{ .row = 1409 },
+        .{ .row = 1410 },
         .{ .row = 1439 },
         .{ .row = 1440 },
         .{ .row = 1441 },
         .{ .row = 1442 },
         .{ .row = 1443 },
+        .{ .row = 1445 },
+        .{ .row = 1446 },
+        .{ .row = 1447 },
+        .{ .row = 1448 },
+        .{ .row = 1449 },
+        .{ .row = 1450 },
+        .{ .row = 1451 },
+        .{ .row = 1452 },
+        .{ .row = 1453 },
+        .{ .row = 1454 },
+        .{ .row = 1455 },
+        .{ .row = 1456 },
+        .{ .row = 1457 },
+        .{ .row = 1458 },
+        .{ .row = 1459 },
+        .{ .row = 1460 },
+        .{ .row = 1461 },
+        .{ .row = 1462 },
+        .{ .row = 1463 },
+        .{ .row = 1464 },
+        .{ .row = 1466 },
+        .{ .row = 1467 },
+        .{ .row = 1468 },
+        .{ .row = 1469 },
+        .{ .row = 1470 },
+        .{ .row = 1471 },
+        .{ .row = 1472 },
+        .{ .row = 1473 },
+        .{ .row = 1474 },
+        .{ .row = 1475 },
+        .{ .row = 1476 },
+        .{ .row = 1477 },
+        .{ .row = 1478 },
+        .{ .row = 1479 },
+        .{ .row = 1480 },
+        .{ .row = 1481 },
+        .{ .row = 1482 },
+        .{ .row = 1483 },
         .{ .row = 1421 },
         .{ .row = 1422 },
         .{ .row = 1424 },
