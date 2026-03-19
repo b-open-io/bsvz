@@ -65,6 +65,7 @@ Current interpreter target:
 - spend with transaction context: `bsvz.script.thread.verifyExecutableScripts(...)`
 - small spend wrapper: `bsvz.script.interpreter.verify(...)`
 - detailed verification result: `bsvz.script.thread.verifyScriptsDetailed(...)`, `verifyExecutableScriptsDetailed(...)`, and `bsvz.script.interpreter.verifyDetailed(...)`
+- opt-in execution traces: `bsvz.script.thread.verifyScriptsTraced(...)`, `verifyExecutableScriptsTraced(...)`, and `bsvz.script.interpreter.verifyTraced(...)`
 
 That means:
 
@@ -77,6 +78,14 @@ If you want the non-collapsed Zig-native shape, use the detailed result:
 - `result.terminal == .success`
 - `result.terminal == .false_result`
 - `result.terminal == .script_error`, with `result.phase` and `result.script_error`
+
+If you need negative-path debugging, the traced APIs also return a step trace with:
+
+- phase
+- opcode offset / opcode byte
+- pre-step stack and altstack snapshots
+- condition stack snapshot
+- `ops_executed` and `last_code_separator` before the step
 
 Minimal pair verification:
 

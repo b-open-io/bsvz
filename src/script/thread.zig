@@ -9,6 +9,7 @@ pub const ExecutionContext = context.ExecutionContext;
 pub const ExecutionFlags = context.ExecutionFlags;
 pub const ExecutionState = context.ExecutionState;
 pub const ExecutionResult = context.ExecutionResult;
+pub const ExecutionTrace = context.ExecutionTrace;
 pub const ScriptPhase = context.ScriptPhase;
 pub const VerificationTerminal = context.VerificationTerminal;
 
@@ -26,6 +27,26 @@ pub const VerificationResult = struct {
     pub fn toLegacy(self: VerificationResult) Error!bool {
         if (self.script_error) |err| return err;
         return self.success;
+    }
+};
+
+pub const TracedExecutionResult = struct {
+    result: ExecutionResult,
+    trace: ExecutionTrace,
+
+    pub fn deinit(self: *TracedExecutionResult, allocator: std.mem.Allocator) void {
+        self.result.deinit(allocator);
+        self.trace.deinit(allocator);
+    }
+};
+
+pub const TracedVerificationResult = struct {
+    result: VerificationResult,
+    trace: ExecutionTrace,
+
+    pub fn deinit(self: *TracedVerificationResult, allocator: std.mem.Allocator) void {
+        self.result.deinit(allocator);
+        self.trace.deinit(allocator);
     }
 };
 
@@ -48,6 +69,21 @@ pub const ScriptThread = struct {
         return .{
             .success = success,
             .state = self.takeState(),
+        };
+    }
+
+    pub fn executeScriptTraced(self: *ScriptThread, script: Script) Error!TracedExecutionResult {
+        var trace: ExecutionTrace = .{};
+        errdefer trace.deinit(self.ctx.allocator);
+        errdefer self.state.deinit(self.ctx.allocator);
+        try engine.executeLockingScriptTraced(self.ctx, &self.state, script, &trace);
+        const success = try finalResult(self.ctx, &self.state);
+        return .{
+            .result = .{
+                .success = success,
+                .state = self.takeState(),
+            },
+            .trace = trace,
         };
     }
 
@@ -75,10 +111,69 @@ pub const ScriptThread = struct {
         return self.finishVerification(if (success) .success else .false_result, .final, null);
     }
 
+    pub fn verifyPairTraced(self: *ScriptThread, unlocking_script: Script, locking_script: Script) TracedVerificationResult {
+        var trace: ExecutionTrace = .{};
+        return .{
+            .result = self.verifyPairDetailedTraced(unlocking_script, locking_script, &trace),
+            .trace = trace,
+        };
+    }
+
+    fn verifyPairDetailedTraced(
+        self: *ScriptThread,
+        unlocking_script: Script,
+        locking_script: Script,
+        trace: *ExecutionTrace,
+    ) VerificationResult {
+        if (self.ctx.flags.sig_push_only) {
+            const push_only = engine.isPushOnly(unlocking_script) catch |err| {
+                return self.finishVerification(.script_error, .unlocking, err);
+            };
+            if (!push_only) return self.finishVerification(.script_error, .unlocking, error.SigPushOnly);
+        }
+
+        if (self.executePhaseDetailedTraced(.unlocking, unlocking_script, trace)) |result| return result;
+        self.state.clearAltStack(self.ctx.allocator);
+        if (self.executePhaseDetailedTraced(.locking, locking_script, trace)) |result| return result;
+
+        const success = finalResult(self.ctx, &self.state) catch |err| {
+            return self.finishVerification(.script_error, .final, err);
+        };
+        return self.finishVerification(if (success) .success else .false_result, .final, null);
+    }
+
     fn executePhaseDetailed(self: *ScriptThread, which: ScriptPhase, script: Script) ?VerificationResult {
         const result = switch (which) {
             .unlocking => engine.executeUnlockingScript(self.ctx, &self.state, script),
             .locking => engine.executeLockingScript(self.ctx, &self.state, script),
+            .final => unreachable,
+        };
+
+        result catch |err| switch (err) {
+            error.VerifyFailed => return self.finishVerification(.false_result, which, null),
+            error.ReturnEncountered => if (self.ctx.flags.utxo_after_genesis) {
+                return self.finishVerification(.false_result, which, null);
+            } else {
+                return self.finishVerification(.script_error, which, err);
+            },
+            else => return self.finishVerification(.script_error, which, err),
+        };
+
+        if (self.state.condition_stack.items.len != 0) {
+            return self.finishVerification(.script_error, which, error.UnbalancedConditionals);
+        }
+        return null;
+    }
+
+    fn executePhaseDetailedTraced(
+        self: *ScriptThread,
+        which: ScriptPhase,
+        script: Script,
+        trace: *ExecutionTrace,
+    ) ?VerificationResult {
+        const result = switch (which) {
+            .unlocking => engine.executeUnlockingScriptTraced(self.ctx, &self.state, script, trace),
+            .locking => engine.executeLockingScriptTraced(self.ctx, &self.state, script, trace),
             .final => unreachable,
         };
 
@@ -125,6 +220,11 @@ pub fn executeScript(ctx: ExecutionContext, script: Script) Error!ExecutionResul
     return thread.executeScript(script);
 }
 
+pub fn executeScriptTraced(ctx: ExecutionContext, script: Script) Error!TracedExecutionResult {
+    var thread = ScriptThread.init(ctx);
+    return thread.executeScriptTraced(script);
+}
+
 pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_script: Script) Error!bool {
     var result = verifyScriptsDetailed(ctx, unlocking_script, locking_script);
     defer result.deinit(ctx.allocator);
@@ -139,6 +239,16 @@ pub fn verifyScriptsDetailed(
     var thread = ScriptThread.init(ctx);
     defer thread.deinit();
     return thread.verifyPairDetailed(unlocking_script, locking_script);
+}
+
+pub fn verifyScriptsTraced(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    locking_script: Script,
+) TracedVerificationResult {
+    var thread = ScriptThread.init(ctx);
+    defer thread.deinit();
+    return thread.verifyPairTraced(unlocking_script, locking_script);
 }
 
 pub fn verifyExecutableScripts(
@@ -163,6 +273,27 @@ pub fn verifyExecutableScriptsDetailed(
         return thread.finishVerification(.script_error, .locking, err);
     };
     return thread.verifyPairDetailed(unlocking_script, executable_locking_script);
+}
+
+pub fn verifyExecutableScriptsTraced(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    full_locking_script: Script,
+) TracedVerificationResult {
+    var thread = ScriptThread.init(executableContext(ctx, full_locking_script));
+    defer thread.deinit();
+
+    var trace: ExecutionTrace = .{};
+    const executable_locking_script = bytes.executableCodePart(full_locking_script) catch |err| {
+        return .{
+            .result = thread.finishVerification(.script_error, .locking, err),
+            .trace = trace,
+        };
+    };
+    return .{
+        .result = thread.verifyPairDetailedTraced(unlocking_script, executable_locking_script, &trace),
+        .trace = trace,
+    };
 }
 
 fn finalResult(ctx: ExecutionContext, state: *ExecutionState) Error!bool {
@@ -264,4 +395,23 @@ test "thread verifyExecutableScriptsDetailed preserves code-part parse failures 
     try std.testing.expectEqual(VerificationTerminal.script_error, result.terminal);
     try std.testing.expectEqual(ScriptPhase.locking, result.phase);
     try std.testing.expectEqual(error.InvalidPushData, result.script_error.?);
+}
+
+test "thread verifyScriptsTraced captures opcode snapshots before terminal failure" {
+    const allocator = std.testing.allocator;
+
+    var traced = verifyScriptsTraced(.{
+        .allocator = allocator,
+    }, Script.init(&[_]u8{}), Script.init(&[_]u8{
+        @intFromEnum(@import("opcode.zig").Opcode.OP_1),
+        @intFromEnum(@import("opcode.zig").Opcode.OP_FROMALTSTACK),
+    }));
+    defer traced.deinit(allocator);
+
+    try std.testing.expectEqual(VerificationTerminal.script_error, traced.result.terminal);
+    try std.testing.expectEqual(@as(usize, 2), traced.trace.steps.items.len);
+    try std.testing.expectEqual(ScriptPhase.locking, traced.trace.steps.items[0].phase);
+    try std.testing.expectEqual(@as(u8, @intFromEnum(@import("opcode.zig").Opcode.OP_1)), traced.trace.steps.items[0].opcode_byte);
+    try std.testing.expectEqual(@as(u8, @intFromEnum(@import("opcode.zig").Opcode.OP_FROMALTSTACK)), traced.trace.steps.items[1].opcode_byte);
+    try std.testing.expectEqual(@as(usize, 1), traced.trace.steps.items[1].stack.len);
 }

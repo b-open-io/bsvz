@@ -10,6 +10,7 @@ pub const Error = thread.Error;
 pub const ScriptPhase = thread.ScriptPhase;
 pub const VerificationTerminal = thread.VerificationTerminal;
 pub const VerificationResult = thread.VerificationResult;
+pub const TracedVerificationResult = thread.TracedVerificationResult;
 
 pub const P2pkhSpendContext = struct {
     allocator: std.mem.Allocator,
@@ -28,6 +29,14 @@ pub fn verify(ctx: P2pkhSpendContext) Error!bool {
 
 pub fn verifyDetailed(ctx: P2pkhSpendContext) VerificationResult {
     return thread.verifyExecutableScriptsDetailed(
+        .forSpend(ctx.allocator, ctx.tx, ctx.input_index, ctx.previous_satoshis),
+        ctx.unlocking_script,
+        ctx.locking_script,
+    );
+}
+
+pub fn verifyTraced(ctx: P2pkhSpendContext) TracedVerificationResult {
+    return thread.verifyExecutableScriptsTraced(
         .forSpend(ctx.allocator, ctx.tx, ctx.input_index, ctx.previous_satoshis),
         ctx.unlocking_script,
         ctx.locking_script,

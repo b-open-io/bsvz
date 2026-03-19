@@ -40,6 +40,8 @@ pub const ExecutionContext = context.ExecutionContext;
 pub const ExecutionFlags = context.ExecutionFlags;
 pub const ExecutionState = context.ExecutionState;
 pub const ExecutionResult = context.ExecutionResult;
+pub const ExecutionTrace = context.ExecutionTrace;
+pub const ScriptPhase = context.ScriptPhase;
 
 pub fn isTruthy(item: []const u8) bool {
     if (item.len == 0) return false;
@@ -69,7 +71,7 @@ pub fn executeScript(ctx: ExecutionContext, script: Script) Error!ExecutionResul
     var state: ExecutionState = .{};
     errdefer state.deinit(ctx.allocator);
 
-    try executeIntoState(ctx, &state, .locking, script);
+    try executeIntoState(ctx, &state, .locking, script, null);
     if (state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
 
     return .{
@@ -79,11 +81,29 @@ pub fn executeScript(ctx: ExecutionContext, script: Script) Error!ExecutionResul
 }
 
 pub fn executeUnlockingScript(ctx: ExecutionContext, state: *ExecutionState, script: Script) Error!void {
-    try executeIntoState(ctx, state, .unlocking, script);
+    try executeIntoState(ctx, state, .unlocking, script, null);
 }
 
 pub fn executeLockingScript(ctx: ExecutionContext, state: *ExecutionState, script: Script) Error!void {
-    try executeIntoState(ctx, state, .locking, script);
+    try executeIntoState(ctx, state, .locking, script, null);
+}
+
+pub fn executeUnlockingScriptTraced(
+    ctx: ExecutionContext,
+    state: *ExecutionState,
+    script: Script,
+    trace: *ExecutionTrace,
+) Error!void {
+    try executeIntoState(ctx, state, .unlocking, script, trace);
+}
+
+pub fn executeLockingScriptTraced(
+    ctx: ExecutionContext,
+    state: *ExecutionState,
+    script: Script,
+    trace: *ExecutionTrace,
+) Error!void {
+    try executeIntoState(ctx, state, .locking, script, trace);
 }
 
 pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_script: Script) Error!bool {
@@ -108,7 +128,7 @@ fn executeVerificationPhase(
     active_script: ActiveScript,
     script: Script,
 ) Error!bool {
-    executeIntoState(ctx, state, active_script, script) catch |err| switch (err) {
+    executeIntoState(ctx, state, active_script, script, null) catch |err| switch (err) {
         error.VerifyFailed => return false,
         error.ReturnEncountered => if (ctx.flags.utxo_after_genesis) return false else return err,
         else => return err,
@@ -123,6 +143,7 @@ fn executeIntoState(
     state: *ExecutionState,
     active_script: ActiveScript,
     script: Script,
+    trace: ?*ExecutionTrace,
 ) Error!void {
     try checkScriptSize(ctx, script);
 
@@ -131,7 +152,22 @@ fn executeIntoState(
     state.last_code_separator = 0;
 
     while (cursor < script.bytes.len) {
+        const opcode_offset = cursor;
         const byte = script.bytes[cursor];
+        if (trace) |execution_trace| {
+            try execution_trace.appendSnapshot(
+                ctx.allocator,
+                switch (active_script) {
+                    .unlocking => .unlocking,
+                    .locking => .locking,
+                },
+                opcode_offset,
+                byte,
+                shouldExecute(state),
+                early_return_after_genesis,
+                state,
+            );
+        }
         cursor += 1;
 
         if (byte >= 0x01 and byte <= 0x4b) {

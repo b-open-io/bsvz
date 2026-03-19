@@ -110,6 +110,62 @@ pub const VerificationTerminal = enum {
     script_error,
 };
 
+pub const TraceStep = struct {
+    phase: ScriptPhase = .locking,
+    opcode_offset: usize = 0,
+    opcode_byte: u8 = 0,
+    should_execute_before: bool = false,
+    early_return_before: bool = false,
+    ops_executed_before: usize = 0,
+    last_code_separator_before: usize = 0,
+    stack: [][]u8 = &.{},
+    alt_stack: [][]u8 = &.{},
+    condition_stack: []bool = &.{},
+
+    pub fn deinit(self: *TraceStep, allocator: std.mem.Allocator) void {
+        freeItems(allocator, self.stack);
+        freeItems(allocator, self.alt_stack);
+        allocator.free(self.stack);
+        allocator.free(self.alt_stack);
+        allocator.free(self.condition_stack);
+        self.* = .{};
+    }
+};
+
+pub const ExecutionTrace = struct {
+    steps: std.ArrayListUnmanaged(TraceStep) = .empty,
+
+    pub fn deinit(self: *ExecutionTrace, allocator: std.mem.Allocator) void {
+        for (self.steps.items) |*step| step.deinit(allocator);
+        self.steps.deinit(allocator);
+        self.* = .{};
+    }
+
+    pub fn appendSnapshot(
+        self: *ExecutionTrace,
+        allocator: std.mem.Allocator,
+        phase: ScriptPhase,
+        opcode_offset: usize,
+        opcode_byte: u8,
+        should_execute_before: bool,
+        early_return_before: bool,
+        state: *const ExecutionState,
+    ) !void {
+        try self.steps.append(allocator, .{
+            .phase = phase,
+            .opcode_offset = opcode_offset,
+            .opcode_byte = opcode_byte,
+            .should_execute_before = should_execute_before,
+            .early_return_before = early_return_before,
+            .ops_executed_before = state.ops_executed,
+            .last_code_separator_before = state.last_code_separator,
+            .stack = try cloneItems(allocator, state.stack.items),
+            .alt_stack = try cloneItems(allocator, state.alt_stack.items),
+            .condition_stack = try allocator.dupe(bool, state.condition_stack.items),
+        });
+    }
+};
+
 pub const ExecutionState = struct {
     stack: std.ArrayListUnmanaged([]u8) = .empty,
     alt_stack: std.ArrayListUnmanaged([]u8) = .empty,
@@ -146,6 +202,21 @@ pub const ExecutionResult = struct {
 
 fn freeItems(allocator: std.mem.Allocator, items: []const []u8) void {
     for (items) |item| allocator.free(item);
+}
+
+fn cloneItems(allocator: std.mem.Allocator, items: []const []const u8) ![][]u8 {
+    const out = try allocator.alloc([]u8, items.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (out[0..initialized]) |item| allocator.free(item);
+        allocator.free(out);
+    }
+
+    for (items, 0..) |item, index| {
+        out[index] = try allocator.dupe(u8, item);
+        initialized += 1;
+    }
+    return out;
 }
 
 test "execution flag presets expose legacy and BSV policy envelopes" {
@@ -187,4 +258,29 @@ test "execution context can be built directly from a previous output" {
     try std.testing.expectEqual(@as(usize, 3), ctx.input_index);
     try std.testing.expectEqual(@as(i64, 1234), ctx.previous_satoshis);
     try std.testing.expectEqualSlices(u8, previous_output.locking_script.bytes, ctx.previous_locking_script.?.bytes);
+}
+
+test "execution trace captures independent snapshots" {
+    const allocator = std.testing.allocator;
+    var trace: ExecutionTrace = .{};
+    defer trace.deinit(allocator);
+
+    var state: ExecutionState = .{};
+    defer state.deinit(allocator);
+
+    try state.stack.append(allocator, try allocator.dupe(u8, &[_]u8{0x01}));
+    try state.alt_stack.append(allocator, try allocator.dupe(u8, &[_]u8{0x02}));
+    try state.condition_stack.append(allocator, true);
+    state.ops_executed = 7;
+    state.last_code_separator = 5;
+
+    try trace.appendSnapshot(allocator, .locking, 3, 0x76, true, false, &state);
+
+    allocator.free(state.stack.items[0]);
+    state.stack.items[0] = try allocator.dupe(u8, &[_]u8{0x09});
+
+    try std.testing.expectEqual(@as(usize, 1), trace.steps.items.len);
+    try std.testing.expectEqualSlices(u8, &[_]u8{0x01}, trace.steps.items[0].stack[0]);
+    try std.testing.expectEqualSlices(u8, &[_]u8{0x02}, trace.steps.items[0].alt_stack[0]);
+    try std.testing.expectEqualSlices(bool, &[_]bool{true}, trace.steps.items[0].condition_stack);
 }

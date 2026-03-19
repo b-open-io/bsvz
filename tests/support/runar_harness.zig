@@ -22,6 +22,7 @@ pub const VerificationOutcome = union(enum) {
     script_error: bsvz.script.thread.Error,
 };
 pub const VerificationResult = bsvz.script.thread.VerificationResult;
+pub const TracedVerificationResult = bsvz.script.thread.TracedVerificationResult;
 
 pub const Case = struct {
     name: []const u8,
@@ -117,6 +118,74 @@ pub fn runCaseDetailed(allocator: std.mem.Allocator, case: Case) !VerificationRe
     }
 
     return bsvz.script.thread.verifyScriptsDetailed(.{
+        .allocator = allocator,
+    }, unlocking_script, locking_script);
+}
+
+pub fn runCaseTraced(allocator: std.mem.Allocator, case: Case) !TracedVerificationResult {
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const locking_script_bytes = try bsvz.primitives.hex.decode(arena, case.locking_script_hex);
+    const locking_script = Script.init(locking_script_bytes);
+
+    var signature_bytes: ?[]const u8 = null;
+
+    var inputs = [_]bsvz.transaction.Input{
+        .{
+            .previous_outpoint = .{
+                .txid = .{ .bytes = [_]u8{0xaa} ** 32 },
+                .index = 0,
+            },
+            .unlocking_script = Script.init(""),
+            .sequence = 0xffff_ffff,
+        },
+    };
+    var outputs = [_]bsvz.transaction.Output{
+        .{
+            .satoshis = 99_000,
+            .locking_script = Script.init(&default_output_script),
+        },
+    };
+    var tx = bsvz.transaction.Transaction{
+        .version = 2,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = 0,
+    };
+
+    if (case.spend) |spend| {
+        outputs[0].satoshis = spend.previous_satoshis - 1_000;
+        const private_key = try bsvz.crypto.PrivateKey.fromBytes(spend.signing_key);
+        const tx_signature = try bsvz.transaction.templates.p2pkh_spend.signInput(
+            arena,
+            &tx,
+            0,
+            locking_script,
+            spend.previous_satoshis,
+            private_key,
+            bsvz.transaction.templates.p2pkh_spend.default_scope,
+        );
+        signature_bytes = try tx_signature.toChecksigFormat(arena);
+    }
+
+    const unlocking_script = try buildUnlockingScript(arena, case.args, case.method_selector, signature_bytes);
+    defer arena_state.deinit();
+
+    if (case.spend) |spend| {
+        const previous_output = bsvz.transaction.Output{
+            .satoshis = spend.previous_satoshis,
+            .locking_script = locking_script,
+        };
+        return bsvz.script.thread.verifyExecutableScriptsTraced(
+            bsvz.script.context.ExecutionContext.forPrevoutSpend(allocator, &tx, 0, previous_output),
+            unlocking_script,
+            locking_script,
+        );
+    }
+
+    return bsvz.script.thread.verifyScriptsTraced(.{
         .allocator = allocator,
     }, unlocking_script, locking_script);
 }
@@ -219,4 +288,19 @@ fn appendPushData(
     }
 
     try bytes.appendSlice(allocator, data);
+}
+
+test "runar harness can return traced verification results" {
+    const allocator = std.testing.allocator;
+
+    var traced = try runCaseTraced(allocator, .{
+        .name = "trace-demo",
+        .locking_script_hex = "5176",
+        .args = &.{},
+        .expect_success = true,
+    });
+    defer traced.deinit(allocator);
+
+    try std.testing.expect(traced.result.success);
+    try std.testing.expect(traced.trace.steps.items.len >= 2);
 }
