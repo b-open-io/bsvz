@@ -2,7 +2,7 @@
 
 # bsvz
 
-BSV foundation library for Zig. Covers primitives, crypto, script execution, and transaction handling. BSV-only — no SegWit, no Taproot.
+BSV foundation library for Zig. Covers primitives, crypto, script execution, and transaction handling.
 
 ## Table of Contents
 
@@ -212,7 +212,7 @@ const hash_all = try bsvz.transaction.Output.hashAll(allocator, &[_]bsvz.transac
 | Numeric and boolean ops | broad | `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, comparisons, min/max, within, boolean logic |
 | Hash ops | implemented | `RIPEMD160`, `SHA1`, `SHA256`, `HASH160`, `HASH256` |
 | `ScriptNum` | implemented | small-or-big numeric core using Zig stdlib bigint for promoted values |
-| `CHECKSIG` | implemented | transaction-aware, BSV-only, legacy and ForkID paths, `CODESEPARATOR` handling, scriptCode normalization |
+| `CHECKSIG` | implemented | transaction-aware, legacy and ForkID paths, `CODESEPARATOR` handling, scriptCode normalization |
 | `CHECKMULTISIG` | implemented | transaction-aware, post-Genesis behavior, early-exit, `NULLDUMMY`/`NULLFAIL`/ForkID policy |
 | Policy flags | broad | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if`, `discourage_upgradable_nops`, `verify_check_locktime`, `verify_check_sequence` |
 | CLTV / CSV / upgradable NOPs | partial | tx-aware legacy/reference semantics behind explicit flags; modern BSV profile treats them as inert unless policy enables them |
@@ -224,8 +224,8 @@ const hash_all = try bsvz.transaction.Output.hashAll(allocator, &[_]bsvz.transac
 
 **Scope:**
 
-- BSV only: modern BSV script execution and post-Genesis behavior
-- Not supported: SegWit, Taproot, BTC witness semantics, P2SH (as a modern BSV feature), BCH-specific semantics, HD wallet derivation
+- Modern BSV script execution and post-Genesis behavior
+- HD wallet derivation is out of scope for the core library
 
 </details>
 
