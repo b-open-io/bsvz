@@ -144,6 +144,13 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .expected = .{ .success = true },
         },
         .{
+            .name = "go row 346 nop1 through nop10 chain preserves pushed marker string before genesis",
+            .unlocking_hex = "0b4e4f505f315f746f5f3130b0b1b2b3b4b5b6b7b8b9",
+            .locking_hex = "0b4e4f505f315f746f5f313087",
+            .flags = legacy_flags,
+            .expected = .{ .success = true },
+        },
+        .{
             .name = "go row 555 checkscript sees cltv alias as nop when verify flag is off",
             .unlocking_hex = "61",
             .locking_hex = "b151",
@@ -238,6 +245,13 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .name = "go row 1237 nop1 through nop10 chain fails equality against two before genesis",
             .unlocking_hex = "51",
             .locking_hex = "b0b1b2b3b4b5b6b7b8b95287",
+            .flags = legacy_flags,
+            .expected = .{ .success = false },
+        },
+        .{
+            .name = "go row 1238 nop1 through nop10 chain fails equality against alternate marker string",
+            .unlocking_hex = "0b4e4f505f315f746f5f3130b0b1b2b3b4b5b6b7b8b9",
+            .locking_hex = "0b4e4f505f315f746f5f313187",
             .flags = legacy_flags,
             .expected = .{ .success = false },
         },

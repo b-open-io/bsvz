@@ -447,9 +447,34 @@ test "go direct checksig rows: sighash policy gates" {
 
 test "go strict sigcheck rows: strict pubkey encoding" {
     const allocator = std.testing.allocator;
+    const relaxed_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
 
     var strict_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
     strict_flags.strict_encoding = true;
+
+    try runRows(allocator, relaxed_flags, &[_]GoRow{
+        .{
+            .row = 2027,
+            .name = "row 2027 p2pk with hybrid pubkey without strictenc",
+            .unlocking_hex = "473044022057292e2d4dfe775becdd0a9e6547997c728cdf35390f6a017da56d654d374e4902206b643be2fc53763b4e284845bfea2c597d2dc7759941dce937636c9d341b71ed01",
+            .locking_hex = "410679be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8ac",
+            .expected = .{ .success = false },
+        },
+        .{
+            .row = 2041,
+            .name = "row 2041 p2pk not with hybrid pubkey without strictenc",
+            .unlocking_hex = "4730440220035d554e3153c14950c9993f41c496607a8e24093db0595be7bf875cf64fcf1f02204731c8c4e5daf15e706cec19cdd8f2c5b1d05490e11dab8465ed426569b6e92101",
+            .locking_hex = "410679be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8ac91",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 2055,
+            .name = "row 2055 p2pk not with invalid hybrid pubkey without strictenc",
+            .unlocking_hex = "4730440220035d554e3153c04950c9993f41c496607a8e24093db0595be7bf875cf64fcf1f02204731c8c4e5daf15e706cec19cdd8f2c5b1d05490e11dab8465ed426569b6e92101",
+            .locking_hex = "410679be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8ac91",
+            .expected = .{ .success = true },
+        },
+    });
 
     try runRows(allocator, strict_flags, &[_]GoRow{
         .{
