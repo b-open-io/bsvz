@@ -9,6 +9,25 @@ pub const ExecutionContext = context.ExecutionContext;
 pub const ExecutionFlags = context.ExecutionFlags;
 pub const ExecutionState = context.ExecutionState;
 pub const ExecutionResult = context.ExecutionResult;
+pub const ScriptPhase = context.ScriptPhase;
+pub const VerificationTerminal = context.VerificationTerminal;
+
+pub const VerificationResult = struct {
+    success: bool,
+    terminal: VerificationTerminal,
+    phase: ScriptPhase,
+    script_error: ?Error = null,
+    state: ExecutionState,
+
+    pub fn deinit(self: *VerificationResult, allocator: std.mem.Allocator) void {
+        self.state.deinit(allocator);
+    }
+
+    pub fn toLegacy(self: VerificationResult) Error!bool {
+        if (self.script_error) |err| return err;
+        return self.success;
+    }
+};
 
 pub const ScriptThread = struct {
     ctx: ExecutionContext,
@@ -26,38 +45,78 @@ pub const ScriptThread = struct {
         errdefer self.state.deinit(self.ctx.allocator);
         try engine.executeLockingScript(self.ctx, &self.state, script);
         const success = try finalResult(self.ctx, &self.state);
-        const state = self.state;
-        self.state = .{};
         return .{
             .success = success,
-            .state = state,
+            .state = self.takeState(),
         };
     }
 
     pub fn verifyPair(self: *ScriptThread, unlocking_script: Script, locking_script: Script) Error!bool {
-        if (self.ctx.flags.sig_push_only and !(try engine.isPushOnly(unlocking_script))) return error.SigPushOnly;
-
-        if (!(try self.executePhase(.unlocking, unlocking_script))) return false;
-        self.state.clearAltStack(self.ctx.allocator);
-        if (!(try self.executePhase(.locking, locking_script))) return false;
-
-        return finalResult(self.ctx, &self.state);
+        var result = self.verifyPairDetailed(unlocking_script, locking_script);
+        defer result.deinit(self.ctx.allocator);
+        return result.toLegacy();
     }
 
-    fn executePhase(self: *ScriptThread, which: enum { unlocking, locking }, script: Script) Error!bool {
+    pub fn verifyPairDetailed(self: *ScriptThread, unlocking_script: Script, locking_script: Script) VerificationResult {
+        if (self.ctx.flags.sig_push_only) {
+            const push_only = engine.isPushOnly(unlocking_script) catch |err| {
+                return self.finishVerification(.script_error, .unlocking, err);
+            };
+            if (!push_only) return self.finishVerification(.script_error, .unlocking, error.SigPushOnly);
+        }
+
+        if (self.executePhaseDetailed(.unlocking, unlocking_script)) |result| return result;
+        self.state.clearAltStack(self.ctx.allocator);
+        if (self.executePhaseDetailed(.locking, locking_script)) |result| return result;
+
+        const success = finalResult(self.ctx, &self.state) catch |err| {
+            return self.finishVerification(.script_error, .final, err);
+        };
+        return self.finishVerification(if (success) .success else .false_result, .final, null);
+    }
+
+    fn executePhaseDetailed(self: *ScriptThread, which: ScriptPhase, script: Script) ?VerificationResult {
         const result = switch (which) {
             .unlocking => engine.executeUnlockingScript(self.ctx, &self.state, script),
             .locking => engine.executeLockingScript(self.ctx, &self.state, script),
+            .final => unreachable,
         };
 
         result catch |err| switch (err) {
-            error.VerifyFailed => return false,
-            error.ReturnEncountered => if (self.ctx.flags.utxo_after_genesis) return false else return err,
-            else => return err,
+            error.VerifyFailed => return self.finishVerification(.false_result, which, null),
+            error.ReturnEncountered => if (self.ctx.flags.utxo_after_genesis) {
+                return self.finishVerification(.false_result, which, null);
+            } else {
+                return self.finishVerification(.script_error, which, err);
+            },
+            else => return self.finishVerification(.script_error, which, err),
         };
 
-        if (self.state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
-        return true;
+        if (self.state.condition_stack.items.len != 0) {
+            return self.finishVerification(.script_error, which, error.UnbalancedConditionals);
+        }
+        return null;
+    }
+
+    fn finishVerification(
+        self: *ScriptThread,
+        terminal: VerificationTerminal,
+        phase: ScriptPhase,
+        script_error: ?Error,
+    ) VerificationResult {
+        return .{
+            .success = terminal == .success,
+            .terminal = terminal,
+            .phase = phase,
+            .script_error = script_error,
+            .state = self.takeState(),
+        };
+    }
+
+    fn takeState(self: *ScriptThread) ExecutionState {
+        const state = self.state;
+        self.state = .{};
+        return state;
     }
 };
 
@@ -67,9 +126,19 @@ pub fn executeScript(ctx: ExecutionContext, script: Script) Error!ExecutionResul
 }
 
 pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_script: Script) Error!bool {
+    var result = verifyScriptsDetailed(ctx, unlocking_script, locking_script);
+    defer result.deinit(ctx.allocator);
+    return result.toLegacy();
+}
+
+pub fn verifyScriptsDetailed(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    locking_script: Script,
+) VerificationResult {
     var thread = ScriptThread.init(ctx);
     defer thread.deinit();
-    return thread.verifyPair(unlocking_script, locking_script);
+    return thread.verifyPairDetailed(unlocking_script, locking_script);
 }
 
 pub fn verifyExecutableScripts(
@@ -77,8 +146,23 @@ pub fn verifyExecutableScripts(
     unlocking_script: Script,
     full_locking_script: Script,
 ) Error!bool {
-    const executable_locking_script = try bytes.executableCodePart(full_locking_script);
-    return verifyScripts(executableContext(ctx, full_locking_script), unlocking_script, executable_locking_script);
+    var result = verifyExecutableScriptsDetailed(ctx, unlocking_script, full_locking_script);
+    defer result.deinit(ctx.allocator);
+    return result.toLegacy();
+}
+
+pub fn verifyExecutableScriptsDetailed(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    full_locking_script: Script,
+) VerificationResult {
+    var thread = ScriptThread.init(executableContext(ctx, full_locking_script));
+    defer thread.deinit();
+
+    const executable_locking_script = bytes.executableCodePart(full_locking_script) catch |err| {
+        return thread.finishVerification(.script_error, .locking, err);
+    };
+    return thread.verifyPairDetailed(unlocking_script, executable_locking_script);
 }
 
 fn finalResult(ctx: ExecutionContext, state: *ExecutionState) Error!bool {
@@ -132,4 +216,52 @@ test "thread executeScript transfers state ownership to result" {
 
     thread.deinit();
     try std.testing.expect(result.success);
+}
+
+test "thread verifyScriptsDetailed reports final false results without throwing" {
+    const allocator = std.testing.allocator;
+
+    var result = verifyScriptsDetailed(.{
+        .allocator = allocator,
+    }, Script.init(&[_]u8{}), Script.init(&[_]u8{
+        @intFromEnum(@import("opcode.zig").Opcode.OP_0),
+    }));
+    defer result.deinit(allocator);
+
+    try std.testing.expect(!result.success);
+    try std.testing.expectEqual(VerificationTerminal.false_result, result.terminal);
+    try std.testing.expectEqual(ScriptPhase.final, result.phase);
+    try std.testing.expectEqual(@as(?Error, null), result.script_error);
+}
+
+test "thread verifyScriptsDetailed reports script errors with owned state" {
+    const allocator = std.testing.allocator;
+
+    var result = verifyScriptsDetailed(.{
+        .allocator = allocator,
+    }, Script.init(&[_]u8{}), Script.init(&[_]u8{
+        @intFromEnum(@import("opcode.zig").Opcode.OP_FROMALTSTACK),
+    }));
+    defer result.deinit(allocator);
+
+    try std.testing.expect(!result.success);
+    try std.testing.expectEqual(VerificationTerminal.script_error, result.terminal);
+    try std.testing.expectEqual(ScriptPhase.locking, result.phase);
+    try std.testing.expectEqual(error.AltStackUnderflow, result.script_error.?);
+}
+
+test "thread verifyExecutableScriptsDetailed preserves code-part parse failures as structured results" {
+    const allocator = std.testing.allocator;
+
+    var result = verifyExecutableScriptsDetailed(.{
+        .allocator = allocator,
+    }, Script.init(&[_]u8{}), Script.init(&[_]u8{
+        @intFromEnum(@import("opcode.zig").Opcode.OP_PUSHDATA1),
+    }));
+    defer result.deinit(allocator);
+
+    try std.testing.expect(!result.success);
+    try std.testing.expectEqual(VerificationTerminal.script_error, result.terminal);
+    try std.testing.expectEqual(ScriptPhase.locking, result.phase);
+    try std.testing.expectEqual(error.InvalidPushData, result.script_error.?);
 }

@@ -1,4 +1,5 @@
 const std = @import("std");
+const crypto = @import("../crypto/lib.zig");
 const Script = @import("../script/script.zig").Script;
 const primitives = @import("../primitives/lib.zig");
 
@@ -25,6 +26,12 @@ pub const Output = struct {
         _ = self.writeInto(out);
         return out;
     }
+
+    pub fn hash256(self: *const Output, allocator: std.mem.Allocator) !crypto.Hash256 {
+        const serialized = try self.serialize(allocator);
+        defer allocator.free(serialized);
+        return crypto.hash.hash256(serialized);
+    }
 };
 
 test "output serialize matches legacy encoding" {
@@ -39,7 +46,23 @@ test "output serialize matches legacy encoding" {
     try std.testing.expectEqual(@as(usize, 11), written);
     try std.testing.expectEqualSlices(u8, &[_]u8{
         0x2a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x02,
-        0x51, 0x51,
+        0x02, 0x51, 0x51,
     }, &buf);
+}
+
+test "output hash256 matches serialized bytes hash" {
+    const allocator = std.testing.allocator;
+
+    const output = Output{
+        .satoshis = 5000,
+        .locking_script = .{ .bytes = &[_]u8{ 0x76, 0xa9, 0x14, 0x88, 0xac } },
+    };
+
+    const serialized = try output.serialize(allocator);
+    defer allocator.free(serialized);
+
+    const expected = crypto.hash.hash256(serialized);
+    const actual = try output.hash256(allocator);
+
+    try std.testing.expectEqualDeep(expected, actual);
 }

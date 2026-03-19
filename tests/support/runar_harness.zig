@@ -16,6 +16,13 @@ pub const SpendSpec = struct {
     signing_key: [32]u8,
 };
 
+pub const VerificationOutcome = union(enum) {
+    success,
+    eval_false,
+    script_error: bsvz.script.thread.Error,
+};
+pub const VerificationResult = bsvz.script.thread.VerificationResult;
+
 pub const Case = struct {
     name: []const u8,
     locking_script_hex: []const u8,
@@ -27,9 +34,28 @@ pub const Case = struct {
 
 const default_output_script = [_]u8{0x6a};
 
-pub fn runCase(allocator: std.mem.Allocator, case: Case) !bool {
+pub fn verificationOutcome(result: bsvz.script.thread.Error!bool) VerificationOutcome {
+    const verified = result catch |err| return .{ .script_error = err };
+    return if (verified) .success else .eval_false;
+}
+
+pub fn verificationOutcomeDetailed(
+    allocator: std.mem.Allocator,
+    detailed_result: VerificationResult,
+) VerificationOutcome {
+    var result = detailed_result;
+    defer result.deinit(allocator);
+
+    return switch (result.terminal) {
+        .success => .success,
+        .false_result => .eval_false,
+        .script_error => .{ .script_error = result.script_error.? },
+    };
+}
+
+pub fn runCaseDetailed(allocator: std.mem.Allocator, case: Case) !VerificationResult {
     var arena_state = std.heap.ArenaAllocator.init(allocator);
-    defer arena_state.deinit();
+    errdefer arena_state.deinit();
     const arena = arena_state.allocator();
 
     const locking_script_bytes = try bsvz.primitives.hex.decode(arena, case.locking_script_hex);
@@ -76,14 +102,35 @@ pub fn runCase(allocator: std.mem.Allocator, case: Case) !bool {
     }
 
     const unlocking_script = try buildUnlockingScript(arena, case.args, case.method_selector, signature_bytes);
+    defer arena_state.deinit();
 
-    return bsvz.script.thread.verifyScripts(.{
+    if (case.spend) |spend| {
+        const previous_output = bsvz.transaction.Output{
+            .satoshis = spend.previous_satoshis,
+            .locking_script = locking_script,
+        };
+        return bsvz.script.thread.verifyExecutableScriptsDetailed(
+            bsvz.script.context.ExecutionContext.forPrevoutSpend(allocator, &tx, 0, previous_output),
+            unlocking_script,
+            locking_script,
+        );
+    }
+
+    return bsvz.script.thread.verifyScriptsDetailed(.{
         .allocator = allocator,
-        .tx = if (case.spend != null) &tx else null,
-        .input_index = 0,
-        .previous_locking_script = if (case.spend != null) locking_script else null,
-        .previous_satoshis = if (case.spend) |spend| spend.previous_satoshis else 0,
     }, unlocking_script, locking_script);
+}
+
+pub fn runCaseOutcome(allocator: std.mem.Allocator, case: Case) !VerificationOutcome {
+    return verificationOutcomeDetailed(allocator, try runCaseDetailed(allocator, case));
+}
+
+pub fn runCase(allocator: std.mem.Allocator, case: Case) !bool {
+    return switch (try runCaseOutcome(allocator, case)) {
+        .success => true,
+        .eval_false => false,
+        .script_error => |err| return err,
+    };
 }
 
 fn buildUnlockingScript(

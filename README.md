@@ -57,6 +57,82 @@ Current interpreter target:
 - drive `bsvz.script` to full BSV consensus compliance
 - keep using Go parity vectors and real Runar execution as the main regression oracles while closing the remaining gaps
 
+## Runar-Facing Ergonomics
+
+`bsvz` does not ship a dedicated Runar adapter yet, but the current public surface is already usable from `runar-zig` and local fixture-driven flows.
+
+- plain executable pair: `bsvz.script.thread.verifyScripts(...)` or `ScriptThread.verifyPair(...)`
+- spend with transaction context: `bsvz.script.thread.verifyExecutableScripts(...)`
+- small spend wrapper: `bsvz.script.interpreter.verify(...)`
+- detailed verification result: `bsvz.script.thread.verifyScriptsDetailed(...)`, `verifyExecutableScriptsDetailed(...)`, and `bsvz.script.interpreter.verifyDetailed(...)`
+
+That means:
+
+- `true`: script pair verified
+- `false`: the script evaluated cleanly but failed its final truthiness / `VERIFY` outcome
+- `error.*`: policy, parsing, encoding, or transaction-context failure
+
+If you want the non-collapsed Zig-native shape, use the detailed result:
+
+- `result.terminal == .success`
+- `result.terminal == .false_result`
+- `result.terminal == .script_error`, with `result.phase` and `result.script_error`
+
+Minimal pair verification:
+
+```zig
+var thread = bsvz.script.thread.ScriptThread.init(.{ .allocator = allocator });
+defer thread.deinit();
+
+const ok = try thread.verifyPair(
+    bsvz.script.Script.init(unlocking_bytes),
+    bsvz.script.Script.init(locking_bytes),
+);
+```
+
+Spend verification against a previous output:
+
+```zig
+const previous_output = previous_tx.outputs[previous_output_index];
+
+var result = bsvz.script.thread.verifyExecutableScriptsDetailed(
+    bsvz.script.context.ExecutionContext.forPrevoutSpend(
+        allocator,
+        &spend_tx,
+        spend_input_index,
+        previous_output,
+    ),
+    spend_tx.inputs[spend_input_index].unlocking_script,
+    previous_output.locking_script,
+);
+defer result.deinit(allocator);
+
+if (result.terminal == .script_error) return result.script_error.?;
+const ok = result.success;
+```
+
+The lower-level `verifyExecutableScripts(...)` entry point trims any state suffix from the locking script for execution while still preserving the full previous locking script in the spend context for sighash checks.
+
+Runar-adjacent helpers already present in the library:
+
+- secp256k1 point API: `bsvz.crypto.Point.fromCompressedSec1`, `fromRaw64`, `toCompressedSec1`, `toRaw64`, `xBytes32`, `yBytes32`, `add`, `mul`, `negate`
+- output serialization and hashing: `bsvz.transaction.Output.serialize(...)`, `writeInto(...)`, `hash256(...)`
+- transaction serialization and txid: `bsvz.transaction.Transaction.serialize(...)` and `tx.txid(...)`
+
+Tiny serialization example:
+
+```zig
+const output = bsvz.transaction.Output{
+    .satoshis = 42,
+    .locking_script = bsvz.script.Script.init(&[_]u8{0x6a}),
+};
+
+const raw = try output.serialize(allocator);
+defer allocator.free(raw);
+
+std.debug.print("{s}\n", .{std.fmt.fmtSliceHexLower(raw)});
+```
+
 ## Script Interpreter Coverage
 
 This is the current interpreter map for `bsvz.script`.

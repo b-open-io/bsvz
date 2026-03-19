@@ -1532,14 +1532,13 @@ fn buildFungibleTokenMergeFixture(allocator: std.mem.Allocator) !std.json.Parsed
     });
 }
 
-
-fn verifyInputAgainstOutput(
+fn verifyInputAgainstOutputOutcome(
     allocator: std.mem.Allocator,
     previous_tx_hex: []const u8,
     previous_output_index: usize,
     spend_tx_hex: []const u8,
     spend_input_index: usize,
-) !bool {
+) !harness.VerificationOutcome {
     const previous_tx_bytes = try bsvz.primitives.hex.decode(allocator, previous_tx_hex);
     defer allocator.free(previous_tx_bytes);
     var previous_tx = try Transaction.parse(allocator, previous_tx_bytes);
@@ -1554,17 +1553,45 @@ fn verifyInputAgainstOutput(
     const unlocking_script = spend_tx.inputs[spend_input_index].unlocking_script;
     const locking_script = previous_output.locking_script;
 
-    const exec_ctx = bsvz.script.engine.ExecutionContext.forSpend(
+    const exec_ctx = bsvz.script.context.ExecutionContext.forPrevoutSpend(
         allocator,
         &spend_tx,
         spend_input_index,
-        previous_output.satoshis,
+        previous_output,
     );
-    return bsvz.script.thread.verifyExecutableScripts(
+    return harness.verificationOutcomeDetailed(allocator, bsvz.script.thread.verifyExecutableScriptsDetailed(
         exec_ctx,
         Script.init(unlocking_script.bytes),
         locking_script,
-    ) catch false;
+    ));
+}
+
+fn verifyInputAgainstOutput(
+    allocator: std.mem.Allocator,
+    previous_tx_hex: []const u8,
+    previous_output_index: usize,
+    spend_tx_hex: []const u8,
+    spend_input_index: usize,
+) !bool {
+    return switch (try verifyInputAgainstOutputOutcome(
+        allocator,
+        previous_tx_hex,
+        previous_output_index,
+        spend_tx_hex,
+        spend_input_index,
+    )) {
+        .success => true,
+        .eval_false => false,
+        .script_error => |err| return err,
+    };
+}
+
+fn verifyFirstInputAgainstFirstOutputOutcome(
+    allocator: std.mem.Allocator,
+    deploy_tx_hex: []const u8,
+    call_tx_hex: []const u8,
+) !harness.VerificationOutcome {
+    return verifyInputAgainstOutputOutcome(allocator, deploy_tx_hex, 0, call_tx_hex, 0);
 }
 
 fn verifyFirstInputAgainstFirstOutput(
@@ -1573,6 +1600,118 @@ fn verifyFirstInputAgainstFirstOutput(
     call_tx_hex: []const u8,
 ) !bool {
     return verifyInputAgainstOutput(allocator, deploy_tx_hex, 0, call_tx_hex, 0);
+}
+
+fn expectVerificationOutcome(
+    actual: harness.VerificationOutcome,
+    expected: harness.VerificationOutcome,
+) !void {
+    switch (expected) {
+        .success => switch (actual) {
+            .success => {},
+            else => try std.testing.expect(false),
+        },
+        .eval_false => switch (actual) {
+            .eval_false => {},
+            else => try std.testing.expect(false),
+        },
+        .script_error => |want_err| switch (actual) {
+            .script_error => |got_err| try std.testing.expectEqual(want_err, got_err),
+            else => try std.testing.expect(false),
+        },
+    }
+}
+
+fn expectVerifySuccess(
+    allocator: std.mem.Allocator,
+    previous_tx_hex: []const u8,
+    previous_output_index: usize,
+    spend_tx_hex: []const u8,
+    spend_input_index: usize,
+) !void {
+    try expectVerificationOutcome(
+        try verifyInputAgainstOutputOutcome(
+            allocator,
+            previous_tx_hex,
+            previous_output_index,
+            spend_tx_hex,
+            spend_input_index,
+        ),
+        .success,
+    );
+}
+
+fn expectVerifyFalse(
+    allocator: std.mem.Allocator,
+    previous_tx_hex: []const u8,
+    previous_output_index: usize,
+    spend_tx_hex: []const u8,
+    spend_input_index: usize,
+) !void {
+    try expectVerificationOutcome(
+        try verifyInputAgainstOutputOutcome(
+            allocator,
+            previous_tx_hex,
+            previous_output_index,
+            spend_tx_hex,
+            spend_input_index,
+        ),
+        .eval_false,
+    );
+}
+
+fn expectVerifyError(
+    allocator: std.mem.Allocator,
+    previous_tx_hex: []const u8,
+    previous_output_index: usize,
+    spend_tx_hex: []const u8,
+    spend_input_index: usize,
+    want_err: bsvz.script.thread.Error,
+) !void {
+    try expectVerificationOutcome(
+        try verifyInputAgainstOutputOutcome(
+            allocator,
+            previous_tx_hex,
+            previous_output_index,
+            spend_tx_hex,
+            spend_input_index,
+        ),
+        .{ .script_error = want_err },
+    );
+}
+
+fn expectFirstInputVerifySuccess(
+    allocator: std.mem.Allocator,
+    deploy_tx_hex: []const u8,
+    call_tx_hex: []const u8,
+) !void {
+    try expectVerificationOutcome(
+        try verifyFirstInputAgainstFirstOutputOutcome(allocator, deploy_tx_hex, call_tx_hex),
+        .success,
+    );
+}
+
+fn expectFirstInputVerifyFalse(
+    allocator: std.mem.Allocator,
+    deploy_tx_hex: []const u8,
+    call_tx_hex: []const u8,
+) !void {
+    try expectVerificationOutcome(
+        try verifyFirstInputAgainstFirstOutputOutcome(allocator, deploy_tx_hex, call_tx_hex),
+        .eval_false,
+    );
+}
+
+fn expectFirstInputVerifyError(
+    allocator: std.mem.Allocator,
+    deploy_tx_hex: []const u8,
+    call_tx_hex: []const u8,
+    want_err: bsvz.script.thread.Error,
+) !void {
+    try expectVerificationOutcome(
+        try verifyFirstInputAgainstFirstOutputOutcome(allocator, deploy_tx_hex, call_tx_hex),
+        .{ .script_error = want_err },
+    );
 }
 
 test "local runar ec-primitives acceptance cases execute through bsvz when fixtures are present" {
@@ -1812,11 +1951,11 @@ test "local runar covenant vault wrong payout amount fails through bsvz" {
     const fixture = try buildCovenantVaultWrongAmountFixture(allocator);
     defer fixture.deinit();
 
-    try std.testing.expect(!(try verifyFirstInputAgainstFirstOutput(
+    try expectFirstInputVerifyFalse(
         allocator,
         fixture.value.deploy_tx_hex,
         fixture.value.call_tx_hex,
-    )));
+    );
 }
 
 test "local runar auction bid spend verifies through bsvz" {
@@ -1848,11 +1987,11 @@ test "local runar auction close before deadline fails through bsvz" {
     const fixture = try buildAuctionCloseFixture(allocator, 1);
     defer fixture.deinit();
 
-    try std.testing.expect(!(try verifyFirstInputAgainstFirstOutput(
+    try expectFirstInputVerifyFalse(
         allocator,
         fixture.value.deploy_tx_hex,
         fixture.value.call_tx_hex,
-    )));
+    );
 }
 
 test "local runar auction sequential bids verify through bsvz" {

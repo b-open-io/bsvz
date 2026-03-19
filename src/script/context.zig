@@ -2,6 +2,7 @@ const std = @import("std");
 const limits = @import("limits.zig");
 const Script = @import("script.zig").Script;
 const Transaction = @import("../transaction/transaction.zig").Transaction;
+const Output = @import("../transaction/output.zig").Output;
 
 pub const ExecutionFlags = struct {
     max_ops: usize = 500_000,
@@ -80,6 +81,33 @@ pub const ExecutionContext = struct {
             .previous_satoshis = previous_satoshis,
         };
     }
+
+    pub fn forPrevoutSpend(
+        allocator: std.mem.Allocator,
+        tx: *const Transaction,
+        input_index: usize,
+        previous_output: Output,
+    ) ExecutionContext {
+        return .{
+            .allocator = allocator,
+            .tx = tx,
+            .input_index = input_index,
+            .previous_locking_script = previous_output.locking_script,
+            .previous_satoshis = previous_output.satoshis,
+        };
+    }
+};
+
+pub const ScriptPhase = enum {
+    unlocking,
+    locking,
+    final,
+};
+
+pub const VerificationTerminal = enum {
+    success,
+    false_result,
+    script_error,
 };
 
 pub const ExecutionState = struct {
@@ -140,4 +168,23 @@ test "execution flag presets expose legacy and BSV policy envelopes" {
     try std.testing.expect(!bsv.discourage_upgradable_nops);
     try std.testing.expect(!bsv.verify_check_locktime);
     try std.testing.expect(!bsv.verify_check_sequence);
+}
+
+test "execution context can be built directly from a previous output" {
+    const tx = Transaction{
+        .version = 2,
+        .inputs = &.{},
+        .outputs = &.{},
+        .lock_time = 0,
+    };
+    const previous_output = Output{
+        .satoshis = 1234,
+        .locking_script = Script.init(&[_]u8{ 0x51, 0x6a }),
+    };
+
+    const ctx = ExecutionContext.forPrevoutSpend(std.testing.allocator, &tx, 3, previous_output);
+    try std.testing.expectEqual(@as(?*const Transaction, &tx), ctx.tx);
+    try std.testing.expectEqual(@as(usize, 3), ctx.input_index);
+    try std.testing.expectEqual(@as(i64, 1234), ctx.previous_satoshis);
+    try std.testing.expectEqualSlices(u8, previous_output.locking_script.bytes, ctx.previous_locking_script.?.bytes);
 }

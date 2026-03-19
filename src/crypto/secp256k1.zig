@@ -20,6 +20,11 @@ pub const Sec1Bytes = struct {
     }
 };
 
+pub const AffineBytes32 = struct {
+    x: [32]u8,
+    y: [32]u8,
+};
+
 pub const Point = struct {
     inner: StdPoint,
 
@@ -126,7 +131,10 @@ pub const Point = struct {
     }
 
     pub fn isOnCurve(self: Point) bool {
-        _ = self;
+        if (self.isIdentity()) return true;
+
+        const affine = self.affineBytes32();
+        _ = StdPoint.fromSerializedAffineCoordinates(affine.x, affine.y, .big) catch return false;
         return true;
     }
 
@@ -134,14 +142,27 @@ pub const Point = struct {
         return self.inner.equivalent(StdPoint.identityElement);
     }
 
+    pub fn affineBytes32(self: Point) AffineBytes32 {
+        if (self.isIdentity()) {
+            return .{
+                .x = [_]u8{0} ** 32,
+                .y = [_]u8{0} ** 32,
+            };
+        }
+
+        const affine = self.inner.affineCoordinates();
+        return .{
+            .x = affine.x.toBytes(.big),
+            .y = affine.y.toBytes(.big),
+        };
+    }
+
     pub fn xBytes32(self: Point) [32]u8 {
-        if (self.isIdentity()) return [_]u8{0} ** 32;
-        return self.inner.affineCoordinates().x.toBytes(.big);
+        return self.affineBytes32().x;
     }
 
     pub fn yBytes32(self: Point) [32]u8 {
-        if (self.isIdentity()) return [_]u8{0} ** 32;
-        return self.inner.affineCoordinates().y.toBytes(.big);
+        return self.affineBytes32().y;
     }
 };
 
@@ -336,4 +357,55 @@ test "point raw64 and public key bridging" {
     try std.testing.expectEqualSlices(u8, raw[0..32], &x);
     try std.testing.expectEqualSlices(u8, raw[32..64], &y);
     try std.testing.expectEqualSlices(u8, Point.identity().toCompressedSec1().slice(), (try point.mul([_]u8{0} ** 32)).toCompressedSec1().slice());
+}
+
+test "point affine/raw/sec1 roundtrips stay aligned" {
+    const scalars = [_]u8{ 1, 2, 3, 7, 42 };
+
+    for (scalars) |scalar_value| {
+        var scalar = [_]u8{0} ** 32;
+        scalar[31] = scalar_value;
+
+        const point = try Point.basePointMul(scalar);
+        const affine = point.affineBytes32();
+        const raw = point.toRaw64();
+
+        const from_affine = try Point.fromAffineBytes32(affine.x, affine.y);
+        const from_raw = try Point.fromRaw64(&raw);
+        const from_compressed = try Point.fromCompressedSec1(point.toCompressedSec1().slice());
+        const from_uncompressed = try Point.fromUncompressedSec1(point.toUncompressedSec1().slice());
+
+        try std.testing.expect(point.isOnCurve());
+        try std.testing.expectEqualSlices(u8, point.toCompressedSec1().slice(), from_affine.toCompressedSec1().slice());
+        try std.testing.expectEqualSlices(u8, point.toCompressedSec1().slice(), from_raw.toCompressedSec1().slice());
+        try std.testing.expectEqualSlices(u8, point.toCompressedSec1().slice(), from_compressed.toCompressedSec1().slice());
+        try std.testing.expectEqualSlices(u8, point.toCompressedSec1().slice(), from_uncompressed.toCompressedSec1().slice());
+        try std.testing.expectEqualSlices(u8, raw[0..32], &affine.x);
+        try std.testing.expectEqualSlices(u8, raw[32..64], &affine.y);
+        try std.testing.expectEqualSlices(u8, &affine.x, &point.xBytes32());
+        try std.testing.expectEqualSlices(u8, &affine.y, &point.yBytes32());
+    }
+}
+
+test "point identity encodings roundtrip across public helpers" {
+    const identity = Point.identity();
+    const compressed = identity.toCompressedSec1();
+    const uncompressed = identity.toUncompressedSec1();
+    const affine = identity.affineBytes32();
+    const raw = identity.toRaw64();
+
+    try std.testing.expect(identity.isIdentity());
+    try std.testing.expect(identity.isOnCurve());
+    try std.testing.expectEqual(@as(usize, 1), compressed.len);
+    try std.testing.expectEqual(@as(u8, 0x00), compressed.bytes[0]);
+    try std.testing.expectEqual(@as(usize, 1), uncompressed.len);
+    try std.testing.expectEqual(@as(u8, 0x00), uncompressed.bytes[0]);
+    try std.testing.expectEqualSlices(u8, &([_]u8{0} ** 32), &affine.x);
+    try std.testing.expectEqualSlices(u8, &([_]u8{0} ** 32), &affine.y);
+    try std.testing.expectEqualSlices(u8, &([_]u8{0} ** 64), &raw);
+    try std.testing.expect((try Point.fromCompressedSec1(compressed.slice())).isIdentity());
+    try std.testing.expect((try Point.fromUncompressedSec1(uncompressed.slice())).isIdentity());
+    try std.testing.expect((try Point.fromAffineBytes32(affine.x, affine.y)).isIdentity());
+    try std.testing.expect((try Point.fromRaw64(&raw)).isIdentity());
+    try std.testing.expectError(error.InvalidEncoding, PublicKey.fromPoint(identity));
 }
