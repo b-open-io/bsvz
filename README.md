@@ -138,6 +138,7 @@ try traced.writeDebug(std.io.getStdOut().writer());
 ```
 
 There is also a tiny standalone example in [examples/script_trace_demo.zig](/Users/satchmo/code/bsvz/examples/script_trace_demo.zig).
+For prevout-shaped spends, there is a matching traced example in [examples/prevout_trace_demo.zig](/Users/satchmo/code/bsvz/examples/prevout_trace_demo.zig).
 
 Runar-adjacent helpers already present in the library:
 
