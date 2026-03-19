@@ -231,14 +231,16 @@ Current benchmark shape:
 - `SHA256` verification
 - `HASH160` verification
 - stack-operation verification
-- prebuilt P2PKH verification
+- synthetic P2PKH verification
+- Go-reference P2PKH verification
 
 The benchmark harnesses intentionally use prebuilt script/transaction fixtures for verification workloads. They do not include key generation or per-iteration signing overhead in the hot loop.
 
 Important benchmark nuance:
 
 - the simple script-only workloads are closely comparable across the Zig and Go harnesses
-- the current P2PKH fixture is still not a perfect one-to-one transaction match between the two harnesses, so that row should be treated as a local directional baseline rather than a definitive cross-language speed claim
+- the synthetic P2PKH row is still a local diagnostic
+- the `Go reference tx` P2PKH row uses the same transaction fixture as the Go benchmark and is the honest cross-language comparison point
 - the Zig `sighash only` and `secp verify only` diagnostics are useful for local profiling, but they are not mirrored by identical Go sub-benchmarks yet
 
 Current local baseline on Apple M3 Max:
@@ -250,12 +252,13 @@ Current local baseline on Apple M3 Max:
 | `SHA256` verify | ~0.11 us/op | ~3.9 us/op |
 | `HASH160` verify | ~0.28 us/op | ~4.0 us/op |
 | stack ops verify | ~0.30 us/op | ~12.7 us/op |
-| P2PKH verify | ~199.2 us/op | ~211.0 us/op |
+| P2PKH verify (Go reference tx) | ~219.0 us/op | ~227.4 us/op |
 
 Useful local diagnostics for `bsvz` on the same machine:
 
 - P2PKH sighash only: ~0.30 us/op
 - P2PKH secp verify only: ~179.9 us/op
+- P2PKH verify (synthetic fixture): ~208.7 us/op
 - downstream compiled-script workload (`runar arithmetic verify`): ~0.55 us/op in `bsvz` vs ~19.7 us/op in `go-sdk`
 
 That split matters because it shows the remaining cost is concentrated in secp verification, not the script engine or sighash path. `bsvz` now uses a secp256k1 double-base verification fast path built on Zig stdlib curve primitives, which is what moved full P2PKH verification from roughly ~433 us/op down to ~199 us/op.

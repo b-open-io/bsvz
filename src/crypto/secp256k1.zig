@@ -50,14 +50,14 @@ pub const Point = struct {
     }
 
     pub fn fromAffineBytes32(x: [32]u8, y: [32]u8) !Point {
-        if (std.mem.allEqual(u8, &x, 0) and std.mem.allEqual(u8, &y, 0)) return identity();
+        if (std.mem.allEqual(u8, &x, 0) and std.mem.allEqual(u8, &y, 0)) return error.InvalidEncoding;
         const parsed = StdPoint.fromSerializedAffineCoordinates(x, y, .big) catch return error.InvalidEncoding;
         return .{ .inner = parsed };
     }
 
     pub fn fromRaw64(raw: []const u8) !Point {
         if (raw.len != 64) return error.InvalidLength;
-        if (std.mem.allEqual(u8, raw, 0)) return identity();
+        if (std.mem.allEqual(u8, raw, 0)) return error.InvalidEncoding;
 
         var x: [32]u8 = undefined;
         var y: [32]u8 = undefined;
@@ -540,7 +540,7 @@ test "point identity encodings roundtrip across public helpers" {
     try std.testing.expectEqualSlices(u8, &([_]u8{0} ** 64), &raw);
     try std.testing.expect((try Point.fromCompressedSec1(compressed.slice())).isIdentity());
     try std.testing.expect((try Point.fromUncompressedSec1(uncompressed.slice())).isIdentity());
-    try std.testing.expect((try Point.fromAffineBytes32(affine.x, affine.y)).isIdentity());
-    try std.testing.expect((try Point.fromRaw64(&raw)).isIdentity());
+    try std.testing.expectError(error.InvalidEncoding, Point.fromAffineBytes32(affine.x, affine.y));
+    try std.testing.expectError(error.InvalidEncoding, Point.fromRaw64(&raw));
     try std.testing.expectError(error.InvalidEncoding, PublicKey.fromPoint(identity));
 }
