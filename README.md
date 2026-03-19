@@ -120,6 +120,25 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | BRC&#8209;95 | [Atomic BEEF Transactions](https://bsv.brc.dev/transactions/0095) | `transaction.beef` |
 | BRC&#8209;96 | [BEEF V2 Txid Only Extension](https://bsv.brc.dev/transactions/0096) | `transaction.beef` |
 
+<details>
+<summary>Not yet covered</summary>
+
+| Standard | Title | What it needs |
+| --- | --- | --- |
+| BRC&#8209;9 | [Simplified Payment Verification](https://bsv.brc.dev/transactions/0009) | Full ancestor chain traversal for SPV proofs |
+| BRC&#8209;17 | [Pay to R Puzzle Hash](https://bsv.brc.dev/scripts/0017) | R-puzzle script template |
+| BRC&#8209;19 | [Pay to True Return](https://bsv.brc.dev/scripts/0019) | OP_TRUE OP_RETURN template |
+| BRC&#8209;21 | [Push TX](https://bsv.brc.dev/scripts/0021) | Push TX script template |
+| BRC&#8209;32 | [BIP32 Key Derivation](https://bsv.brc.dev/key-derivation/0032) | HD key derivation, xpriv/xpub, child paths |
+| BRC&#8209;42 | [BSV Key Derivation Scheme (Type&#8209;42)](https://bsv.brc.dev/key-derivation/0042) | `DeriveChild` on PrivateKey and PublicKey, ECDH shared secret |
+| BRC&#8209;43 | [Security Levels, Protocol IDs, Key IDs](https://bsv.brc.dev/key-derivation/0043) | Protocol ID and counterparty structures for BRC&#8209;42 |
+| BRC&#8209;48 | [Pay to Push Drop](https://bsv.brc.dev/scripts/0048) | PushDrop script template |
+| BRC&#8209;75 | [Mnemonic for Master Private Key](https://bsv.brc.dev/key-derivation/0075) | BIP39 mnemonic generation and seed derivation |
+| BRC&#8209;77 | [Message Signature Creation and Verification](https://bsv.brc.dev/peer-to-peer/0077) | Bitcoin Signed Message (sign/verify/recover), compact signatures |
+| BRC&#8209;78 | [Portable Encrypted Messages](https://bsv.brc.dev/peer-to-peer/0078) | ECIES single/shared/electrum encryption |
+
+</details>
+
 ## Script Verification APIs
 
 The verification surface covers plain script pairs, full prevout spends, detailed results, and step traces.
