@@ -137,6 +137,7 @@ test "go direct control-flow rows: exact compact return seam families" {
 
     try runRows(allocator, &[_]GoRow{
         .{
+            .row = 76,
             .name = "row 76 untaken if branch ignores return before genesis",
             .unlocking_hex = "00",
             .locking_hex = "636a6851",
@@ -144,6 +145,7 @@ test "go direct control-flow rows: exact compact return seam families" {
             .expected = .{ .success = true },
         },
         .{
+            .row = 77,
             .name = "row 77 untaken if branch ignores return after genesis",
             .unlocking_hex = "00",
             .locking_hex = "636a6851",
@@ -151,6 +153,7 @@ test "go direct control-flow rows: exact compact return seam families" {
             .expected = .{ .success = true },
         },
         .{
+            .row = 82,
             .name = "row 82 unlocking-script return errors before genesis",
             .unlocking_hex = "6a",
             .locking_hex = "51",
@@ -158,6 +161,7 @@ test "go direct control-flow rows: exact compact return seam families" {
             .expected = .{ .err = error.ReturnEncountered },
         },
         .{
+            .row = 83,
             .name = "row 83 unlocking-script return succeeds after genesis",
             .unlocking_hex = "6a",
             .locking_hex = "51",
@@ -179,6 +183,7 @@ test "go direct control-flow rows: exact compact return seam families" {
             .expected = .{ .success = false },
         },
         .{
+            .row = 109,
             .name = "row 109 if return endif five return bad-op tail errors before genesis",
             .unlocking_hex = "00",
             .locking_hex = "636a68556aba",
@@ -186,6 +191,7 @@ test "go direct control-flow rows: exact compact return seam families" {
             .expected = .{ .err = error.ReturnEncountered },
         },
         .{
+            .row = 110,
             .name = "row 110 if return endif five return bad-op tail stays true after genesis",
             .unlocking_hex = "00",
             .locking_hex = "636a68556aba",
@@ -193,6 +199,7 @@ test "go direct control-flow rows: exact compact return seam families" {
             .expected = .{ .success = true },
         },
         .{
+            .row = 111,
             .name = "row 111 taken if return endif five return bad-op tail errors before genesis",
             .unlocking_hex = "51",
             .locking_hex = "636a68556aba",
@@ -200,6 +207,7 @@ test "go direct control-flow rows: exact compact return seam families" {
             .expected = .{ .err = error.ReturnEncountered },
         },
         .{
+            .row = 112,
             .name = "row 112 taken if return endif five return bad-op tail yields false after genesis",
             .unlocking_hex = "51",
             .locking_hex = "636a68556aba",
@@ -207,6 +215,7 @@ test "go direct control-flow rows: exact compact return seam families" {
             .expected = .{ .success = false },
         },
         .{
+            .row = 113,
             .name = "row 113 if five return endif five return bad-op tail errors before genesis",
             .unlocking_hex = "51",
             .locking_hex = "63556a68556aba",
@@ -214,6 +223,7 @@ test "go direct control-flow rows: exact compact return seam families" {
             .expected = .{ .err = error.ReturnEncountered },
         },
         .{
+            .row = 114,
             .name = "row 114 if five return endif five return bad-op tail stays true after genesis",
             .unlocking_hex = "51",
             .locking_hex = "63556a68556aba",
@@ -221,6 +231,7 @@ test "go direct control-flow rows: exact compact return seam families" {
             .expected = .{ .success = true },
         },
         .{
+            .row = 115,
             .name = "row 115 if five return endif five return if errors before genesis",
             .unlocking_hex = "51",
             .locking_hex = "63556a68556a63",
@@ -327,10 +338,10 @@ test "go direct script rows: nested else else legacy versus post-genesis" {
     const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
 
     try runRows(allocator, &[_]GoRow{
-        .{ .name = "row 72 legacy nested else else succeeds for outer false path", .unlocking_hex = "00", .locking_hex = "6351636a676a676a6867516351676a675168676a68935287", .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "row 74 post-genesis nested else else is unbalanced for outer false path", .unlocking_hex = "00", .locking_hex = "6351636a676a676a6867516351676a675168676a68935287", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
-        .{ .name = "row 73 legacy nested else else succeeds for outer true notif path", .unlocking_hex = "51", .locking_hex = "6400646a676a676a6867006451676a675168676a68935287", .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "row 75 post-genesis nested else else is unbalanced for outer true notif path", .unlocking_hex = "51", .locking_hex = "6400646a676a676a6867006451676a675168676a68935287", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 72, .name = "row 72 legacy nested else else succeeds for outer false path", .unlocking_hex = "00", .locking_hex = "6351636a676a676a6867516351676a675168676a68935287", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .row = 74, .name = "row 74 post-genesis nested else else is unbalanced for outer false path", .unlocking_hex = "00", .locking_hex = "6351636a676a676a6867516351676a675168676a68935287", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 73, .name = "row 73 legacy nested else else succeeds for outer true notif path", .unlocking_hex = "51", .locking_hex = "6400646a676a676a6867006451676a675168676a68935287", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .row = 75, .name = "row 75 post-genesis nested else else is unbalanced for outer true notif path", .unlocking_hex = "51", .locking_hex = "6400646a676a676a6867006451676a675168676a68935287", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
     });
 }
 
