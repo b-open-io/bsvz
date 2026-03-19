@@ -15,6 +15,13 @@ const DynamicRow = struct {
     expected_text: []const u8,
 };
 
+fn isSafeDirectHash160EqualRow(index: usize) bool {
+    return switch (index) {
+        290, 292, 293, 294, 533, 534 => true,
+        else => false,
+    };
+}
+
 fn accessOrSkip(rel_path: []const u8) !void {
     std.fs.cwd().access(rel_path, .{}) catch |err| switch (err) {
         error.FileNotFound => return error.SkipZigTest,
@@ -36,26 +43,7 @@ fn containsAnyUnsupportedToken(unlocking_asm: []const u8, locking_asm: []const u
         "CHECKSIGVERIFY",
         "CHECKMULTISIG",
         "CHECKMULTISIGVERIFY",
-        "CHECKLOCKTIMEVERIFY",
         "CHECKSEQUENCEVERIFY",
-        "2MUL",
-        "2DIV",
-        "2DROP",
-        "2DUP",
-        "2OVER",
-        "2ROT",
-        "2SWAP",
-        "3DUP",
-        "TOALTSTACK",
-        "FROMALTSTACK",
-        "IFDUP",
-        "NIP",
-        "OVER",
-        "PICK",
-        "ROLL",
-        "ROT",
-        "SWAP",
-        "TUCK",
     };
     inline for (blocked) |token| {
         if (containsToken(unlocking_asm, token) or containsToken(locking_asm, token)) return true;
@@ -122,6 +110,10 @@ fn parseFlags(text: []const u8) ?bsvz.script.engine.ExecutionFlags {
             flags.discourage_upgradable_nops = true;
             continue;
         }
+        if (std.mem.eql(u8, part, "CHECKSEQUENCEVERIFY")) {
+            flags.verify_check_sequence = true;
+            continue;
+        }
         if (std.mem.eql(u8, part, "SIGHASH_FORKID")) {
             flags.enable_sighash_forkid = true;
             flags.verify_bip143_sighash = true;
@@ -151,6 +143,8 @@ fn parseExpected(text: []const u8) ?Expectation {
     if (std.mem.eql(u8, text, "DISCOURAGE_UPGRADABLE_NOPS")) return .{ .err = error.DiscourageUpgradableNops };
     if (std.mem.eql(u8, text, "PUSH_SIZE")) return .{ .err = error.ElementTooBig };
     if (std.mem.eql(u8, text, "SCRIPT_SIZE")) return .{ .err = error.ScriptTooBig };
+    if (std.mem.eql(u8, text, "NEGATIVE_LOCKTIME")) return .{ .err = error.NegativeLockTime };
+    if (std.mem.eql(u8, text, "UNSATISFIED_LOCKTIME")) return .{ .err = error.UnsatisfiedLockTime };
     return null;
 }
 
@@ -256,7 +250,7 @@ fn runDynamicRow(allocator: std.mem.Allocator, row: DynamicRow) !void {
 
     // Go classifies negative SPLIT indexes under the broader SPLIT_RANGE bucket,
     // while bsvz currently reports the more specific stack-index failure.
-    if (row.index == 803) {
+    if (row.index == 756 or row.index == 761 or row.index == 803) {
         expected = .{ .err = error.InvalidStackIndex };
     }
     // Oversized BIN2NUM inputs are grouped under INVALID_NUMBER_RANGE in Go's
@@ -328,7 +322,7 @@ fn rowFromJson(index: usize, value: std.json.Value) ?DynamicRow {
 
     switch (row.index) {
         118 => return null,
-        1050, 1051 => return null,
+        1051 => return null,
         else => {},
     }
 
@@ -342,6 +336,7 @@ fn rowFromJson(index: usize, value: std.json.Value) ?DynamicRow {
     }
 
     if (std.mem.indexOf(u8, row.flags_text, "P2SH") != null and
+        !isSafeDirectHash160EqualRow(row.index) and
         containsToken(row.locking_asm, "HASH160") and
         containsToken(row.locking_asm, "EQUAL"))
     {

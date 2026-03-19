@@ -3,6 +3,7 @@ const bsvz = @import("bsvz");
 const harness = @import("support/go_script_harness.zig");
 
 const GoRow = struct {
+    row: ?usize = null,
     name: []const u8,
     unlocking_hex: []const u8,
     locking_hex: []const u8,
@@ -175,6 +176,22 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .name = "go row 474 checkscript sees csv alias as nop when verify flag is off",
             .unlocking_hex = "61",
             .locking_hex = "b251",
+            .flags = legacy_flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 471,
+            .name = "row 471 codeseparator followed by one stays a permissive success path",
+            .unlocking_hex = "61",
+            .locking_hex = "ab51",
+            .flags = legacy_flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 472,
+            .name = "row 472 nop1 followed by one stays a permissive success path",
+            .unlocking_hex = "61",
+            .locking_hex = "b051",
             .flags = legacy_flags,
             .expected = .{ .success = true },
         },

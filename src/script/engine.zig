@@ -355,9 +355,12 @@ fn executeIntoState(
             },
             .OP_3DUP => {
                 try countOp(ctx, state);
-                try pushCopy(ctx, state, try peek(state, 2));
-                try pushCopy(ctx, state, try peek(state, 1));
-                try pushCopy(ctx, state, try peek(state, 0));
+                const a = try peek(state, 2);
+                const b = try peek(state, 1);
+                const c = try peek(state, 0);
+                try pushCopy(ctx, state, a);
+                try pushCopy(ctx, state, b);
+                try pushCopy(ctx, state, c);
             },
             .OP_2OVER => {
                 try countOp(ctx, state);

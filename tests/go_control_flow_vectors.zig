@@ -3,6 +3,7 @@ const bsvz = @import("bsvz");
 const harness = @import("support/go_script_harness.zig");
 
 const GoRow = struct {
+    row: ?usize = null,
     name: []const u8,
     unlocking_hex: []const u8,
     locking_hex: []const u8,
@@ -117,6 +118,14 @@ test "go direct control-flow rows: compact op_return and sigpushonly" {
             .flags = post_genesis_flags,
             .expected = .{ .success = true },
         },
+        .{
+            .row = 92,
+            .name = "row 92 post-genesis return leaves the selected if unbalanced",
+            .unlocking_hex = "51",
+            .locking_hex = "63556a",
+            .flags = post_genesis_flags,
+            .expected = .{ .err = error.UnbalancedConditionals },
+        },
     });
 }
 
@@ -217,6 +226,14 @@ test "go direct control-flow rows: exact compact return seam families" {
             .locking_hex = "63556a68556a63",
             .flags = legacy_flags,
             .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .row = 116,
+            .name = "row 116 post-genesis trailing if stays truthy after return handling",
+            .unlocking_hex = "51",
+            .locking_hex = "63556a68556a63",
+            .flags = post_genesis_flags,
+            .expected = .{ .success = true },
         },
     });
 }
@@ -330,6 +347,18 @@ test "go direct script rows: malformed conditional sequences" {
         .{ .name = "row 878 if else endif else is unbalanced", .unlocking_hex = "51", .locking_hex = "63676867", .flags = flags, .expected = .{ .err = error.UnbalancedConditionals } },
         .{ .name = "row 879 if else endif else endif is unbalanced", .unlocking_hex = "51", .locking_hex = "6367686768", .flags = flags, .expected = .{ .err = error.UnbalancedConditionals } },
         .{ .name = "row 880 if endif endif is unbalanced", .unlocking_hex = "51", .locking_hex = "636868", .flags = flags, .expected = .{ .err = error.UnbalancedConditionals } },
+    });
+}
+
+test "go direct script rows: exact conditional bad-op and verify rows" {
+    const allocator = std.testing.allocator;
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    try runRows(allocator, &[_]GoRow{
+        .{ .row = 127, .name = "row 127 executed verif in if branch is a bad opcode after genesis", .unlocking_hex = "51", .locking_hex = "6365675168", .flags = post_genesis_flags, .expected = .{ .err = error.UnknownOpcode } },
+        .{ .row = 128, .name = "row 128 multiple else with verif tail is unbalanced after genesis", .unlocking_hex = "51", .locking_hex = "636751676568", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 147, .name = "row 147 verify succeeds on a truthy top stack item", .unlocking_hex = "5151", .locking_hex = "69", .flags = legacy_flags, .expected = .{ .success = true } },
     });
 }
 

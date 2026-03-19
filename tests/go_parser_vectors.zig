@@ -476,6 +476,27 @@ test "go direct parser rows: compact bad-op precedence after conditionals" {
             .locking_hex = "63626855",
             .expected = .{ .success = true },
         },
+        .{
+            .row = 140,
+            .name = "row 140 untaken if keeps reserved inert before trailing five after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "63506855",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 141,
+            .name = "row 141 untaken if keeps reserved1 inert before trailing five after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "63896855",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 142,
+            .name = "row 142 untaken if keeps reserved2 inert before trailing five after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "638a6855",
+            .expected = .{ .success = true },
+        },
     });
 }
 
@@ -518,6 +539,50 @@ test "go direct parser rows: exact pushdata boundary equivalence" {
             .locking_hex = pushdata1_255_equal,
             .expected = .{ .success = true },
         },
+    });
+}
+
+test "go direct parser rows: exact canonical push and small-integer equivalence" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    var minimaldata_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    minimaldata_flags.minimal_data = true;
+
+    const row23_tail_bytes = try builders.repeatedHexByte(allocator, 74, 0x7a);
+    defer allocator.free(row23_tail_bytes);
+    const row23_tail = try builders.encodeLowerAlloc(allocator, row23_tail_bytes);
+    defer allocator.free(row23_tail);
+    const row23_payload = try std.mem.concat(allocator, u8, &[_][]const u8{
+        "41",
+        row23_tail,
+    });
+    defer allocator.free(row23_payload);
+    const row23_unlocking = try std.mem.concat(allocator, u8, &[_][]const u8{ "4b", row23_payload });
+    defer allocator.free(row23_unlocking);
+    const row23_locking = try std.mem.concat(allocator, u8, &[_][]const u8{ "4b", row23_payload, "87" });
+    defer allocator.free(row23_locking);
+
+    try runRows(allocator, legacy_flags, &[_]GoRow{
+        .{ .row = 21, .name = "row 21 canonical one-byte push equals opcode 11", .unlocking_hex = "010b", .locking_hex = "5b87", .expected = .{ .success = true } },
+        .{ .row = 22, .name = "row 22 canonical two-byte push equals exact string payload", .unlocking_hex = "02417a", .locking_hex = "02417a87", .expected = .{ .success = true } },
+        .{ .row = 23, .name = "row 23 canonical 75-byte push equals exact string payload", .unlocking_hex = row23_unlocking, .locking_hex = row23_locking, .expected = .{ .success = true } },
+        .{ .row = 24, .name = "row 24 pushdata1 single-byte payload equals opcode 7", .unlocking_hex = "4c0107", .locking_hex = "5787", .expected = .{ .success = true } },
+        .{ .row = 25, .name = "row 25 pushdata2 single-byte payload equals opcode 8", .unlocking_hex = "4d010008", .locking_hex = "5887", .expected = .{ .success = true } },
+        .{ .row = 26, .name = "row 26 pushdata4 single-byte payload equals opcode 9", .unlocking_hex = "4e0100000009", .locking_hex = "5987", .expected = .{ .success = true } },
+        .{ .row = 542, .name = "row 542 raw 0x81 equals op_1negate push result", .unlocking_hex = "0181", .locking_hex = "4f87", .expected = .{ .success = true } },
+        .{ .row = 543, .name = "row 543 raw 0x01 equals op_1 push result", .unlocking_hex = "0101", .locking_hex = "5187", .expected = .{ .success = true } },
+        .{ .row = 544, .name = "row 544 raw 0x02 equals op_2 push result", .unlocking_hex = "0102", .locking_hex = "5287", .expected = .{ .success = true } },
+        .{ .row = 545, .name = "row 545 raw 0x03 equals op_3 push result", .unlocking_hex = "0103", .locking_hex = "5387", .expected = .{ .success = true } },
+        .{ .row = 554, .name = "row 554 raw 0x0c equals op_12 push result", .unlocking_hex = "010c", .locking_hex = "5c87", .expected = .{ .success = true } },
+        .{ .row = 555, .name = "row 555 raw 0x0d equals op_13 push result", .unlocking_hex = "010d", .locking_hex = "5d87", .expected = .{ .success = true } },
+        .{ .row = 556, .name = "row 556 raw 0x0e equals op_14 push result", .unlocking_hex = "010e", .locking_hex = "5e87", .expected = .{ .success = true } },
+        .{ .row = 557, .name = "row 557 raw 0x0f equals op_15 push result", .unlocking_hex = "010f", .locking_hex = "5f87", .expected = .{ .success = true } },
+        .{ .row = 558, .name = "row 558 raw 0x10 equals op_16 push result", .unlocking_hex = "0110", .locking_hex = "6087", .expected = .{ .success = true } },
+    });
+
+    try runRows(allocator, minimaldata_flags, &[_]GoRow{
+        .{ .row = 573, .name = "row 573 untaken branch keeps raw negative-one push inert under minimaldata", .unlocking_hex = "006301816851", .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 574, .name = "row 574 untaken branch keeps raw one-byte push inert under minimaldata", .unlocking_hex = "006301016851", .locking_hex = "", .expected = .{ .success = true } },
     });
 }
 

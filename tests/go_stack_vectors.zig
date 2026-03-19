@@ -3,6 +3,7 @@ const bsvz = @import("bsvz");
 const harness = @import("support/go_script_harness.zig");
 
 const GoRow = struct {
+    row: ?usize = null,
     name: []const u8,
     unlocking_hex: []const u8,
     locking_hex: []const u8,
@@ -93,9 +94,30 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .expected = .{ .success = true },
         },
         .{
+            .row = 180,
+            .name = "row 180 2dup then rot preserves the exact Go stack shape",
+            .unlocking_hex = "5d5e",
+            .locking_hex = "6e7b8887",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 181,
+            .name = "row 181 3dup depth and arithmetic preserve the exact Go stack shape",
+            .unlocking_hex = "4f005152",
+            .locking_hex = "6f745788939353886d0088",
+            .expected = .{ .success = true },
+        },
+        .{
             .name = "row 426 twoover copies the pair below the top pair",
             .unlocking_hex = "00510000",
             .locking_hex = "70",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 182,
+            .name = "row 182 2over preserves both lower elements in Go's exact shape",
+            .unlocking_hex = "51525355",
+            .locking_hex = "709393588893935687",
             .expected = .{ .success = true },
         },
         .{
@@ -108,6 +130,13 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .name = "row 428 twoswap exchanges the top two pairs",
             .unlocking_hex = "00510000",
             .locking_hex = "72",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 183,
+            .name = "row 183 2swap preserves the exact Go pair ordering",
+            .unlocking_hex = "51535557",
+            .locking_hex = "72935488935c87",
             .expected = .{ .success = true },
         },
         .{
