@@ -15,6 +15,9 @@ const key_two_pub_hex = "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac0
 const key_one_blake3_hash_hex = "907bc56d3aeb096b40bf82720f3cd180373755d1db074e87047dbbb531dfe187";
 const runar_root = "../runar";
 const compiler_dist_path = "packages/runar-compiler/dist/index.js";
+const bigint_reviver_js =
+    \\(_key, value) => typeof value === 'string' && /^-?\d+$/.test(value) ? BigInt(value) : value
+;
 
 fn accessOrSkip(rel_path: []const u8) !void {
     std.fs.cwd().access(rel_path, .{}) catch |err| switch (err) {
@@ -42,7 +45,7 @@ fn compileRunarContract(
         \\const {{ compile }} = await import('./packages/runar-compiler/dist/index.js');
         \\const fs = require('fs');
         \\const src = fs.readFileSync('{s}', 'utf-8');
-        \\const args = JSON.parse('{s}');
+        \\const args = JSON.parse('{s}', {s});
         \\const result = compile(src, {{ fileName: '{s}', constructorArgs: args }});
         \\if (!result.success || !result.scriptHex) {{
         \\  console.error(JSON.stringify(result));
@@ -50,7 +53,7 @@ fn compileRunarContract(
         \\}}
         \\process.stdout.write(result.scriptHex);
         \\}})();
-    , .{ source_rel_path, args_json, file_name });
+    , .{ source_rel_path, args_json, bigint_reviver_js, file_name });
     defer allocator.free(code);
 
     const run_result = std.process.Child.run(.{
@@ -105,7 +108,7 @@ fn compileInlineRunarContract(
         \\(async () => {{
         \\const {{ compile }} = await import('./packages/runar-compiler/dist/index.js');
         \\const src = Buffer.from('{s}', 'hex').toString('utf8');
-        \\const args = JSON.parse('{s}');
+        \\const args = JSON.parse('{s}', {s});
         \\const result = compile(src, {{ fileName: '{s}', constructorArgs: args }});
         \\if (!result.success || !result.scriptHex) {{
         \\  console.error(JSON.stringify(result));
@@ -113,7 +116,7 @@ fn compileInlineRunarContract(
         \\}}
         \\process.stdout.write(result.scriptHex);
         \\}})();
-    , .{ source_hex, args_json, file_name });
+    , .{ source_hex, args_json, bigint_reviver_js, file_name });
     defer allocator.free(code);
 
     const run_result = std.process.Child.run(.{
@@ -1902,6 +1905,178 @@ test "local runar convergence-proof acceptance executes through bsvz when fixtur
         .expect_success = true,
     });
     try std.testing.expect(actual);
+}
+
+test "local runar if-else acceptance executes through bsvz when fixtures are present" {
+    const allocator = std.testing.allocator;
+    const args_json = "{\"limit\":\"10\"}";
+
+    const locking_script_hex = try compileRunarContract(
+        allocator,
+        "conformance/tests/if-else/if-else.runar.ts",
+        "if-else.runar.ts",
+        args_json,
+    );
+    defer allocator.free(locking_script_hex);
+
+    try std.testing.expect(try harness.runCase(allocator, .{
+        .name = "local runar if-else true branch",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{
+            .{ .int = 15 },
+            .{ .boolean = true },
+        },
+        .expect_success = true,
+    }));
+
+    try std.testing.expect(try harness.runCase(allocator, .{
+        .name = "local runar if-else false branch",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{
+            .{ .int = 15 },
+            .{ .boolean = false },
+        },
+        .expect_success = true,
+    }));
+
+    const failed = try harness.runCase(allocator, .{
+        .name = "local runar if-else failing branch",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{
+            .{ .int = 5 },
+            .{ .boolean = false },
+        },
+        .expect_success = false,
+    });
+    try std.testing.expect(!failed);
+}
+
+test "local runar bounded-loop acceptance executes through bsvz when fixtures are present" {
+    const allocator = std.testing.allocator;
+
+    const locking_script_hex = try compileRunarContract(
+        allocator,
+        "conformance/tests/bounded-loop/bounded-loop.runar.ts",
+        "bounded-loop.runar.ts",
+        "{\"expectedSum\":\"25\"}",
+    );
+    defer allocator.free(locking_script_hex);
+
+    try std.testing.expect(try harness.runCase(allocator, .{
+        .name = "local runar bounded-loop expected sum 25",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{.{ .int = 3 }},
+        .expect_success = true,
+    }));
+
+    const wrong_sum_hex = try compileRunarContract(
+        allocator,
+        "conformance/tests/bounded-loop/bounded-loop.runar.ts",
+        "bounded-loop.runar.ts",
+        "{\"expectedSum\":\"99\"}",
+    );
+    defer allocator.free(wrong_sum_hex);
+
+    const failed = try harness.runCase(allocator, .{
+        .name = "local runar bounded-loop wrong expected sum",
+        .locking_script_hex = wrong_sum_hex,
+        .args = &[_]harness.PushValue{.{ .int = 3 }},
+        .expect_success = false,
+    });
+    try std.testing.expect(!failed);
+}
+
+test "local runar if-without-else acceptance executes through bsvz when fixtures are present" {
+    const allocator = std.testing.allocator;
+    const args_json = "{\"threshold\":\"10\"}";
+
+    const locking_script_hex = try compileRunarContract(
+        allocator,
+        "conformance/tests/if-without-else/if-without-else.runar.ts",
+        "if-without-else.runar.ts",
+        args_json,
+    );
+    defer allocator.free(locking_script_hex);
+
+    try std.testing.expect(try harness.runCase(allocator, .{
+        .name = "local runar if-without-else first branch",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{
+            .{ .int = 11 },
+            .{ .int = 5 },
+        },
+        .expect_success = true,
+    }));
+
+    try std.testing.expect(try harness.runCase(allocator, .{
+        .name = "local runar if-without-else second branch",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{
+            .{ .int = 5 },
+            .{ .int = 12 },
+        },
+        .expect_success = true,
+    }));
+
+    const failed = try harness.runCase(allocator, .{
+        .name = "local runar if-without-else failing branch",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{
+            .{ .int = 5 },
+            .{ .int = 8 },
+        },
+        .expect_success = false,
+    });
+    try std.testing.expect(!failed);
+}
+
+test "local runar multi-method owner and backup spends verify through bsvz when fixtures are present" {
+    const allocator = std.testing.allocator;
+    const args_json = try std.fmt.allocPrint(
+        allocator,
+        "{{\"owner\":\"{s}\",\"backup\":\"{s}\"}}",
+        .{ key_one_pub_hex, key_two_pub_hex },
+    );
+    defer allocator.free(args_json);
+
+    const locking_script_hex = try compileRunarContract(
+        allocator,
+        "conformance/tests/multi-method/multi-method.runar.ts",
+        "multi-method.runar.ts",
+        args_json,
+    );
+    defer allocator.free(locking_script_hex);
+
+    try std.testing.expect(try harness.runCase(allocator, .{
+        .name = "local runar multi-method owner spend",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{
+            .{ .signature = {} },
+            .{ .int = 5 },
+        },
+        .method_selector = 0,
+        .expect_success = true,
+        .spend = .{ .signing_key = [_]u8{0} ** 31 ++ [_]u8{1} },
+    }));
+
+    try std.testing.expect(try harness.runCase(allocator, .{
+        .name = "local runar multi-method backup spend",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{.{ .signature = {} }},
+        .method_selector = 1,
+        .expect_success = true,
+        .spend = .{ .signing_key = [_]u8{0} ** 31 ++ [_]u8{2} },
+    }));
+
+    const failed = try harness.runCase(allocator, .{
+        .name = "local runar multi-method wrong signer",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{.{ .signature = {} }},
+        .method_selector = 1,
+        .expect_success = false,
+        .spend = .{ .signing_key = [_]u8{0} ** 31 ++ [_]u8{1} },
+    });
+    try std.testing.expect(!failed);
 }
 
 test "local runar stateful-counter increment spend verifies through bsvz" {

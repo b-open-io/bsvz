@@ -375,6 +375,21 @@ test "go direct parser rows: pushdata equivalence forms" {
     });
 }
 
+test "go direct parser rows: codeseparator scanner sanity" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{
+            .row = 552,
+            .name = "row 552 codeseparator before op_1 preserves success shape",
+            .unlocking_hex = "61",
+            .locking_hex = "ab51",
+            .expected = .{ .success = true },
+        },
+    });
+}
+
 test "go direct parser rows: untaken non-minimal pushes are ignored under minimaldata" {
     const allocator = std.testing.allocator;
     var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
@@ -385,5 +400,13 @@ test "go direct parser rows: untaken non-minimal pushes are ignored under minima
         .{ .row = 688, .name = "row 688 untaken pushdata2 zero-length is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "634d00006851", .expected = .{ .success = true } },
         .{ .row = 689, .name = "row 689 untaken pushdata4 zero-length is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "634e000000006851", .expected = .{ .success = true } },
         .{ .row = 690, .name = "row 690 untaken non-minimal negative-one encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301816851", .expected = .{ .success = true } },
+        .{ .row = 691, .name = "row 691 untaken non-minimal op_1 encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301016851", .expected = .{ .success = true } },
+        .{ .row = 692, .name = "row 692 untaken non-minimal op_2 encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301026851", .expected = .{ .success = true } },
+        .{ .row = 693, .name = "row 693 untaken non-minimal op_3 encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301036851", .expected = .{ .success = true } },
+        .{ .row = 694, .name = "row 694 untaken non-minimal op_4 encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301046851", .expected = .{ .success = true } },
+        .{ .row = 695, .name = "row 695 untaken non-minimal op_5 encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301056851", .expected = .{ .success = true } },
+        .{ .row = 696, .name = "row 696 untaken non-minimal op_6 encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301066851", .expected = .{ .success = true } },
+        .{ .row = 697, .name = "row 697 untaken non-minimal op_7 encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301076851", .expected = .{ .success = true } },
+        .{ .row = 698, .name = "row 698 untaken non-minimal op_8 encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301086851", .expected = .{ .success = true } },
     });
 }

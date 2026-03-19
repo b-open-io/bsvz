@@ -418,6 +418,14 @@ test "go direct checksig rows: sighash policy gates" {
     });
 
     try harness.runCase(allocator, .{
+        .name = "row 2132 checksig not accepts undefined sighash type without strictenc",
+        .unlocking_hex = "47304402207409b5b320296e5e2136a7b281a7f803028ca4ca44e2b83eebd46932677725de02202d4eea1c8d3c98e6f42614f54764e6e5e6542e213eb4d079737e9a8b6e9812ec05",
+        .locking_hex = "41048282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f5150811f8a8098557dfe45e8256e830b60ace62d613ac2f7b17bed31b6eaff6e26cafac91",
+        .flags = bsvz.script.engine.ExecutionFlags.legacyReference(),
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
         .name = "row 2139 checksig not rejects undefined sighash type under strictenc",
         .unlocking_hex = "47304402207409b5b320296e5e2136a7b281a7f803028ca4ca44e2b83eebd46932677725de02202d4eea1c8d3c98e6f42614f54764e6e5e6542e213eb4d079737e9a8b6e9812ec05",
         .locking_hex = "41048282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f5150811f8a8098557dfe45e8256e830b60ace62d613ac2f7b17bed31b6eaff6e26cafac91",
