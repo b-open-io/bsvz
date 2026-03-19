@@ -28,6 +28,24 @@ pub const VerificationResult = struct {
         if (self.script_error) |err| return err;
         return self.success;
     }
+
+    pub fn writeDebug(self: VerificationResult, writer: anytype) !void {
+        try writer.print(
+            "VerificationResult(terminal={s}, phase={s}, success={}, stack={}, alt={}, cond={}",
+            .{
+                self.terminal.label(),
+                self.phase.label(),
+                self.success,
+                self.state.stack.items.len,
+                self.state.alt_stack.items.len,
+                self.state.condition_stack.items.len,
+            },
+        );
+        if (self.script_error) |err| {
+            try writer.print(", error={}", .{err});
+        }
+        try writer.writeAll(")");
+    }
 };
 
 pub const TracedExecutionResult = struct {
@@ -47,6 +65,12 @@ pub const TracedVerificationResult = struct {
     pub fn deinit(self: *TracedVerificationResult, allocator: std.mem.Allocator) void {
         self.result.deinit(allocator);
         self.trace.deinit(allocator);
+    }
+
+    pub fn writeDebug(self: TracedVerificationResult, writer: anytype) !void {
+        try self.result.writeDebug(writer);
+        try writer.writeByte('\n');
+        try self.trace.writeDebug(writer);
     }
 };
 
@@ -414,4 +438,11 @@ test "thread verifyScriptsTraced captures opcode snapshots before terminal failu
     try std.testing.expectEqual(@as(u8, @intFromEnum(@import("opcode.zig").Opcode.OP_1)), traced.trace.steps.items[0].opcode_byte);
     try std.testing.expectEqual(@as(u8, @intFromEnum(@import("opcode.zig").Opcode.OP_FROMALTSTACK)), traced.trace.steps.items[1].opcode_byte);
     try std.testing.expectEqual(@as(usize, 1), traced.trace.steps.items[1].stack.len);
+
+    var rendered: std.ArrayListUnmanaged(u8) = .empty;
+    defer rendered.deinit(allocator);
+    try traced.writeDebug(rendered.writer(allocator));
+    try std.testing.expect(std.mem.indexOf(u8, rendered.items, "VerificationResult") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered.items, "AltStackUnderflow") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered.items, "OP_FROMALTSTACK") != null);
 }

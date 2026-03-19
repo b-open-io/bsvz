@@ -1,5 +1,6 @@
 const std = @import("std");
 const limits = @import("limits.zig");
+const opcode = @import("opcode.zig");
 const Script = @import("script.zig").Script;
 const Transaction = @import("../transaction/transaction.zig").Transaction;
 const Output = @import("../transaction/output.zig").Output;
@@ -102,12 +103,20 @@ pub const ScriptPhase = enum {
     unlocking,
     locking,
     final,
+
+    pub fn label(self: ScriptPhase) []const u8 {
+        return @tagName(self);
+    }
 };
 
 pub const VerificationTerminal = enum {
     success,
     false_result,
     script_error,
+
+    pub fn label(self: VerificationTerminal) []const u8 {
+        return @tagName(self);
+    }
 };
 
 pub const TraceStep = struct {
@@ -129,6 +138,26 @@ pub const TraceStep = struct {
         allocator.free(self.alt_stack);
         allocator.free(self.condition_stack);
         self.* = .{};
+    }
+
+    pub fn writeDebug(self: TraceStep, writer: anytype) !void {
+        const op = opcode.Opcode.fromByte(self.opcode_byte);
+        try writer.print(
+            "{s} offset={} {s} (0x{x:0>2}) execute_before={} early_return_before={} stack={} alt={} cond={} ops_before={} last_cs_before={}",
+            .{
+                self.phase.label(),
+                self.opcode_offset,
+                op.name(),
+                self.opcode_byte,
+                self.should_execute_before,
+                self.early_return_before,
+                self.stack.len,
+                self.alt_stack.len,
+                self.condition_stack.len,
+                self.ops_executed_before,
+                self.last_code_separator_before,
+            },
+        );
     }
 };
 
@@ -163,6 +192,19 @@ pub const ExecutionTrace = struct {
             .alt_stack = try cloneItems(allocator, state.alt_stack.items),
             .condition_stack = try allocator.dupe(bool, state.condition_stack.items),
         });
+    }
+
+    pub fn lastStep(self: *const ExecutionTrace) ?*const TraceStep {
+        if (self.steps.items.len == 0) return null;
+        return &self.steps.items[self.steps.items.len - 1];
+    }
+
+    pub fn writeDebug(self: ExecutionTrace, writer: anytype) !void {
+        try writer.print("ExecutionTrace(steps={})", .{self.steps.items.len});
+        for (self.steps.items, 0..) |step, index| {
+            try writer.print("\n  [{}] ", .{index});
+            try step.writeDebug(writer);
+        }
     }
 };
 
@@ -283,4 +325,12 @@ test "execution trace captures independent snapshots" {
     try std.testing.expectEqualSlices(u8, &[_]u8{0x01}, trace.steps.items[0].stack[0]);
     try std.testing.expectEqualSlices(u8, &[_]u8{0x02}, trace.steps.items[0].alt_stack[0]);
     try std.testing.expectEqualSlices(bool, &[_]bool{true}, trace.steps.items[0].condition_stack);
+    try std.testing.expectEqual(@as(?*const TraceStep, &trace.steps.items[0]), trace.lastStep());
+
+    var rendered: std.ArrayListUnmanaged(u8) = .empty;
+    defer rendered.deinit(allocator);
+    try trace.writeDebug(rendered.writer(allocator));
+    try std.testing.expect(std.mem.indexOf(u8, rendered.items, "ExecutionTrace(steps=1)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered.items, "OP_DUP") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered.items, "0x76") != null);
 }
