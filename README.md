@@ -15,7 +15,7 @@ BSV foundation library for Zig. Covers primitives, crypto, script execution, and
 
 ## Status
 
-The script engine and crypto primitives are the mature core. SPV has merkle path support. Broadcast is a stub.
+The script engine, crypto primitives, and transaction handling are the mature core. SPV has merkle path verification. Broadcast supports WhatsOnChain, TAAL, and Arc.
 
 <details>
 <summary>Details</summary>
@@ -25,9 +25,10 @@ The script engine and crypto primitives are the mature core. SPV has merkle path
 - `primitives`: hex, varint, base58, base58check, network/version-byte helpers, chainhash (display-order hash type), EC curve wrapper, ECDSA signatures with low-S normalization, Schnorr proofs, AES-CBC, AES-GCM, symmetric key encryption, Shamir secret sharing (key shares, backup format), HMAC-DRBG
 - `crypto`: sha256, sha512, hash256, ripemd160, hash160, hmacSha256, hmacSha512, secp256k1 private/public keys, secp256k1 point API, DER signatures, tx-signature helpers
 - `compat`: P2PKH address and WIF encode/decode
-- `transaction`: transaction parse/serialize (standard and extended format), txid, replay-protected sighash/preimage helpers, P2PKH spend helpers, BEEF V1/V2/Atomic parse and serialize
-- `script`: ScriptNum, byte helpers, script parser/chunks, broad opcode set, execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, Go-shaped policy enforcement, P2PKH and OP_RETURN templates
-- `spv`: MerklePath parse/serialize/computeRoot/combine, MerkleTreeParent
+- `transaction`: transaction parse/serialize (standard and extended format), txid, replay-protected sighash/preimage helpers, P2PKH spend helpers, BEEF V1/V2/Atomic parse and serialize, fee calculation with pluggable fee models, change distribution
+- `script`: ScriptNum, byte helpers, script parser/chunks, broad opcode set, execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, Go-shaped policy enforcement, P2PKH and OP_RETURN templates, script clone/ownership
+- `spv`: MerklePath parse/serialize/computeRoot/combine/verify, MerkleTreeParent, pluggable chain tracker interface
+- `broadcast`: WhatsOnChain, TAAL, and Arc HTTP broadcast clients with shared helpers
 
 **Go corpus accounting:**
 
@@ -38,7 +39,6 @@ The script engine and crypto primitives are the mature core. SPV has merkle path
 
 **Construction zones:**
 
-- `broadcast`: namespace scaffolding only
 - Runar local acceptance is broad but not complete
 
 </details>
@@ -95,9 +95,11 @@ zig build test-runar-acceptance
 | `bsvz.script` | Script parser, opcode set, execution engine, policy flags |
 | `bsvz.transaction` | Parse, serialize (standard + extended format), sighash, P2PKH spend helpers |
 | `bsvz.transaction.beef` | BEEF V1/V2/Atomic parse, serialize, and transaction extraction |
+| `bsvz.transaction.fees` | Fee calculation, change distribution, total input/output satoshis |
+| `bsvz.transaction.fee_model` | Pluggable fee models (satoshis-per-kilobyte) |
 | `bsvz.compat` | P2PKH address and WIF encode/decode |
-| `bsvz.spv` | MerklePath, MerkleTreeParent, BlockHeader |
-| `bsvz.broadcast` | Construction zone |
+| `bsvz.spv` | MerklePath, MerkleTreeParent, BlockHeader, transaction verification |
+| `bsvz.broadcast` | WhatsOnChain, TAAL, Arc HTTP broadcast clients |
 
 ## Script Verification APIs
 
@@ -230,7 +232,7 @@ const hash_all = try bsvz.transaction.Output.hashAll(allocator, &[_]bsvz.transac
 | `CODESEPARATOR` parity | broad | legacy and ForkID scriptCode behavior, chained separator tests, parser/scanner coverage |
 | Go parity vectors | full | all 1,499 rows in Go's `script_tests.json` accounted for; 1,438 executable exact-row references; 61 non-executable rows explicitly tracked |
 | Runar conformance | smoke lane | `zig build test` runs `tests/runar_conformance.zig`; full acceptance suite is `zig build test-runar-acceptance` |
-| SPV / proof tooling | partial | MerklePath parse/serialize/computeRoot/combine and MerkleTreeParent implemented; block header chain validation not yet present |
+| SPV / proof tooling | partial | MerklePath parse/serialize/computeRoot/combine/verify with pluggable chain tracker; block header chain validation not yet present |
 
 **Scope:**
 
