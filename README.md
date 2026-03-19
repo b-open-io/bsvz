@@ -49,13 +49,19 @@ Current construction zones:
 
 - SPV is not yet real beyond placeholders and type stubs
 - broadcast is not yet real beyond namespace scaffolding
-- the script interpreter now accounts for all 1,499 rows in Go's `script_tests.json` corpus. That includes 1,438 executable exact-row references across the dedicated lanes plus 61 explicitly audited non-executable header/comment/meta rows. The suite also keeps a 1,099-row filtered bulk-corpus lane plus focused filtered sigcheck and multisig reference lanes for mixed policy/result-shape coverage
 - native execution coverage for compiled Runar contracts is broad and growing, including pure conformance contracts like `if-else`, `if-without-else`, `bounded-loop`, and `multi-method`, plus auction lifecycle, escrow, tic-tac-toe terminal flows, fungible-token merge/transfer, NFT, SHA-256/BLAKE3 crypto paths, `P2Blake3PKH`, and negative covenant checks, but not complete
 
 Current interpreter target:
 
 - drive `bsvz.script` to full BSV consensus compliance
 - keep using Go parity vectors and real Runar execution as the main regression oracles while closing the remaining gaps
+
+Current script-interpreter status:
+
+- Go corpus accounting is complete: all 1,499 rows in Go's `script_tests.json` are now accounted for
+- executable Go-row coverage is complete: 1,438 executable exact-row references are in the suite, with the remaining 61 rows explicitly tracked as non-executable header/comment/meta rows
+- the suite also keeps a 1,099-row filtered bulk-corpus lane plus focused filtered sigcheck and multisig reference lanes for mixed policy/result-shape coverage
+- that does not mean the entire repository is “done”: SPV and broadcast are still construction zones, Runar local acceptance is broad but not complete, and the project still treats full BSV consensus confidence as the long-term script target
 
 ## Runar-Facing Ergonomics
 
