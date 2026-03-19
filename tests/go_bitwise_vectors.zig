@@ -185,7 +185,6 @@ test "go bitwise rows: and exact rows" {
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1050,
             .name = "row 1050 and underflows on an empty stack",
             .unlocking_hex = "",
             .locking_hex = "840087",

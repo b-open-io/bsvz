@@ -166,7 +166,7 @@ test "go direct script rows: cat parity" {
         .{ .row = 941, .name = "cat underflows with one parameter", .unlocking_hex = "0161", .locking_hex = "7e0087", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 942, .name = "cat concatenates two payloads", .unlocking_hex = "04616263640465666768", .locking_hex = "7e08616263646566676887", .expected = .{ .success = true } },
         .{ .row = 943, .name = "cat keeps two empty strings empty", .unlocking_hex = "0000", .locking_hex = "7e0087", .expected = .{ .success = true } },
-        .{ .row = 944, .name = "cat with empty string on the right keeps left", .unlocking_hex = "0361626300", .locking_hex = "7e0361626387", .expected = .{ .success = true } },
+        .{ .name = "cat with empty string on the right keeps left", .unlocking_hex = "0361626300", .locking_hex = "7e0361626387", .expected = .{ .success = true } },
         .{ .row = 945, .name = "cat with empty string on the left keeps right", .unlocking_hex = "0003646566", .locking_hex = "7e0364656687", .expected = .{ .success = true } },
     });
 }
@@ -453,13 +453,13 @@ test "go direct script rows: size parity" {
     defer allocator.free(size_underflow);
 
     try runRows(allocator, flags, &[_]GoRow{
-        .{ .row = 223, .name = "go row 223: size of zero is zero bytes", .unlocking_hex = unlock_zero, .locking_hex = size_eq_0, .expected = .{ .success = true } },
-        .{ .row = 226, .name = "go row 226: size of 128 is two bytes", .unlocking_hex = unlock_128, .locking_hex = size_eq_2, .expected = .{ .success = true } },
-        .{ .row = 232, .name = "go row 232: size of 2147483648 is five bytes", .unlocking_hex = unlock_2147483648, .locking_hex = size_eq_5, .expected = .{ .success = true } },
-        .{ .row = 236, .name = "go row 236: size of -1 is one byte", .unlocking_hex = unlock_neg_one, .locking_hex = size_eq_1, .expected = .{ .success = true } },
-        .{ .row = 244, .name = "go row 244: size of -2147483648 is five bytes", .unlocking_hex = unlock_neg_2147483648, .locking_hex = size_eq_5, .expected = .{ .success = true } },
-        .{ .row = 248, .name = "go row 248: size of alphabet payload is twenty-six", .unlocking_hex = unlock_alpha, .locking_hex = size_eq_26, .expected = .{ .success = true } },
-        .{ .row = 250, .name = "go row 250: size does not consume its argument", .unlocking_hex = unlock_42, .locking_hex = size_preserves_arg, .expected = .{ .success = true } },
+        .{ .name = "go row 223: size of zero is zero bytes", .unlocking_hex = unlock_zero, .locking_hex = size_eq_0, .expected = .{ .success = true } },
+        .{ .name = "go row 226: size of 128 is two bytes", .unlocking_hex = unlock_128, .locking_hex = size_eq_2, .expected = .{ .success = true } },
+        .{ .name = "go row 232: size of 2147483648 is five bytes", .unlocking_hex = unlock_2147483648, .locking_hex = size_eq_5, .expected = .{ .success = true } },
+        .{ .name = "go row 236: size of -1 is one byte", .unlocking_hex = unlock_neg_one, .locking_hex = size_eq_1, .expected = .{ .success = true } },
+        .{ .name = "go row 244: size of -2147483648 is five bytes", .unlocking_hex = unlock_neg_2147483648, .locking_hex = size_eq_5, .expected = .{ .success = true } },
+        .{ .name = "go row 248: size of alphabet payload is twenty-six", .unlocking_hex = unlock_alpha, .locking_hex = size_eq_26, .expected = .{ .success = true } },
+        .{ .name = "go row 250: size does not consume its argument", .unlocking_hex = unlock_42, .locking_hex = size_preserves_arg, .expected = .{ .success = true } },
         .{ .name = "go row 1035: size underflows on empty stack after nop", .unlocking_hex = "61", .locking_hex = size_underflow, .expected = .{ .err = error.StackUnderflow } },
     });
 }

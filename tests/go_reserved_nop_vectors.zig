@@ -409,7 +409,6 @@ test "discourage_upgradable_nops rejects executed nop soft-fork surface" {
             .expected = .{ .err = error.DiscourageUpgradableNops },
         },
         .{
-            .row = 1050,
             .name = "go row 1050 discouraged nop10 in unlocking script",
             .unlocking_hex = "b9",
             .locking_hex = "51",
@@ -426,7 +425,6 @@ test "go exact discourage_upgradable_nops rows keep nop semantics narrow" {
 
     try runRows(allocator, &[_]GoRow{
         .{
-            .row = 301,
             .name = "go row 301 discourage_upgradable_nops still allows plain nop",
             .unlocking_hex = "51",
             .locking_hex = "61",
@@ -434,7 +432,6 @@ test "go exact discourage_upgradable_nops rows keep nop semantics narrow" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 302,
             .name = "go row 302 discourage_upgradable_nops does not fire for untaken nop10",
             .unlocking_hex = "00",
             .locking_hex = "63b96851",
@@ -532,7 +529,6 @@ test "go csv corpus rows map onto the legacy verify_check_sequence surface" {
 
     try runRows(allocator, &[_]GoRow{
         .{
-            .row = 1421,
             .name = "go row 1421 csv fails on empty stack",
             .unlocking_hex = "",
             .locking_hex = "b2",
@@ -540,7 +536,6 @@ test "go csv corpus rows map onto the legacy verify_check_sequence surface" {
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1422,
             .name = "go row 1422 csv fails on negative operand",
             .unlocking_hex = "4f",
             .locking_hex = "b2",
@@ -555,7 +550,6 @@ test "go csv corpus rows map onto the legacy verify_check_sequence surface" {
             .expected = .{ .err = error.MinimalData },
         },
         .{
-            .row = 1424,
             .name = "go row 1424 csv fails when tx version is below two",
             .unlocking_hex = "00",
             .locking_hex = "b2",
@@ -564,7 +558,6 @@ test "go csv corpus rows map onto the legacy verify_check_sequence surface" {
             .tx_version = 1,
         },
         .{
-            .row = 1425,
             .name = "go row 1425 csv fails when operand exceeds uint32",
             .unlocking_hex = "050000000001",
             .locking_hex = "b2",
@@ -573,7 +566,6 @@ test "go csv corpus rows map onto the legacy verify_check_sequence surface" {
             .tx_version = 1,
         },
         .{
-            .row = 676,
             .name = "go row 676 csv passes when the disable flag bit is set in the operand",
             .unlocking_hex = "050000008000",
             .locking_hex = "b2",

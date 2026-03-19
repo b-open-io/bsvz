@@ -46,7 +46,6 @@ test "go strict sigcheck rows: stack and count preconditions" {
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1208,
             .name = "row 1208 checkmultisig not errors when there are no stack items",
             .unlocking_hex = "",
             .locking_hex = "ae91",
@@ -60,7 +59,6 @@ test "go strict sigcheck rows: stack and count preconditions" {
             .expected = .{ .err = error.InvalidStackIndex },
         },
         .{
-            .row = 1210,
             .name = "row 1210 checkmultisig not errors when pubkeys are missing",
             .unlocking_hex = "",
             .locking_hex = "51ae91",
@@ -74,7 +72,6 @@ test "go strict sigcheck rows: stack and count preconditions" {
             .expected = .{ .err = error.InvalidStackIndex },
         },
         .{
-            .row = 1212,
             .name = "row 1212 checkmultisig not errors when signatures are missing",
             .unlocking_hex = "",
             .locking_hex = "5103706b3151ae91",
@@ -612,14 +609,12 @@ test "go strict sigcheck rows: nulldummy result shapes" {
 
     try runRows(allocator, flags, &[_]GoRow{
         .{
-            .row = 1394,
             .name = "row 1394 checkmultisig rejects a nonzero dummy",
             .unlocking_hex = "51473044022051254b9fb476a52d85530792b578f86fea70ec1ffb4393e661bcccb23d8d63d3022076505f94a403c86097841944e044c70c2045ce90e36de51f7e9d3828db98a0750147304402200a358f750934b3feb822f1966bfcd8bbec9eeaa3a8ca941e11ee5960e181fa01022050bf6b5a8e7750f70354ae041cb68a7bade67ec6c3ab19eb359638974410626e0147304402200955d031fff71d8653221e85e36c3c85533d2312fc3045314b19650b7ae2f81002202a6bb8505e36201909d0921f01abff390ae6b7ff97bbf959f98aedeb0a56730901",
             .locking_hex = "53210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179821038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f515082103363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff464053ae",
             .expected = .{ .err = error.NullDummy },
         },
         .{
-            .row = 1396,
             .name = "row 1396 checkmultisig not rejects a nonzero dummy before bad signatures matter",
             .unlocking_hex = "5147304402201bb2edab700a5d020236df174fefed78087697143731f659bea59642c759c16d022061f42cdbae5bcd3e8790f20bf76687443436e94a634321c16a72aa54cbc7c2ea0147304402204bb4a64f2a6e5c7fb2f07fef85ee56fde5e6da234c6a984262307a20e99842d702206f8303aaba5e625d223897e2ffd3f88ef1bcffef55f38dc3768e5f2e94c923f901473044022040c2809b71fffb155ec8b82fe7a27f666bd97f941207be4e14ade85a1249dd4d02204d56c85ec525dd18e29a0533d5ddf61b6b1bb32980c2f63edf951aebf7a27bfe01",
             .locking_hex = "53210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179821038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f515082103363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff464053ae91",
@@ -643,7 +638,6 @@ test "go direct sigcheck rows: exact illegal forkid checksig-not cases" {
             .expected = .{ .err = error.IllegalForkId },
         },
         .{
-            .row = 1496,
             .name = "row 1496 checkmultisig not rejects an illegal forkid under strictenc",
             .unlocking_hex = "0009300602010102010141",
             .locking_hex = "51" ++ "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0" ++ "51" ++ "ae91",

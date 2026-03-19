@@ -9,20 +9,30 @@ fn accessOrSkip(rel_path: []const u8) !void {
     };
 }
 
-fn collectAccountedRowRefs(allocator: std.mem.Allocator) !std.AutoHashMap(usize, void) {
-    var rows = std.AutoHashMap(usize, void).init(allocator);
-    errdefer rows.deinit();
+const RowAccounting = struct {
+    counts: std.AutoHashMap(usize, usize),
+    duplicate_count: usize,
+    first_duplicate_row: ?usize,
+
+    fn deinit(self: *RowAccounting) void {
+        self.counts.deinit();
+    }
+};
+
+fn collectAccountedRowRefs(allocator: std.mem.Allocator) !RowAccounting {
+    var counts = std.AutoHashMap(usize, usize).init(allocator);
+    errdefer counts.deinit();
 
     var dir = try std.fs.cwd().openDir("tests", .{ .iterate = true });
     defer dir.close();
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
-        if (entry.kind != .file) continue;
-        if (!std.mem.startsWith(u8, entry.name, "go_")) continue;
-        if (!std.mem.endsWith(u8, entry.name, "_vectors.zig")) continue;
+    while (try iter.next()) |dir_entry| {
+        if (dir_entry.kind != .file) continue;
+        if (!std.mem.startsWith(u8, dir_entry.name, "go_")) continue;
+        if (!std.mem.endsWith(u8, dir_entry.name, "_vectors.zig")) continue;
 
-        const source = try dir.readFileAlloc(allocator, entry.name, 512 * 1024);
+        const source = try dir.readFileAlloc(allocator, dir_entry.name, 512 * 1024);
         defer allocator.free(source);
 
         var cursor: usize = 0;
@@ -35,21 +45,40 @@ fn collectAccountedRowRefs(allocator: std.mem.Allocator) !std.AutoHashMap(usize,
             while (digits_end < source.len and std.ascii.isDigit(source[digits_end])) : (digits_end += 1) {}
             if (digits_end > digits_start) {
                 const row = try std.fmt.parseInt(usize, source[digits_start..digits_end], 10);
-                try rows.put(row, {});
+                const count_entry = try counts.getOrPut(row);
+                if (count_entry.found_existing) {
+                    count_entry.value_ptr.* += 1;
+                } else {
+                    count_entry.value_ptr.* = 1;
+                }
             }
             cursor = digits_end;
         }
     }
 
-    return rows;
+    var duplicate_count: usize = 0;
+    var first_duplicate_row: ?usize = null;
+    var iter_counts = counts.iterator();
+    while (iter_counts.next()) |entry| {
+        if (entry.value_ptr.* > 1) {
+            duplicate_count += 1;
+            if (first_duplicate_row == null) first_duplicate_row = entry.key_ptr.*;
+        }
+    }
+
+    return .{
+        .counts = counts,
+        .duplicate_count = duplicate_count,
+        .first_duplicate_row = first_duplicate_row,
+    };
 }
 
 test "all go corpus rows are explicitly accounted for" {
     const allocator = std.testing.allocator;
     try accessOrSkip(corpus_path);
 
-    var accounted_rows = try collectAccountedRowRefs(allocator);
-    defer accounted_rows.deinit();
+    var accounting = try collectAccountedRowRefs(allocator);
+    defer accounting.deinit();
 
     const file = try std.fs.cwd().readFileAlloc(allocator, corpus_path, 8 * 1024 * 1024);
     defer allocator.free(file);
@@ -63,12 +92,14 @@ test "all go corpus rows are explicitly accounted for" {
     var first_missing_row: ?usize = null;
 
     for (parsed.value.array.items, 0..) |value, index| {
-        if (accounted_rows.contains(index)) continue;
+        if (accounting.counts.contains(index)) continue;
         _ = value;
         uncovered_count += 1;
         if (first_missing_row == null) first_missing_row = index;
     }
 
+    try std.testing.expectEqual(@as(usize, 0), accounting.duplicate_count);
+    try std.testing.expectEqual(@as(?usize, null), accounting.first_duplicate_row);
     try std.testing.expectEqual(@as(usize, 0), uncovered_count);
     try std.testing.expectEqual(@as(?usize, null), first_missing_row);
 }

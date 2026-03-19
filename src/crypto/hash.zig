@@ -189,6 +189,12 @@ fn ripemd160F(step: usize, x: u32, y: u32, z: u32) u32 {
     };
 }
 
+fn expectRipemd160Hex(input: []const u8, expected_hex: []const u8) !void {
+    var expected: [20]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&expected, expected_hex);
+    try std.testing.expectEqualSlices(u8, &expected, &ripemd160(input).bytes);
+}
+
 test "sha256 matches the known abc vector" {
     const expected = [_]u8{
         0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea,
@@ -219,4 +225,13 @@ test "ripemd160 matches the known abc vector" {
         0xf1, 0x5a, 0x0b, 0xfc,
     };
     try std.testing.expectEqualSlices(u8, &expected, &ripemd160("abc").bytes);
+}
+
+test "ripemd160 matches additional standard vectors" {
+    try expectRipemd160Hex("message digest", "5d0689ef49d2fae572b881b123a85ffa21595f36");
+    try expectRipemd160Hex("abcdefghijklmnopqrstuvwxyz", "f71c27109c692c1b56bbdceb5b9d2865b3708dbc");
+    try expectRipemd160Hex(
+        "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+        "12a053384a9c0c88e405a06c27dcf49ada62eb2b",
+    );
 }

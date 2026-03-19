@@ -369,7 +369,7 @@ pub fn verifyScriptsDetailed(
     unlocking_script: Script,
     locking_script: Script,
 ) VerificationResult {
-    var thread = ScriptThread.init(ctx);
+    var thread = ScriptThread.init(genericPairContext(ctx));
     defer thread.deinit();
     return thread.verifyPairDetailed(unlocking_script, locking_script);
 }
@@ -380,7 +380,7 @@ pub fn verifyScriptsWithLegacyP2SHDetailed(
     locking_script: Script,
     enable_legacy_p2sh: bool,
 ) VerificationResult {
-    var thread = ScriptThread.init(ctx);
+    var thread = ScriptThread.init(genericPairContext(ctx));
     defer thread.deinit();
     return thread.verifyPairWithLegacyP2SHDetailed(unlocking_script, locking_script, enable_legacy_p2sh);
 }
@@ -390,7 +390,7 @@ pub fn verifyScriptsTraced(
     unlocking_script: Script,
     locking_script: Script,
 ) TracedVerificationResult {
-    var thread = ScriptThread.init(ctx);
+    var thread = ScriptThread.init(genericPairContext(ctx));
     defer thread.deinit();
     return thread.verifyPairTraced(unlocking_script, locking_script);
 }
@@ -552,6 +552,12 @@ fn executableContext(ctx: ExecutionContext, full_locking_script: Script) Executi
     return result;
 }
 
+fn genericPairContext(ctx: ExecutionContext) ExecutionContext {
+    var result = ctx;
+    result.previous_locking_script = null;
+    return result;
+}
+
 test "thread verifyExecutableScripts trims state suffix for execution but preserves full locking script in context" {
     const allocator = std.testing.allocator;
 
@@ -563,6 +569,69 @@ test "thread verifyExecutableScripts trims state suffix for execution but preser
         0x01,
         0x2a,
     })));
+}
+
+test "thread verifyScriptsDetailed ignores stale previous locking script context" {
+    const allocator = std.testing.allocator;
+    const interpreter = @import("../transaction/templates/p2pkh_spend.zig");
+    const p2pkh = @import("templates/p2pkh.zig");
+    const Input = @import("../transaction/input.zig").Input;
+
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try @import("../crypto/lib.zig").PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+    const pubkey_hash = @import("../crypto/lib.zig").hash.hash160(&public_key.bytes);
+    const locking_script_bytes = p2pkh.encode(pubkey_hash);
+    const locking_script = Script.init(&locking_script_bytes);
+    const stale_script = Script.init(&[_]u8{
+        @intFromEnum(@import("opcode.zig").Opcode.OP_0),
+    });
+
+    var tx = Transaction{
+        .version = 2,
+        .inputs = &[_]Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x44} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = Script.init(""),
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]Output{
+            .{
+                .satoshis = 900,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const unlocking_script = try interpreter.signAndBuildUnlockingScript(
+        allocator,
+        &tx,
+        0,
+        locking_script,
+        1_000,
+        private_key,
+        interpreter.default_scope,
+    );
+    defer allocator.free(unlocking_script.bytes);
+
+    var result = verifyScriptsDetailed(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = stale_script,
+        .previous_satoshis = 1_000,
+    }, unlocking_script, locking_script);
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.success);
+    try std.testing.expectEqual(VerificationTerminal.success, result.terminal);
 }
 
 test "thread verifyPair clears altstack between unlocking and locking scripts" {

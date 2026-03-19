@@ -77,7 +77,6 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 423,
             .name = "row 423 twodrop accepts two items",
             .unlocking_hex = "0000",
             .locking_hex = "6d51",
@@ -91,21 +90,18 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 421,
             .name = "row 421 toaltstack removes the false item before the trailing true push",
             .unlocking_hex = "00",
             .locking_hex = "6b51",
             .expected = .{ .success = true },
         },
         .{
-            .row = 424,
             .name = "row 424 twodup duplicates two items",
             .unlocking_hex = "0051",
             .locking_hex = "6e",
             .expected = .{ .success = true },
         },
         .{
-            .row = 425,
             .name = "row 425 threedup duplicates three stack items",
             .unlocking_hex = "000051",
             .locking_hex = "6f",
@@ -126,7 +122,6 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 426,
             .name = "row 426 twoover copies the pair below the top pair",
             .unlocking_hex = "00510000",
             .locking_hex = "70",
@@ -140,14 +135,12 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 427,
             .name = "row 427 tworot rotates the bottom pair to the top",
             .unlocking_hex = "005100000000",
             .locking_hex = "71",
             .expected = .{ .success = true },
         },
         .{
-            .row = 428,
             .name = "row 428 twoswap exchanges the top two pairs",
             .unlocking_hex = "00510000",
             .locking_hex = "72",
@@ -168,7 +161,6 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 430,
             .name = "row 430 depth pushes zero before a truthy tail",
             .unlocking_hex = "61",
             .locking_hex = "7451",
@@ -189,21 +181,18 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 433,
             .name = "row 433 nip drops the second stack item exactly",
             .unlocking_hex = "0051",
             .locking_hex = "77",
             .expected = .{ .success = true },
         },
         .{
-            .row = 434,
             .name = "row 434 over copies the second stack item",
             .unlocking_hex = "5100",
             .locking_hex = "78",
             .expected = .{ .success = true },
         },
         .{
-            .row = 439,
             .name = "row 439 rot rotates the third item to the top",
             .unlocking_hex = "510000",
             .locking_hex = "7b",
@@ -301,14 +290,12 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 440,
             .name = "row 440 swap reverses the top two items",
             .unlocking_hex = "5100",
             .locking_hex = "7c",
             .expected = .{ .success = true },
         },
         .{
-            .row = 441,
             .name = "row 441 tuck copies the top item below the second item",
             .unlocking_hex = "0051",
             .locking_hex = "7d",
@@ -322,7 +309,6 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 442,
             .name = "row 442 size leaves a truthy length result",
             .unlocking_hex = "51",
             .locking_hex = "82",
@@ -476,63 +462,54 @@ test "go direct stack rows: safe underflow subset" {
             .expected = .{ .err = error.AltStackUnderflow },
         },
         .{
-            .row = 1161,
             .name = "go row 1161: 3dup requires three stack items",
             .unlocking_hex = "5151",
             .locking_hex = "6f",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1162,
             .name = "go row 1162: 2over requires four stack items",
             .unlocking_hex = "515151",
             .locking_hex = "70",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1163,
             .name = "go row 1163: 2rot requires six stack items",
             .unlocking_hex = "5151515151",
             .locking_hex = "71",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1164,
             .name = "go row 1164: 2swap requires four stack items",
             .unlocking_hex = "515151",
             .locking_hex = "72",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1165,
             .name = "go row 1165: ifdup underflows on an empty stack even with trailing success",
             .unlocking_hex = "61",
             .locking_hex = "7351",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1166,
             .name = "go row 1166: drop underflows on an empty stack even with trailing success",
             .unlocking_hex = "61",
             .locking_hex = "7551",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1167,
             .name = "go row 1167: dup underflows on an empty stack even with trailing success",
             .unlocking_hex = "61",
             .locking_hex = "7651",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1168,
             .name = "go row 1168: nip requires two stack items",
             .unlocking_hex = "51",
             .locking_hex = "77",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1169,
             .name = "go row 1169: over requires two stack items",
             .unlocking_hex = "51",
             .locking_hex = "78",
@@ -563,21 +540,18 @@ test "go direct stack rows: safe underflow subset" {
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1174,
             .name = "go row 1174: rot requires three stack items",
             .unlocking_hex = "5151",
             .locking_hex = "7b",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1175,
             .name = "go row 1175: swap requires two stack items",
             .unlocking_hex = "51",
             .locking_hex = "7c",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 1176,
             .name = "go row 1176: tuck requires two stack items",
             .unlocking_hex = "51",
             .locking_hex = "7d",
@@ -590,21 +564,18 @@ test "go direct stack rows: safe underflow subset" {
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 770,
             .name = "go row 770: swap underflows before trailing true push",
             .unlocking_hex = "51",
             .locking_hex = "7c51",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 772,
             .name = "go row 772: tuck underflows on empty stack before trailing true push",
             .unlocking_hex = "61",
             .locking_hex = "7d51",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
-            .row = 773,
             .name = "go row 773: tuck underflows with one stack item before trailing true push",
             .unlocking_hex = "51",
             .locking_hex = "7d51",
@@ -618,7 +589,6 @@ test "go row 774: tuck leaves a false top item after exact cleanup" {
 
     try runRows(allocator, &[_]GoRow{
         .{
-            .row = 774,
             .name = "go row 774: tuck leaves a false top item after exact cleanup",
             .unlocking_hex = "5100",
             .locking_hex = "7d7453887c6d",

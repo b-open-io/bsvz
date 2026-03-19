@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) void {
         .root_module = root_module,
     });
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
+    run_lib_unit_tests.setCwd(b.path("."));
 
     const test_module = b.createModule(.{
         .root_source_file = b.path("tests/root.zig"),
@@ -38,10 +39,30 @@ pub fn build(b: *std.Build) void {
         .root_module = test_module,
     });
     const run_integration_tests = b.addRunArtifact(integration_tests);
+    run_integration_tests.setCwd(b.path("."));
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_integration_tests.step);
+
+    const runar_acceptance_module = b.createModule(.{
+        .root_source_file = b.path("tests/runar_acceptance_root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    runar_acceptance_module.addImport("bsvz", root_module);
+
+    const runar_acceptance_tests = b.addTest(.{
+        .root_module = runar_acceptance_module,
+    });
+    const run_runar_acceptance_tests = b.addRunArtifact(runar_acceptance_tests);
+    run_runar_acceptance_tests.setCwd(b.path("."));
+
+    const runar_acceptance_step = b.step(
+        "test-runar-acceptance",
+        "Run optional downstream Runar acceptance tests",
+    );
+    runar_acceptance_step.dependOn(&run_runar_acceptance_tests.step);
 
     const bench_module = b.createModule(.{
         .root_source_file = b.path("benchmarks/script_engine.zig"),

@@ -330,7 +330,6 @@ fn verifyDigest256WithDoubleBase(
     if (r.isZero() or s.isZero()) return error.InvalidEncoding;
 
     const z = reduceDigestToScalar(digest);
-    if (z.isZero()) return false;
 
     const s_inv = s.invert();
     const v1 = z.mul(s_inv).toBytes(.little);

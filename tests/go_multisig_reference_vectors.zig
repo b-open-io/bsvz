@@ -166,7 +166,8 @@ test "filtered go multisig reference rows execute through bsvz" {
     }
 
     std.debug.print("filtered go multisig rows executed={}, skipped={}\n", .{ executed, skipped });
-    try std.testing.expect(executed >= 15);
+    try std.testing.expectEqual(@as(usize, 110), executed);
+    try std.testing.expectEqual(@as(usize, 1389), skipped);
 }
 
 test "exact go multisig dynamic reference rows execute through bsvz" {

@@ -386,5 +386,6 @@ test "filtered go corpus rows execute through bsvz" {
     }
 
     std.debug.print("filtered go corpus rows executed={}, skipped={}\n", .{ executed, skipped });
-    try std.testing.expect(executed >= 950);
+    try std.testing.expectEqual(@as(usize, 1099), executed);
+    try std.testing.expectEqual(@as(usize, 400), skipped);
 }

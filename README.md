@@ -49,7 +49,7 @@ Current construction zones:
 
 - SPV is not yet real beyond placeholders and type stubs
 - broadcast is not yet real beyond namespace scaffolding
-- native execution coverage for compiled Runar contracts is broad but not complete. Covered examples now include `Counter`, `Auction`, `CovenantVault`, `Escrow`, `FungibleToken` transfer/merge, `SimpleNFT` transfer/burn, `TicTacToe` terminal flows, `MathDemo` exponentiate/log2, `ConvergenceProof`, `P2Blake3PKH`, `Sha256CompressTest`, `Sha256FinalizeTest`, `Blake3Test`, and pure conformance contracts like `if-else`, `if-without-else`, `bounded-loop`, and `multi-method`. The main remaining Runar frontier is the uncovered example-contract world: `OraclePriceFeed`, `PostQuantumWallet`, `SPHINCSWallet`, `SchnorrZKP`, `ECDemo`, `FunctionPatterns`, `BoundedCounter` / property-initializers, broader `MathDemo`, broader `TicTacToe`, broader fungible-token coverage, and any harder negative/stateful paths not yet modeled locally
+- a small local downstream Runar conformance lane remains in the default test suite, but the broader Runar example-contract world belongs in the `runar` repo, not in `bsvz`
 
 Current interpreter target:
 
@@ -63,12 +63,12 @@ Current script-interpreter status:
 - the suite also keeps a 1,099-row filtered bulk-corpus lane plus focused filtered sigcheck and multisig reference lanes for mixed policy/result-shape coverage
 - that does not mean the entire repository is “done”: SPV and broadcast are still construction zones, Runar local acceptance is broad but not complete, and the project still treats full BSV consensus confidence as the long-term script target
 
-## Runar-Facing Ergonomics
+## Script Verification APIs
 
-`bsvz` does not ship a dedicated Runar adapter yet, but the current public surface is already usable from `runar-zig` and local fixture-driven flows.
+`bsvz` does not ship a framework-specific adapter layer, but the current public verification and tracing surface is already usable from downstream consumers such as `runar-zig` and local fixture-driven flows.
 
-- plain executable pair: `bsvz.script.thread.verifyScripts(...)` or `ScriptThread.verifyPair(...)`
-- spend with transaction context: `bsvz.script.thread.verifyExecutableScripts(...)`
+- plain script pair: `bsvz.script.thread.verifyScripts(...)` or `ScriptThread.verifyPair(...)`
+- executable/full-locking-script pair: `bsvz.script.thread.verifyExecutableScripts(...)`
 - spend directly against a previous output: `bsvz.script.thread.verifyPrevoutSpend(...)`, `verifyPrevoutSpendDetailed(...)`, `verifyPrevoutSpendTraced(...)`
 - direct compact outcomes: `verifyScriptsOutcome(...)`, `verifyExecutableScriptsOutcome(...)`, `verifyPrevoutSpendOutcome(...)`, `bsvz.script.interpreter.verifyOutcome(...)`, and `verifyPrevoutOutcome(...)`
 - small spend wrappers: `bsvz.script.interpreter.verify(...)` and `verifyPrevout(...)`
@@ -195,7 +195,7 @@ This is the current interpreter map for `bsvz.script`.
 | Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding are both enforced where Go applies `MINIMALDATA`, with a dedicated minimaldata vector lane |
 | `CODESEPARATOR` parity | broad coverage | legacy and ForkID scriptCode behavior, chained separator result-shape tests, parser/scanner coverage |
 | Go parity vectors | full corpus accounting, full executable-row coverage | All 1,499 rows in Go's `script_tests.json` corpus are now accounted for. That includes 1,438 executable exact-row references spanning the dedicated lanes: control-flow, seam, parser, reserved/NOP, sigcheck, multisig, minimaldata, numeric, boolean/numeric, bitwise, bytes/hash, stack-shape, stack-index, disabled-opcode, bin2num, and the direct exact-corpus lane sourced from `script_tests.json`, plus 61 explicitly audited non-executable header/comment/meta rows. A filtered bulk-corpus lane still executes 1,099 safe Go rows, and focused filtered sigcheck/multisig reference lanes keep mixed policy/result-shape coverage in the suite |
-| Runar local acceptance | broad but incomplete | real local acceptance now covers pure conformance contracts like `if-else`, `if-without-else`, `bounded-loop`, and `multi-method`, plus `Counter`, `Auction`, `CovenantVault`, `Escrow`, fungible-token transfer/merge, `SimpleNFT` transfer/burn, `TicTacToe` terminal flows, `MathDemo` exponentiate/log2, `ConvergenceProof`, SHA-256/BLAKE3 crypto paths, and `P2Blake3PKH`, including negative covenant checks. The remaining example frontier is `OraclePriceFeed`, `PostQuantumWallet`, `SPHINCSWallet`, `SchnorrZKP`, `ECDemo`, `FunctionPatterns`, `BoundedCounter` / property-initializers, and broader coverage for already-started stateful examples |
+| Downstream Runar coverage | optional smoke + acceptance lane | default `zig build test` keeps a small downstream smoke lane via `tests/runar_conformance.zig`; the broader fixture-heavy acceptance suite in `tests/local_runar_acceptance.zig` is intentionally demoted to the optional `zig build test-runar-acceptance` path so `bsvz` stays centered on Go SDK parity rather than owning the full Runar example world |
 | SPV / script-adjacent proof tooling | construction zone | not part of the interpreter core yet |
 
 BSV-specific scope rules:
@@ -222,7 +222,7 @@ The repo now includes two interpreter benchmark harnesses:
   - measures `bsvz` interpreter hot paths on prebuilt workloads
 - `cd benchmarks/go_sdk && GOCACHE=/tmp/go-build-bsvz go test -run '^$' -bench . -benchmem`
   - runs [benchmarks/go_sdk/script_engine_bench_test.go](/Users/satchmo/code/bsvz/benchmarks/go_sdk/script_engine_bench_test.go)
-  - measures the local `go-sdk` interpreter against matching workloads
+  - measures the local `go-sdk` interpreter against comparable workload families
 
 Current benchmark shape:
 
@@ -231,12 +231,15 @@ Current benchmark shape:
 - `SHA256` verification
 - `HASH160` verification
 - stack-operation verification
-- Runar arithmetic verification
-- P2PKH sighash-only verification
-- P2PKH secp-verify-only diagnostics
 - prebuilt P2PKH verification
 
 The benchmark harnesses intentionally use prebuilt script/transaction fixtures for verification workloads. They do not include key generation or per-iteration signing overhead in the hot loop.
+
+Important benchmark nuance:
+
+- the simple script-only workloads are closely comparable across the Zig and Go harnesses
+- the current P2PKH fixture is still not a perfect one-to-one transaction match between the two harnesses, so that row should be treated as a local directional baseline rather than a definitive cross-language speed claim
+- the Zig `sighash only` and `secp verify only` diagnostics are useful for local profiling, but they are not mirrored by identical Go sub-benchmarks yet
 
 Current local baseline on Apple M3 Max:
 
@@ -247,14 +250,14 @@ Current local baseline on Apple M3 Max:
 | `SHA256` verify | ~0.11 us/op | ~3.9 us/op |
 | `HASH160` verify | ~0.28 us/op | ~4.0 us/op |
 | stack ops verify | ~0.30 us/op | ~12.7 us/op |
-| Runar arithmetic verify | ~0.55 us/op | ~19.7 us/op |
 | P2PKH verify | ~199.2 us/op | ~211.0 us/op |
 
-Useful local diagnostic split for `bsvz` P2PKH on the same machine:
+Useful local diagnostics for `bsvz` on the same machine:
 
 - P2PKH sighash only: ~0.30 us/op
 - P2PKH secp verify only: ~179.9 us/op
+- downstream compiled-script workload (`runar arithmetic verify`): ~0.55 us/op in `bsvz` vs ~19.7 us/op in `go-sdk`
 
 That split matters because it shows the remaining cost is concentrated in secp verification, not the script engine or sighash path. `bsvz` now uses a secp256k1 double-base verification fast path built on Zig stdlib curve primitives, which is what moved full P2PKH verification from roughly ~433 us/op down to ~199 us/op.
 
-These numbers are a local baseline, not a universal claim. The important point is that `bsvz` now has a repeatable apples-to-apples interpreter benchmark against the local Go SDK, and the benchmark story is no longer dominated by allocator noise or avoidable verifier overhead.
+These numbers are a local baseline, not a universal claim. The important point is that `bsvz` now has a repeatable local benchmark story against the Go SDK, and the benchmark picture is no longer dominated by allocator noise or avoidable verifier overhead.

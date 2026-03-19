@@ -65,42 +65,36 @@ test "go direct parser rows: op_return tail scanning and result shapes" {
 
     const legacy_rows = [_]GoRow{
         .{
-            .row = 129,
             .name = "row 129 skipped if does not hide top-level bad opcode after endif before genesis",
             .unlocking_hex = "00",
             .locking_hex = "636a68ba",
             .expected = .{ .err = error.UnknownOpcode },
         },
         .{
-            .row = 131,
             .name = "row 131 executed op_return stops before bad opcode tail before genesis",
             .unlocking_hex = "51",
             .locking_hex = "63556a68ba",
             .expected = .{ .err = error.ReturnEncountered },
         },
         .{
-            .row = 134,
             .name = "row 134 top-level op_return before bad opcode tail returns op_return before genesis",
             .unlocking_hex = "00",
             .locking_hex = "636a686aba",
             .expected = .{ .err = error.ReturnEncountered },
         },
         .{
-            .row = 149,
             .name = "row 149 top-level op_return stops before bad opcode tail before genesis",
             .unlocking_hex = "51",
             .locking_hex = "6aba",
             .expected = .{ .err = error.ReturnEncountered },
         },
         .{
-            .row = 150,
             .name = "row 150 skipped branch ignores op_return and bad opcode bytes before genesis",
             .unlocking_hex = "00",
             .locking_hex = "636aba6855",
             .expected = .{ .success = true },
         },
         .{
-            .row = 151,
             .name = "row 151 executed branch hits op_return before skipped bad opcode before genesis",
             .unlocking_hex = "51",
             .locking_hex = "63556aba6855",
@@ -382,8 +376,8 @@ test "go direct parser rows: pushdata equivalence forms" {
         .{ .row = 34, .name = "row 34 pushdata1 zero length equals op_0", .unlocking_hex = "4c00", .locking_hex = "0087", .expected = .{ .success = true } },
         .{ .row = 35, .name = "row 35 pushdata2 zero length equals op_0", .unlocking_hex = "4d0000", .locking_hex = "0087", .expected = .{ .success = true } },
         .{ .row = 36, .name = "row 36 pushdata4 zero length equals op_0", .unlocking_hex = "4e00000000", .locking_hex = "0087", .expected = .{ .success = true } },
-        .{ .row = 637, .name = "row 637 direct 64-byte push equals pushdata2 64-byte push", .unlocking_hex = direct_64, .locking_hex = pushdata2_64_equal, .expected = .{ .success = true } },
-        .{ .row = 641, .name = "row 641 pushdata1 64-byte push equals pushdata2 64-byte push", .unlocking_hex = pushdata1_64, .locking_hex = pushdata2_64_equal, .expected = .{ .success = true } },
+        .{ .name = "row 637 direct 64-byte push equals pushdata2 64-byte push", .unlocking_hex = direct_64, .locking_hex = pushdata2_64_equal, .expected = .{ .success = true } },
+        .{ .name = "row 641 pushdata1 64-byte push equals pushdata2 64-byte push", .unlocking_hex = pushdata1_64, .locking_hex = pushdata2_64_equal, .expected = .{ .success = true } },
         .{ .row = 648, .name = "row 648 pushdata1 of seventy-five bytes equals direct push", .unlocking_hex = pushdata1_75, .locking_hex = direct_75_equal, .expected = .{ .success = true } },
         .{ .row = 649, .name = "row 649 pushdata2 of two-hundred-fifty-five bytes equals pushdata1", .unlocking_hex = pushdata2_255, .locking_hex = pushdata1_255_equal, .expected = .{ .success = true } },
     });
@@ -603,8 +597,8 @@ test "go direct parser rows: untaken non-minimal pushes are ignored under minima
     flags.minimal_data = true;
 
     try runRows(allocator, flags, &[_]GoRow{
-        .{ .row = 687, .name = "row 687 untaken pushdata1 zero-length is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "634c006851", .expected = .{ .success = true } },
-        .{ .row = 688, .name = "row 688 untaken pushdata2 zero-length is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "634d00006851", .expected = .{ .success = true } },
+        .{ .name = "row 687 untaken pushdata1 zero-length is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "634c006851", .expected = .{ .success = true } },
+        .{ .name = "row 688 untaken pushdata2 zero-length is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "634d00006851", .expected = .{ .success = true } },
         .{ .row = 689, .name = "row 689 untaken pushdata4 zero-length is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "634e000000006851", .expected = .{ .success = true } },
         .{ .row = 690, .name = "row 690 untaken non-minimal negative-one encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301816851", .expected = .{ .success = true } },
         .{ .row = 691, .name = "row 691 untaken non-minimal op_1 encoding is ignored under minimaldata", .unlocking_hex = "00", .locking_hex = "6301016851", .expected = .{ .success = true } },

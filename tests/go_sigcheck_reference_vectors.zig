@@ -167,7 +167,8 @@ test "filtered go sigcheck reference rows execute through bsvz" {
     }
 
     std.debug.print("filtered go sigcheck rows executed={}, skipped={}\n", .{ executed, skipped });
-    try std.testing.expect(executed >= 25);
+    try std.testing.expectEqual(@as(usize, 80), executed);
+    try std.testing.expectEqual(@as(usize, 1419), skipped);
 }
 
 test "exact go sigcheck dynamic reference rows execute through bsvz" {
@@ -207,6 +208,7 @@ test "exact go sigcheck dynamic reference rows execute through bsvz" {
         .{ .row = 1411 },
         .{ .row = 1412 },
         .{ .row = 1413 },
+        .{ .row = 1417 },
         .{ .row = 1418 },
         .{ .row = 1495 },
     };

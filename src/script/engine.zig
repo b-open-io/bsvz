@@ -79,10 +79,10 @@ pub fn executeScript(ctx: ExecutionContext, script: Script) Error!ExecutionResul
     errdefer state.deinit(ctx.allocator);
 
     try executeIntoState(ctx, &state, .locking, script, null);
-    if (state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
+    const success = try finalScriptResult(ctx, &state);
 
     return .{
-        .success = state.stack.items.len > 0 and isTruthy(state.stack.items[state.stack.items.len - 1]),
+        .success = success,
         .state = state,
     };
 }
@@ -123,6 +123,10 @@ pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_sc
     state.clearAltStack(ctx.allocator);
     if (!(try executeVerificationPhase(ctx, &state, .locking, locking_script))) return false;
 
+    return finalScriptResult(ctx, &state);
+}
+
+fn finalScriptResult(ctx: ExecutionContext, state: *const ExecutionState) Error!bool {
     if (state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
     if (state.stack.items.len == 0) return false;
     if (ctx.flags.clean_stack and state.stack.items.len != 1) return error.CleanStack;
@@ -1064,12 +1068,29 @@ fn verifyCheckmultisig(
     defer ctx.allocator.free(dummy);
     if (ctx.flags.null_dummy and dummy.len != 0) return error.NullDummy;
 
-    const script_code = try buildScriptCode(ctx.allocator, signing_script, state.last_code_separator, signatures, true);
-    defer ctx.allocator.free(script_code.bytes);
+    var legacy_script_code: ?Script = null;
+    var legacy_script_code_bytes: ?[]const u8 = null;
+    defer if (legacy_script_code_bytes) |owned| ctx.allocator.free(owned);
+
+    var forkid_script_code: ?Script = null;
+    var forkid_script_code_bytes: ?[]const u8 = null;
+    defer if (forkid_script_code_bytes) |owned| ctx.allocator.free(owned);
 
     var key_index: usize = 0;
     var sig_index: usize = 0;
     while (sig_index < signatures.len and key_index < pubkeys.len) {
+        const script_code = try multisigScriptCodeForSignature(
+            ctx,
+            signing_script,
+            state.last_code_separator,
+            signatures,
+            signatures[sig_index],
+            &legacy_script_code,
+            &legacy_script_code_bytes,
+            &forkid_script_code,
+            &forkid_script_code_bytes,
+        );
+
         if (try verifyChecksigWithScriptCode(ctx, script_code, signatures[sig_index], pubkeys[key_index])) {
             sig_index += 1;
         }
@@ -1087,6 +1108,39 @@ fn verifyCheckmultisig(
     }
 
     return true;
+}
+
+fn multisigScriptCodeForSignature(
+    ctx: ExecutionContext,
+    signing_script: Script,
+    last_code_separator: usize,
+    signatures: []const []const u8,
+    current_signature: []const u8,
+    legacy_script_code: *?Script,
+    legacy_script_code_bytes: *?[]const u8,
+    forkid_script_code: *?Script,
+    forkid_script_code_bytes: *?[]const u8,
+) Error!Script {
+    if (current_signature.len < 1) return signing_script;
+
+    const legacy_normalization = !sighash.SigHashType.hasForkId(current_signature[current_signature.len - 1]);
+    if (!legacy_normalization and last_code_separator == 0) return signing_script;
+
+    if (legacy_normalization) {
+        if (legacy_script_code.*) |cached| return cached;
+
+        const built = try buildScriptCode(ctx.allocator, signing_script, last_code_separator, signatures, true);
+        legacy_script_code_bytes.* = built.bytes;
+        legacy_script_code.* = built;
+        return built;
+    }
+
+    if (forkid_script_code.*) |cached| return cached;
+
+    const built = try buildScriptCode(ctx.allocator, signing_script, last_code_separator, &.{}, false);
+    forkid_script_code_bytes.* = built.bytes;
+    forkid_script_code.* = built;
+    return built;
 }
 
 fn verifyChecksigWithScriptCode(
@@ -3684,6 +3738,14 @@ test "engine can require a clean final stack" {
         @intFromEnum(opcode.Opcode.OP_1),
         @intFromEnum(opcode.Opcode.OP_1),
     })));
+
+    try std.testing.expectError(error.CleanStack, executeScript(.{
+        .allocator = allocator,
+        .flags = .{ .clean_stack = true },
+    }, Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_1),
+    })));
 }
 
 test "engine matches the go-sdk nop/codeseparator sanity row" {
@@ -5892,6 +5954,68 @@ test "forkid scriptCode preserves later op_codeseparators after the active bound
         @intFromEnum(opcode.Opcode.OP_3),
         @intFromEnum(opcode.Opcode.OP_CHECKSIG),
     }, script_code.bytes);
+}
+
+test "engine multisig uses per-signature scriptCode normalization" {
+    const allocator = std.testing.allocator;
+    const script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1),
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    });
+    const legacy_sig = [_]u8{ 0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01, @intCast(sighash.SigHashType.all) };
+    const forkid_sig = [_]u8{ 0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01, @intCast(sighash.SigHashType.all | sighash.SigHashType.forkid) };
+    const signatures = [_][]const u8{ &legacy_sig, &forkid_sig };
+
+    var legacy_script_code: ?Script = null;
+    var legacy_script_code_bytes: ?[]const u8 = null;
+    defer if (legacy_script_code_bytes) |owned| allocator.free(owned);
+
+    var forkid_script_code: ?Script = null;
+    var forkid_script_code_bytes: ?[]const u8 = null;
+    defer if (forkid_script_code_bytes) |owned| allocator.free(owned);
+
+    const ctx: ExecutionContext = .{
+        .allocator = allocator,
+    };
+
+    const legacy_code = try multisigScriptCodeForSignature(
+        ctx,
+        script,
+        2,
+        &signatures,
+        &legacy_sig,
+        &legacy_script_code,
+        &legacy_script_code_bytes,
+        &forkid_script_code,
+        &forkid_script_code_bytes,
+    );
+    try std.testing.expectEqualSlices(u8, &[_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    }, legacy_code.bytes);
+
+    const forkid_code = try multisigScriptCodeForSignature(
+        ctx,
+        script,
+        2,
+        &signatures,
+        &forkid_sig,
+        &legacy_script_code,
+        &legacy_script_code_bytes,
+        &forkid_script_code,
+        &forkid_script_code_bytes,
+    );
+    try std.testing.expectEqualSlices(u8, &[_]u8{
+        @intFromEnum(opcode.Opcode.OP_2),
+        @intFromEnum(opcode.Opcode.OP_CODESEPARATOR),
+        @intFromEnum(opcode.Opcode.OP_3),
+        @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
+    }, forkid_code.bytes);
 }
 
 test "engine treats equivalent pushdata forms equally at 75-byte and 255-byte boundaries" {
