@@ -10,5 +10,7 @@ pub const PrivateKey = secp256k1.PrivateKey;
 pub const PublicKey = secp256k1.PublicKey;
 pub const Sec1Bytes = secp256k1.Sec1Bytes;
 pub const AffineBytes32 = secp256k1.AffineBytes32;
+pub const verifyDigest256Sec1 = secp256k1.verifyDigest256Sec1;
+pub const verifyDigest256RelaxedSec1 = secp256k1.verifyDigest256RelaxedSec1;
 pub const DerSignature = signature.DerSignature;
 pub const TxSignature = signature.TxSignature;

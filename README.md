@@ -226,6 +226,8 @@ Current benchmark shape:
 - `HASH160` verification
 - stack-operation verification
 - Runar arithmetic verification
+- P2PKH sighash-only verification
+- P2PKH secp-verify-only diagnostics
 - prebuilt P2PKH verification
 
 The benchmark harnesses intentionally use prebuilt script/transaction fixtures for verification workloads. They do not include key generation or per-iteration signing overhead in the hot loop.
@@ -234,12 +236,19 @@ Current local baseline on Apple M3 Max:
 
 | Workload | `bsvz` | `go-sdk` |
 | --- | --- | --- |
-| arithmetic verify | ~20.1 us/op | ~3.7 us/op |
-| branching verify | ~23.2 us/op | ~4.6 us/op |
-| `SHA256` verify | ~15.4 us/op | ~3.6 us/op |
-| `HASH160` verify | ~15.3 us/op | ~3.7 us/op |
-| stack ops verify | ~52.2 us/op | ~11.8 us/op |
-| Runar arithmetic verify | ~71.8 us/op | ~19.3 us/op |
-| P2PKH verify | ~473.5 us/op | ~206.1 us/op |
+| arithmetic verify | ~0.11 us/op | ~3.7 us/op |
+| branching verify | ~0.10 us/op | ~4.6 us/op |
+| `SHA256` verify | ~0.11 us/op | ~3.9 us/op |
+| `HASH160` verify | ~0.28 us/op | ~4.0 us/op |
+| stack ops verify | ~0.30 us/op | ~12.7 us/op |
+| Runar arithmetic verify | ~0.55 us/op | ~19.7 us/op |
+| P2PKH verify | ~199.2 us/op | ~211.0 us/op |
 
-Those numbers are a baseline, not a final performance claim. The important thing is that `bsvz` now has a repeatable apples-to-apples interpreter benchmark against the local Go SDK instead of only internal Zig timing.
+Useful local diagnostic split for `bsvz` P2PKH on the same machine:
+
+- P2PKH sighash only: ~0.30 us/op
+- P2PKH secp verify only: ~179.9 us/op
+
+That split matters because it shows the remaining cost is concentrated in secp verification, not the script engine or sighash path. `bsvz` now uses a secp256k1 double-base verification fast path built on Zig stdlib curve primitives, which is what moved full P2PKH verification from roughly ~433 us/op down to ~199 us/op.
+
+These numbers are a local baseline, not a universal claim. The important point is that `bsvz` now has a repeatable apples-to-apples interpreter benchmark against the local Go SDK, and the benchmark story is no longer dominated by allocator noise or avoidable verifier overhead.

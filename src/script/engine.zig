@@ -1013,6 +1013,10 @@ fn verifyChecksig(
     try checkHashTypeEncoding(ctx, sig_bytes[sig_bytes.len - 1]);
     const legacy_normalization = !sighash.SigHashType.hasForkId(sig_bytes[sig_bytes.len - 1]);
 
+    if (!legacy_normalization and last_code_separator == 0) {
+        return verifyChecksigWithScriptCode(ctx, signing_script, sig_bytes, pubkey_bytes);
+    }
+
     const script_code = try buildScriptCode(
         ctx.allocator,
         signing_script,
@@ -1113,7 +1117,7 @@ fn verifyChecksigWithScriptCode(
         },
         else => return err,
     };
-    const public_key = (if (check_pubkey_encoding)
+    _ = (if (check_pubkey_encoding)
         crypto.PublicKey.fromSec1(pubkey_bytes)
     else
         crypto.PublicKey.fromSec1Relaxed(pubkey_bytes)) catch {
@@ -1130,11 +1134,11 @@ fn verifyChecksigWithScriptCode(
         tx_signature.sighash_type,
     );
     if (check_signature_encoding) {
-        return public_key.verifyDigest256(digest.bytes, tx_signature.der) catch {
+        return crypto.verifyDigest256Sec1(pubkey_bytes, digest.bytes, tx_signature.der) catch {
             return error.InvalidSignatureEncoding;
         };
     }
-    return public_key.verifyDigest256Relaxed(digest.bytes, tx_signature.der.asSlice()) catch {
+    return crypto.verifyDigest256RelaxedSec1(pubkey_bytes, digest.bytes, tx_signature.der.asSlice()) catch {
         return false;
     };
 }

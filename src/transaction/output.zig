@@ -33,9 +33,10 @@ pub const Output = struct {
     }
 
     pub fn hash256(self: *const Output, allocator: std.mem.Allocator) !crypto.Hash256 {
-        const serialized = try self.serialize(allocator);
-        defer allocator.free(serialized);
-        return crypto.hash.hash256(serialized);
+        _ = allocator;
+        var state = std.crypto.hash.sha2.Sha256.init(.{});
+        updateSha256(&state, self.*);
+        return finalizeDoubleSha256(&state);
     }
 
     pub fn parse(bytes_: []const u8) !Parsed {
@@ -60,18 +61,30 @@ pub const Output = struct {
     }
 
     pub fn hashAll(allocator: std.mem.Allocator, outputs: []const Output) !crypto.Hash256 {
-        var total_len: usize = 0;
-        for (outputs) |output| total_len += output.serializedLen();
-
-        var buf = try allocator.alloc(u8, total_len);
-        defer allocator.free(buf);
-
-        var cursor: usize = 0;
-        for (outputs) |output| cursor += output.writeInto(buf[cursor..]);
-
-        return crypto.hash.hash256(buf);
+        _ = allocator;
+        var state = std.crypto.hash.sha2.Sha256.init(.{});
+        for (outputs) |output| updateSha256(&state, output);
+        return finalizeDoubleSha256(&state);
     }
 };
+
+fn updateSha256(state: *std.crypto.hash.sha2.Sha256, output: Output) void {
+    var satoshis_buf: [8]u8 = undefined;
+    var varint_buf: [9]u8 = undefined;
+
+    std.mem.writeInt(i64, &satoshis_buf, output.satoshis, .little);
+    const varint_len = primitives.varint.VarInt.encodeInto(&varint_buf, output.locking_script.bytes.len) catch unreachable;
+
+    state.update(&satoshis_buf);
+    state.update(varint_buf[0..varint_len]);
+    state.update(output.locking_script.bytes);
+}
+
+fn finalizeDoubleSha256(state: *std.crypto.hash.sha2.Sha256) crypto.Hash256 {
+    var first: [32]u8 = undefined;
+    state.final(&first);
+    return crypto.hash.sha256(&first);
+}
 
 test "output serialize matches legacy encoding" {
     const output = Output{

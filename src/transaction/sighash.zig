@@ -169,50 +169,46 @@ pub fn digest(
     satoshis: primitives.money.Satoshis,
     scope: u32,
 ) !crypto.Hash256 {
+    _ = allocator;
     if (!SigHashType.hasForkId(scope) and SigHashType.baseType(scope) == SigHashType.single and input_index >= tx.outputs.len) {
         return .{ .bytes = legacySingleBugBytes() };
     }
 
-    const preimage = try formatPreimage(allocator, tx, input_index, subscript, satoshis, scope);
-    defer allocator.free(preimage);
-    return crypto.hash.hash256(preimage);
+    if (input_index >= tx.inputs.len) return error.InputIndexOutOfRange;
+
+    if (SigHashType.hasForkId(scope)) {
+        return digestForkId(tx, input_index, subscript, satoshis, scope);
+    }
+
+    return digestLegacy(tx, input_index, subscript, scope);
 }
 
 pub fn hashPrevouts(allocator: std.mem.Allocator, tx: *const Transaction, scope: u32) !crypto.Hash256 {
+    _ = allocator;
     if (SigHashType.hasAnyoneCanPay(scope)) return crypto.Hash256.zero();
-
-    const len = tx.inputs.len * 36;
-    var buf = try allocator.alloc(u8, len);
-    defer allocator.free(buf);
-
-    var cursor: usize = 0;
+    var state = std.crypto.hash.sha2.Sha256.init(.{});
+    var index_buf: [4]u8 = undefined;
     for (tx.inputs) |input| {
-        @memcpy(buf[cursor..][0..32], &input.previous_outpoint.txid.bytes);
-        cursor += 32;
-        std.mem.writeInt(u32, buf[cursor..][0..4], input.previous_outpoint.index, .little);
-        cursor += 4;
+        state.update(&input.previous_outpoint.txid.bytes);
+        std.mem.writeInt(u32, &index_buf, input.previous_outpoint.index, .little);
+        state.update(&index_buf);
     }
-
-    return crypto.hash.hash256(buf);
+    return finalizeDoubleSha256(&state);
 }
 
 pub fn hashSequence(allocator: std.mem.Allocator, tx: *const Transaction, scope: u32) !crypto.Hash256 {
+    _ = allocator;
     const base_type = SigHashType.baseType(scope);
     if (SigHashType.hasAnyoneCanPay(scope) or base_type == SigHashType.single or base_type == SigHashType.none) {
         return crypto.Hash256.zero();
     }
-
-    const len = tx.inputs.len * 4;
-    var buf = try allocator.alloc(u8, len);
-    defer allocator.free(buf);
-
-    var cursor: usize = 0;
+    var state = std.crypto.hash.sha2.Sha256.init(.{});
+    var sequence_buf: [4]u8 = undefined;
     for (tx.inputs) |input| {
-        std.mem.writeInt(u32, buf[cursor..][0..4], input.sequence, .little);
-        cursor += 4;
+        std.mem.writeInt(u32, &sequence_buf, input.sequence, .little);
+        state.update(&sequence_buf);
     }
-
-    return crypto.hash.hash256(buf);
+    return finalizeDoubleSha256(&state);
 }
 
 pub fn hashOutputs(allocator: std.mem.Allocator, tx: *const Transaction, input_index: usize, scope: u32) !crypto.Hash256 {
@@ -229,6 +225,144 @@ pub fn hashOutputs(allocator: std.mem.Allocator, tx: *const Transaction, input_i
     }
 
     return Output.hashAll(allocator, tx.outputs);
+}
+
+fn digestForkId(
+    tx: *const Transaction,
+    input_index: usize,
+    subscript: Script,
+    satoshis: primitives.money.Satoshis,
+    scope: u32,
+) !crypto.Hash256 {
+    const hash_prevouts = try hashPrevouts(std.heap.page_allocator, tx, scope);
+    const hash_sequence = try hashSequence(std.heap.page_allocator, tx, scope);
+    const hash_outputs = try hashOutputs(std.heap.page_allocator, tx, input_index, scope);
+    const input = tx.inputs[input_index];
+
+    var state = std.crypto.hash.sha2.Sha256.init(.{});
+    var int_buf_4: [4]u8 = undefined;
+    var int_buf_8: [8]u8 = undefined;
+    var varint_buf: [9]u8 = undefined;
+
+    std.mem.writeInt(i32, &int_buf_4, tx.version, .little);
+    state.update(&int_buf_4);
+    state.update(&hash_prevouts.bytes);
+    state.update(&hash_sequence.bytes);
+    state.update(&input.previous_outpoint.txid.bytes);
+    std.mem.writeInt(u32, &int_buf_4, input.previous_outpoint.index, .little);
+    state.update(&int_buf_4);
+    const script_varint_len = try primitives.varint.VarInt.encodeInto(&varint_buf, subscript.bytes.len);
+    state.update(varint_buf[0..script_varint_len]);
+    state.update(subscript.bytes);
+    std.mem.writeInt(i64, &int_buf_8, satoshis, .little);
+    state.update(&int_buf_8);
+    std.mem.writeInt(u32, &int_buf_4, input.sequence, .little);
+    state.update(&int_buf_4);
+    state.update(&hash_outputs.bytes);
+    std.mem.writeInt(u32, &int_buf_4, tx.lock_time, .little);
+    state.update(&int_buf_4);
+    std.mem.writeInt(u32, &int_buf_4, scope, .little);
+    state.update(&int_buf_4);
+    return finalizeDoubleSha256(&state);
+}
+
+fn digestLegacy(
+    tx: *const Transaction,
+    input_index: usize,
+    subscript: Script,
+    scope: u32,
+) !crypto.Hash256 {
+    const base_type = SigHashType.baseType(scope);
+    var state = std.crypto.hash.sha2.Sha256.init(.{});
+    var int_buf_4: [4]u8 = undefined;
+    var varint_buf: [9]u8 = undefined;
+
+    std.mem.writeInt(i32, &int_buf_4, tx.version, .little);
+    state.update(&int_buf_4);
+
+    if (SigHashType.hasAnyoneCanPay(scope)) {
+        const input = tx.inputs[input_index];
+        const input_count_len = try primitives.varint.VarInt.encodeInto(&varint_buf, 1);
+        state.update(varint_buf[0..input_count_len]);
+        try updateLegacyInput(&state, input, subscript.bytes, input.sequence);
+    } else {
+        const input_count_len = try primitives.varint.VarInt.encodeInto(&varint_buf, tx.inputs.len);
+        state.update(varint_buf[0..input_count_len]);
+        for (tx.inputs, 0..) |input, index| {
+            const input_script = if (index == input_index) subscript.bytes else "";
+            const sequence = if (index == input_index or (base_type != SigHashType.none and base_type != SigHashType.single))
+                input.sequence
+            else
+                0;
+            try updateLegacyInput(&state, input, input_script, sequence);
+        }
+    }
+
+    switch (base_type) {
+        SigHashType.none => {
+            const output_count_len = try primitives.varint.VarInt.encodeInto(&varint_buf, 0);
+            state.update(varint_buf[0..output_count_len]);
+        },
+        SigHashType.single => {
+            const output_count_len = try primitives.varint.VarInt.encodeInto(&varint_buf, input_index + 1);
+            state.update(varint_buf[0..output_count_len]);
+            for (0..input_index) |_| updateLegacySinglePlaceholderOutput(&state);
+            updateLegacyOutput(&state, tx.outputs[input_index]);
+        },
+        else => {
+            const output_count_len = try primitives.varint.VarInt.encodeInto(&varint_buf, tx.outputs.len);
+            state.update(varint_buf[0..output_count_len]);
+            for (tx.outputs) |output| updateLegacyOutput(&state, output);
+        },
+    }
+
+    std.mem.writeInt(u32, &int_buf_4, tx.lock_time, .little);
+    state.update(&int_buf_4);
+    std.mem.writeInt(u32, &int_buf_4, scope, .little);
+    state.update(&int_buf_4);
+    return finalizeDoubleSha256(&state);
+}
+
+fn updateLegacyInput(
+    state: *std.crypto.hash.sha2.Sha256,
+    input: @import("input.zig").Input,
+    script_bytes: []const u8,
+    sequence: u32,
+) !void {
+    var int_buf_4: [4]u8 = undefined;
+    var varint_buf: [9]u8 = undefined;
+
+    state.update(&input.previous_outpoint.txid.bytes);
+    std.mem.writeInt(u32, &int_buf_4, input.previous_outpoint.index, .little);
+    state.update(&int_buf_4);
+    const varint_len = try primitives.varint.VarInt.encodeInto(&varint_buf, script_bytes.len);
+    state.update(varint_buf[0..varint_len]);
+    state.update(script_bytes);
+    std.mem.writeInt(u32, &int_buf_4, sequence, .little);
+    state.update(&int_buf_4);
+}
+
+fn updateLegacyOutput(state: *std.crypto.hash.sha2.Sha256, output: Output) void {
+    var int_buf_8: [8]u8 = undefined;
+    var varint_buf: [9]u8 = undefined;
+
+    std.mem.writeInt(i64, &int_buf_8, output.satoshis, .little);
+    state.update(&int_buf_8);
+    const varint_len = primitives.varint.VarInt.encodeInto(&varint_buf, output.locking_script.bytes.len) catch unreachable;
+    state.update(varint_buf[0..varint_len]);
+    state.update(output.locking_script.bytes);
+}
+
+fn updateLegacySinglePlaceholderOutput(state: *std.crypto.hash.sha2.Sha256) void {
+    const satoshis = [_]u8{0xff} ** 8;
+    state.update(&satoshis);
+    state.update(&[_]u8{0x00});
+}
+
+fn finalizeDoubleSha256(state: *std.crypto.hash.sha2.Sha256) crypto.Hash256 {
+    var first: [32]u8 = undefined;
+    state.final(&first);
+    return crypto.hash.sha256(&first);
 }
 
 fn legacySingleBugBytes() [32]u8 {

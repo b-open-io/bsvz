@@ -1,17 +1,27 @@
 const std = @import("std");
 const bsvz = @import("bsvz");
+const EcdsaSha256d = std.crypto.sign.ecdsa.EcdsaSecp256k1Sha256oSha256;
 
 const Script = bsvz.script.Script;
 const engine = bsvz.script.engine;
 
 const iterations = 10_000;
-const allocator = std.heap.page_allocator;
+const fixture_allocator = std.heap.page_allocator;
 
-fn bench(comptime name: []const u8, comptime run_fn: fn () void) void {
-    for (0..100) |_| run_fn();
+fn bench(comptime name: []const u8, comptime run_fn: fn (std.mem.Allocator) void) void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    for (0..100) |_| {
+        _ = arena.reset(.retain_capacity);
+        run_fn(arena.allocator());
+    }
 
     const start = std.time.nanoTimestamp();
-    for (0..iterations) |_| run_fn();
+    for (0..iterations) |_| {
+        _ = arena.reset(.retain_capacity);
+        run_fn(arena.allocator());
+    }
     const end = std.time.nanoTimestamp();
 
     const elapsed_ns: u64 = @intCast(end - start);
@@ -85,9 +95,13 @@ const PrevoutFixture = struct {
     unlocking: []const u8,
     locking: Script,
     prev_satoshis: i64,
+    tx_signature: bsvz.crypto.TxSignature,
+    pubkey_bytes: [33]u8,
+    parsed_public_key: EcdsaSha256d.PublicKey,
+    parsed_signature: EcdsaSha256d.Signature,
 };
 
-fn verifyPair(pair: ScriptPair) void {
+fn verifyPair(allocator: std.mem.Allocator, pair: ScriptPair) void {
     const ok = engine.verifyScripts(.{
         .allocator = allocator,
     }, Script.init(pair.unlocking), Script.init(pair.locking)) catch return;
@@ -127,8 +141,8 @@ fn initP2PKHFixture() void {
     const locking_script = Script.init(&p2pkh_locking);
     const previous_satoshis: i64 = 100_000;
 
-    var inputs = allocator.alloc(bsvz.transaction.Input, 1) catch unreachable;
-    var outputs = allocator.alloc(bsvz.transaction.Output, 1) catch unreachable;
+    var inputs = fixture_allocator.alloc(bsvz.transaction.Input, 1) catch unreachable;
+    var outputs = fixture_allocator.alloc(bsvz.transaction.Output, 1) catch unreachable;
 
     inputs[0] = .{
         .previous_outpoint = .{ .txid = .{ .bytes = [_]u8{0xaa} ** 32 }, .index = 0 },
@@ -148,7 +162,7 @@ fn initP2PKHFixture() void {
     };
 
     const tx_signature = bsvz.transaction.templates.p2pkh_spend.signInput(
-        allocator,
+        fixture_allocator,
         &tx,
         0,
         locking_script,
@@ -157,10 +171,10 @@ fn initP2PKHFixture() void {
         bsvz.transaction.templates.p2pkh_spend.default_scope,
     ) catch unreachable;
 
-    const sig_bytes = tx_signature.toChecksigFormat(allocator) catch unreachable;
+    const sig_bytes = tx_signature.toChecksigFormat(fixture_allocator) catch unreachable;
     const pubkey = private_key.publicKey() catch unreachable;
     const unlock_len = 1 + sig_bytes.len + 1 + pubkey.bytes.len;
-    const unlock = allocator.alloc(u8, unlock_len) catch unreachable;
+    const unlock = fixture_allocator.alloc(u8, unlock_len) catch unreachable;
 
     var pos: usize = 0;
     unlock[pos] = @intCast(sig_bytes.len);
@@ -171,7 +185,7 @@ fn initP2PKHFixture() void {
     pos += 1;
     @memcpy(unlock[pos..][0..pubkey.bytes.len], &pubkey.bytes);
 
-    allocator.free(sig_bytes);
+    fixture_allocator.free(sig_bytes);
     inputs[0].unlocking_script = Script.init(unlock);
 
     p2pkh_fixture = .{
@@ -179,6 +193,10 @@ fn initP2PKHFixture() void {
         .unlocking = unlock,
         .locking = locking_script,
         .prev_satoshis = previous_satoshis,
+        .tx_signature = tx_signature,
+        .pubkey_bytes = pubkey.bytes,
+        .parsed_public_key = EcdsaSha256d.PublicKey.fromSec1(&pubkey.bytes) catch unreachable,
+        .parsed_signature = tx_signature.der.toStdSignature(EcdsaSha256d) catch unreachable,
     };
 }
 
@@ -187,31 +205,31 @@ fn getP2PKHFixture() *const PrevoutFixture {
     return &p2pkh_fixture;
 }
 
-fn benchArithmetic() void {
-    verifyPair(pairArithmetic());
+fn benchArithmetic(allocator: std.mem.Allocator) void {
+    verifyPair(allocator, pairArithmetic());
 }
 
-fn benchBranching() void {
-    verifyPair(pairBranching());
+fn benchBranching(allocator: std.mem.Allocator) void {
+    verifyPair(allocator, pairBranching());
 }
 
-fn benchSha256() void {
-    verifyPair(pairSha256());
+fn benchSha256(allocator: std.mem.Allocator) void {
+    verifyPair(allocator, pairSha256());
 }
 
-fn benchHash160() void {
-    verifyPair(pairHash160());
+fn benchHash160(allocator: std.mem.Allocator) void {
+    verifyPair(allocator, pairHash160());
 }
 
-fn benchStackOps() void {
-    verifyPair(pairStackOps());
+fn benchStackOps(allocator: std.mem.Allocator) void {
+    verifyPair(allocator, pairStackOps());
 }
 
-fn benchRunarArithmetic() void {
-    verifyPair(pairRunarArithmetic());
+fn benchRunarArithmetic(allocator: std.mem.Allocator) void {
+    verifyPair(allocator, pairRunarArithmetic());
 }
 
-fn benchP2PKHVerify() void {
+fn benchP2PKHVerify(allocator: std.mem.Allocator) void {
     const fixture = getP2PKHFixture();
     const ok = engine.verifyScripts(.{
         .allocator = allocator,
@@ -221,6 +239,51 @@ fn benchP2PKHVerify() void {
         .previous_satoshis = fixture.prev_satoshis,
     }, Script.init(fixture.unlocking), fixture.locking) catch return;
     if (!ok) unreachable;
+}
+
+fn benchP2PKHSighash(allocator: std.mem.Allocator) void {
+    const fixture = getP2PKHFixture();
+    _ = bsvz.transaction.sighash.digest(
+        allocator,
+        &fixture.tx,
+        0,
+        fixture.locking,
+        fixture.prev_satoshis,
+        fixture.tx_signature.sighash_type,
+    ) catch unreachable;
+}
+
+fn benchP2PKHSecpVerify(allocator: std.mem.Allocator) void {
+    _ = allocator;
+    const fixture = getP2PKHFixture();
+    const digest = bsvz.transaction.sighash.digest(
+        fixture_allocator,
+        &fixture.tx,
+        0,
+        fixture.locking,
+        fixture.prev_satoshis,
+        fixture.tx_signature.sighash_type,
+    ) catch unreachable;
+    const ok = bsvz.crypto.verifyDigest256Sec1(
+        &fixture.pubkey_bytes,
+        digest.bytes,
+        fixture.tx_signature.der,
+    ) catch unreachable;
+    if (!ok) unreachable;
+}
+
+fn benchP2PKHSecpVerifyParsed(allocator: std.mem.Allocator) void {
+    _ = allocator;
+    const fixture = getP2PKHFixture();
+    const digest = bsvz.transaction.sighash.digest(
+        fixture_allocator,
+        &fixture.tx,
+        0,
+        fixture.locking,
+        fixture.prev_satoshis,
+        fixture.tx_signature.sighash_type,
+    ) catch unreachable;
+    fixture.parsed_signature.verifyPrehashed(digest.bytes, fixture.parsed_public_key) catch unreachable;
 }
 
 pub fn main() !void {
@@ -235,6 +298,9 @@ pub fn main() !void {
     bench("OP_HASH160 verify (20-byte input)", benchHash160);
     bench("stack ops verify", benchStackOps);
     bench("runar arithmetic verify", benchRunarArithmetic);
+    bench("P2PKH sighash only", benchP2PKHSighash);
+    bench("P2PKH secp verify only", benchP2PKHSecpVerify);
+    bench("P2PKH secp verify only (parsed)", benchP2PKHSecpVerifyParsed);
     bench("P2PKH verify (prebuilt tx + CHECKSIG)", benchP2PKHVerify);
 
     std.debug.print("{s}\n", .{"=" ** 90});

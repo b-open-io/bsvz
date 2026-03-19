@@ -270,25 +270,95 @@ pub const PublicKey = struct {
     }
 
     pub fn verifyDigest256(self: PublicKey, digest: [32]u8, sig: signature.DerSignature) !bool {
-        const public_key = EcdsaSha256d.PublicKey.fromSec1(&self.bytes) catch return error.InvalidEncoding;
-        const parsed_sig = sig.toStdSignature(EcdsaSha256d) catch return error.InvalidEncoding;
-        parsed_sig.verifyPrehashed(digest, public_key) catch |err| switch (err) {
-            error.SignatureVerificationFailed => return false,
-            else => return error.InvalidEncoding,
-        };
-        return true;
+        return verifyDigest256Sec1(&self.bytes, digest, sig);
     }
 
     pub fn verifyDigest256Relaxed(self: PublicKey, digest: [32]u8, der_bytes: []const u8) !bool {
-        const public_key = EcdsaSha256d.PublicKey.fromSec1(&self.bytes) catch return error.InvalidEncoding;
-        const parsed_sig = parseLaxDerSignature(der_bytes) catch return error.InvalidEncoding;
-        parsed_sig.verifyPrehashed(digest, public_key) catch |err| switch (err) {
-            error.SignatureVerificationFailed => return false,
-            else => return error.InvalidEncoding,
-        };
-        return true;
+        return verifyDigest256RelaxedSec1(&self.bytes, digest, der_bytes);
     }
 };
+
+pub fn verifyDigest256Sec1(sec1: []const u8, digest: [32]u8, sig: signature.DerSignature) !bool {
+    const public_key = EcdsaSha256d.PublicKey.fromSec1(sec1) catch return error.InvalidEncoding;
+    return verifyDigest256WithParsedKey(public_key, digest, sig);
+}
+
+pub fn verifyDigest256RelaxedSec1(sec1: []const u8, digest: [32]u8, der_bytes: []const u8) !bool {
+    const public_key = try parseStdPublicKeyRelaxed(sec1);
+    return verifyDigest256RelaxedWithParsedKey(public_key, digest, der_bytes);
+}
+
+fn verifyDigest256WithParsedKey(
+    public_key: EcdsaSha256d.PublicKey,
+    digest: [32]u8,
+    sig: signature.DerSignature,
+) !bool {
+    const parsed_sig = sig.toStdSignature(EcdsaSha256d) catch return error.InvalidEncoding;
+    return verifyDigest256WithDoubleBase(public_key, digest, parsed_sig);
+}
+
+fn verifyDigest256RelaxedWithParsedKey(
+    public_key: EcdsaSha256d.PublicKey,
+    digest: [32]u8,
+    der_bytes: []const u8,
+) !bool {
+    const parsed_sig = parseLaxDerSignature(der_bytes) catch return error.InvalidEncoding;
+    return verifyDigest256WithDoubleBase(public_key, digest, parsed_sig);
+}
+
+fn parseStdPublicKeyRelaxed(sec1: []const u8) !EcdsaSha256d.PublicKey {
+    if (sec1.len == 65 and (sec1[0] == 0x06 or sec1[0] == 0x07)) {
+        const y_is_odd = (sec1[64] & 1) != 0;
+        const prefix_is_odd = sec1[0] == 0x07;
+        if (y_is_odd != prefix_is_odd) return error.InvalidEncoding;
+
+        var uncompressed: [65]u8 = undefined;
+        @memcpy(&uncompressed, sec1);
+        uncompressed[0] = 0x04;
+        return EcdsaSha256d.PublicKey.fromSec1(&uncompressed) catch error.InvalidEncoding;
+    }
+    return EcdsaSha256d.PublicKey.fromSec1(sec1) catch error.InvalidEncoding;
+}
+
+fn verifyDigest256WithDoubleBase(
+    public_key: EcdsaSha256d.PublicKey,
+    digest: [32]u8,
+    parsed_sig: EcdsaSha256d.Signature,
+) !bool {
+    const r = StdPoint.scalar.Scalar.fromBytes(parsed_sig.r, .big) catch return error.InvalidEncoding;
+    const s = StdPoint.scalar.Scalar.fromBytes(parsed_sig.s, .big) catch return error.InvalidEncoding;
+    if (r.isZero() or s.isZero()) return error.InvalidEncoding;
+
+    const z = reduceDigestToScalar(digest);
+    if (z.isZero()) return false;
+
+    const s_inv = s.invert();
+    const v1 = z.mul(s_inv).toBytes(.little);
+    const v2 = r.mul(s_inv).toBytes(.little);
+    const sum = StdPoint.mulDoubleBasePublic(
+        StdPoint.basePoint,
+        v1,
+        public_key.p,
+        v2,
+        .little,
+    ) catch |err| switch (err) {
+        error.IdentityElement => return false,
+    };
+    const vr = reduceFieldElementToScalar(sum.affineCoordinates().x.toBytes(.big));
+    return r.equivalent(vr);
+}
+
+fn reduceDigestToScalar(digest: [32]u8) StdPoint.scalar.Scalar {
+    var reduced = [_]u8{0} ** 48;
+    @memcpy(reduced[reduced.len - digest.len ..], &digest);
+    return StdPoint.scalar.Scalar.fromBytes48(reduced, .big);
+}
+
+fn reduceFieldElementToScalar(value: [32]u8) StdPoint.scalar.Scalar {
+    var reduced = [_]u8{0} ** 48;
+    @memcpy(reduced[reduced.len - value.len ..], &value);
+    return StdPoint.scalar.Scalar.fromBytes48(reduced, .big);
+}
 
 fn parseLaxDerSignature(der_bytes: []const u8) Error!EcdsaSha256d.Signature {
     if (der_bytes.len < 8) return error.InvalidEncoding;
@@ -370,6 +440,22 @@ test "relaxed der parser accepts padded integers that strict der rejects" {
     const parsed = try parseLaxDerSignature(lax_sig);
     try std.testing.expect(!std.mem.allEqual(u8, &parsed.r, 0));
     try std.testing.expect(!std.mem.allEqual(u8, &parsed.s, 0));
+}
+
+test "digest verification helpers match expected truth values" {
+    var key_bytes = [_]u8{0} ** 32;
+    key_bytes[31] = 1;
+
+    const private_key = try PrivateKey.fromBytes(key_bytes);
+    const public_key = try private_key.publicKey();
+    const digest = [_]u8{0x42} ** 32;
+    const wrong_digest = [_]u8{0x24} ** 32;
+    const sig = try private_key.signDigest256(digest);
+
+    try std.testing.expect(try verifyDigest256Sec1(&public_key.bytes, digest, sig));
+    try std.testing.expect(!(try verifyDigest256Sec1(&public_key.bytes, wrong_digest, sig)));
+    try std.testing.expect(try public_key.verifyDigest256(digest, sig));
+    try std.testing.expect(!(try public_key.verifyDigest256(wrong_digest, sig)));
 }
 
 test "point sec1 and arithmetic wrap stdlib secp256k1" {
