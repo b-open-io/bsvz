@@ -120,6 +120,107 @@ test "go direct control-flow rows: compact op_return and sigpushonly" {
     });
 }
 
+test "go direct control-flow rows: exact compact return seam families" {
+    const allocator = std.testing.allocator;
+
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "row 76 untaken if branch ignores return before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a6851",
+            .flags = legacy_flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "row 77 untaken if branch ignores return after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a6851",
+            .flags = post_genesis_flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "row 82 unlocking-script return errors before genesis",
+            .unlocking_hex = "6a",
+            .locking_hex = "51",
+            .flags = legacy_flags,
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .name = "row 83 unlocking-script return succeeds after genesis",
+            .unlocking_hex = "6a",
+            .locking_hex = "51",
+            .flags = post_genesis_flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "row 107 if return endif return bad-op tail errors before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a686aba",
+            .flags = legacy_flags,
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .name = "row 108 if return endif return bad-op tail yields false after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a686aba",
+            .flags = post_genesis_flags,
+            .expected = .{ .success = false },
+        },
+        .{
+            .name = "row 109 if return endif five return bad-op tail errors before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a68556aba",
+            .flags = legacy_flags,
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .name = "row 110 if return endif five return bad-op tail stays true after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a68556aba",
+            .flags = post_genesis_flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "row 111 taken if return endif five return bad-op tail errors before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "636a68556aba",
+            .flags = legacy_flags,
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .name = "row 112 taken if return endif five return bad-op tail yields false after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "636a68556aba",
+            .flags = post_genesis_flags,
+            .expected = .{ .success = false },
+        },
+        .{
+            .name = "row 113 if five return endif five return bad-op tail errors before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556a68556aba",
+            .flags = legacy_flags,
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .name = "row 114 if five return endif five return bad-op tail stays true after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556a68556aba",
+            .flags = post_genesis_flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "row 115 if five return endif five return if errors before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556a68556a63",
+            .flags = legacy_flags,
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+    });
+}
+
 test "go direct script rows: false control-flow result shapes" {
     const allocator = std.testing.allocator;
 

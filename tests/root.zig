@@ -13,6 +13,7 @@ comptime {
     _ = @import("go_reserved_nop_vectors.zig");
     _ = @import("go_seam_vectors.zig");
     _ = @import("go_multisig_vectors.zig");
+    _ = @import("go_multisig_reference_vectors.zig");
     _ = @import("go_sigcheck_vectors.zig");
     _ = @import("go_sigcheck_reference_vectors.zig");
     _ = @import("go_stack_index_vectors.zig");

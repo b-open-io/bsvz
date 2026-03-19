@@ -633,3 +633,27 @@ test "go strict sigcheck rows: nulldummy result shapes" {
         },
     });
 }
+
+test "go direct sigcheck rows: exact illegal forkid checksig-not cases" {
+    const allocator = std.testing.allocator;
+
+    var strict_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    strict_flags.strict_encoding = true;
+
+    try runRows(allocator, strict_flags, &[_]GoRow{
+        .{
+            .row = 1494,
+            .name = "row 1494 checksig not rejects an illegal forkid under strictenc",
+            .unlocking_hex = "09300602010102010141",
+            .locking_hex = "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0" ++ "ac91",
+            .expected = .{ .err = error.IllegalForkId },
+        },
+        .{
+            .row = 1496,
+            .name = "row 1496 checkmultisig not rejects an illegal forkid under strictenc",
+            .unlocking_hex = "0009300602010102010141",
+            .locking_hex = "51" ++ "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0" ++ "51" ++ "ae91",
+            .expected = .{ .err = error.IllegalForkId },
+        },
+    });
+}

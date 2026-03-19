@@ -100,10 +100,30 @@ test "go numeric rows: exact arithmetic result rows" {
     const row254_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{-2}, &[_]Opcode{.OP_EQUAL});
     defer allocator.free(row254_locking);
 
+    const row257_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ 1, 1 }, &[_]Opcode{.OP_ADD});
+    defer allocator.free(row257_unlocking);
+    const row257_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{2}, &[_]Opcode{.OP_EQUAL});
+    defer allocator.free(row257_locking);
+
+    const row258_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{1}, &[_]Opcode{.OP_1ADD});
+    defer allocator.free(row258_unlocking);
+    const row258_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{2}, &[_]Opcode{.OP_EQUAL});
+    defer allocator.free(row258_locking);
+
     const row259_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{111}, &[_]Opcode{.OP_1SUB});
     defer allocator.free(row259_unlocking);
     const row259_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{110}, &[_]Opcode{.OP_EQUAL});
     defer allocator.free(row259_locking);
+
+    const row261_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{0}, &[_]Opcode{.OP_ABS});
+    defer allocator.free(row261_unlocking);
+    const row261_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{0}, &[_]Opcode{.OP_EQUAL});
+    defer allocator.free(row261_locking);
+
+    const row262_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{16}, &[_]Opcode{.OP_ABS});
+    defer allocator.free(row262_unlocking);
+    const row262_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{16}, &[_]Opcode{.OP_EQUAL});
+    defer allocator.free(row262_locking);
 
     const row263_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{-16}, &[_]Opcode{.OP_ABS});
     defer allocator.free(row263_unlocking);
@@ -137,6 +157,8 @@ test "go numeric rows: exact arithmetic result rows" {
         .{ .row = 218, .name = "go row 218: add then sub lands exactly on one hundred", .unlocking_hex = "016f5193010c94", .locking_hex = "016487", .expected = .{ .success = true } },
         .{ .row = 219, .name = "go row 219: abs keeps zero at zero", .unlocking_hex = "0090", .locking_hex = "0087", .expected = .{ .success = true } },
         .{ .row = 220, .name = "go row 220: abs keeps positive sixteen unchanged", .unlocking_hex = "6090", .locking_hex = "6087", .expected = .{ .success = true } },
+        .{ .row = 257, .name = "go row 257: add one and one yields two", .unlocking_hex = row257_unlocking, .locking_hex = row257_locking, .expected = .{ .success = true } },
+        .{ .row = 258, .name = "go row 258: 1add over one yields two", .unlocking_hex = row258_unlocking, .locking_hex = row258_locking, .expected = .{ .success = true } },
         .{ .row = 221, .name = "go row 221: abs of negative sixteen matches negate oracle", .unlocking_hex = row263_unlocking, .locking_hex = row263_locking, .expected = .{ .success = true } },
         .{ .row = 278, .name = "go row 278: subtracting equal max int32 values yields zero", .unlocking_hex = row278_unlocking, .locking_hex = row278_locking, .expected = .{ .success = true } },
         .{ .row = 279, .name = "go row 279: duplicate add allows greater-than-32-bit equality", .unlocking_hex = row279_unlocking, .locking_hex = row279_locking, .expected = .{ .success = true } },
@@ -144,6 +166,8 @@ test "go numeric rows: exact arithmetic result rows" {
         .{ .row = 252, .name = "go row 252: add cancels positive and negative operands", .unlocking_hex = row252_unlocking, .locking_hex = row252_locking, .expected = .{ .success = true } },
         .{ .row = 254, .name = "go row 254: add keeps negative totals exact", .unlocking_hex = row254_unlocking, .locking_hex = row254_locking, .expected = .{ .success = true } },
         .{ .row = 259, .name = "go row 259: 1sub decrements exactly", .unlocking_hex = row259_unlocking, .locking_hex = row259_locking, .expected = .{ .success = true } },
+        .{ .row = 261, .name = "go row 261: abs over zero yields zero", .unlocking_hex = row261_unlocking, .locking_hex = row261_locking, .expected = .{ .success = true } },
+        .{ .row = 262, .name = "go row 262: abs over positive sixteen stays positive sixteen", .unlocking_hex = row262_unlocking, .locking_hex = row262_locking, .expected = .{ .success = true } },
         .{ .row = 263, .name = "go row 263: abs matches negate of negative operand", .unlocking_hex = row263_unlocking, .locking_hex = row263_locking, .expected = .{ .success = true } },
         .{ .row = 322, .name = "go row 322: dup add supports greater-than-32-bit equality", .unlocking_hex = row322_unlocking, .locking_hex = row322_locking, .expected = .{ .success = true } },
     });
@@ -447,6 +471,7 @@ test "go numeric rows: exact stack underflow result rows" {
     const allocator = std.testing.allocator;
 
     try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 1434, .name = "go row 1434: sub underflows with one stack item", .unlocking_hex = "51", .locking_hex = "94", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1402, .name = "go row 1402: 2drop requires two stack items", .unlocking_hex = "51", .locking_hex = "6d51", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1411, .name = "go row 1411: nip requires two stack items", .unlocking_hex = "51", .locking_hex = "77", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1417, .name = "go row 1417: rot requires three stack items", .unlocking_hex = "5151", .locking_hex = "7b", .expected = .{ .err = error.StackUnderflow } },
