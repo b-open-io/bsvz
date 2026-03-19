@@ -9,6 +9,7 @@ BSV foundation library for Zig. Covers primitives, crypto, script execution, and
 - [Status](#status)
 - [Getting Started](#getting-started)
 - [Module Layout](#module-layout)
+- [Standards Coverage](#standards-coverage)
 - [Script Verification APIs](#script-verification-apis)
 - [Interpreter Coverage](#interpreter-coverage)
 - [Benchmarks](#benchmarks)
@@ -71,12 +72,6 @@ Run tests:
 zig build test
 ```
 
-Run the optional Runar acceptance lane:
-
-```bash
-zig build test-runar-acceptance
-```
-
 ## Module Layout
 
 | Module | Description |
@@ -100,6 +95,30 @@ zig build test-runar-acceptance
 | `bsvz.compat` | P2PKH address and WIF encode/decode |
 | `bsvz.spv` | MerklePath, MerkleTreeParent, BlockHeader, transaction verification |
 | `bsvz.broadcast` | WhatsOnChain, TAAL, Arc HTTP broadcast clients |
+
+## Standards Coverage
+
+BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.dev](https://bsv.brc.dev/).
+
+| BRC | Title | Module |
+| --- | --- | --- |
+| [BRC-2](https://bsv.brc.dev/wallet/0002) | Data Encryption and Decryption | `primitives.aescbc`, `primitives.aesgcm`, `primitives.symmetric` |
+| [BRC-3](https://bsv.brc.dev/wallet/0003) | Digital Signature Creation and Verification | `primitives.ec`, `primitives.ecdsa`, `crypto.secp256k1` |
+| [BRC-8](https://bsv.brc.dev/transactions/0008) | Everett-style Transaction Envelopes | `transaction` (parse/serialize) |
+| [BRC-12](https://bsv.brc.dev/transactions/0012) | Raw Transaction Format | `transaction` (parse/serialize) |
+| [BRC-14](https://bsv.brc.dev/scripts/0014) | Bitcoin Script Binary, Hex, and ASM Formats | `script` (parser, chunks, serializer) |
+| [BRC-16](https://bsv.brc.dev/scripts/0016) | Pay to Public Key Hash | `script.templates.p2pkh`, `compat.address` |
+| [BRC-18](https://bsv.brc.dev/scripts/0018) | Pay to False Return | `script.templates.op_return` |
+| [BRC-30](https://bsv.brc.dev/transactions/0030) | Transaction Extended Format (EF) | `transaction` (`serializeExtended`, `parseFromCursor`) |
+| [BRC-36](https://bsv.brc.dev/outpoints/0036) | Format for Bitcoin Outpoints | `transaction.OutPoint` |
+| [BRC-47](https://bsv.brc.dev/scripts/0047) | Bare Multi-Signature | `script` (CHECKMULTISIG execution) |
+| [BRC-61](https://bsv.brc.dev/transactions/0061) | Compound Merkle Path Format | `spv.MerklePath` |
+| [BRC-62](https://bsv.brc.dev/transactions/0062) | Background Evaluation Extended Format (BEEF) | `transaction.beef` (V1 parse/serialize) |
+| [BRC-67](https://bsv.brc.dev/transactions/0067) | Simplified Payment Verification | `spv` (MerklePath verify, chain tracker) |
+| [BRC-74](https://bsv.brc.dev/transactions/0074) | BSV Unified Merkle Path (BUMP) | `spv.MerklePath` (binary parse/serialize) |
+| [BRC-94](https://bsv.brc.dev/key-derivation/0094) | Verifiable Revelation of Shared Secrets Using Schnorr | `primitives.schnorr` |
+| [BRC-95](https://bsv.brc.dev/transactions/0095) | Atomic BEEF Transactions | `transaction.beef` (Atomic BEEF parse/serialize) |
+| [BRC-96](https://bsv.brc.dev/transactions/0096) | BEEF V2 Txid Only Extension | `transaction.beef` (V2 with TxidOnly data format) |
 
 ## Script Verification APIs
 
