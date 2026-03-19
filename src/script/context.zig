@@ -140,14 +140,21 @@ pub const TraceStep = struct {
         self.* = .{};
     }
 
+    pub fn opcodeValue(self: TraceStep) opcode.Opcode {
+        return opcode.Opcode.fromByte(self.opcode_byte);
+    }
+
+    pub fn opcodeName(self: TraceStep) []const u8 {
+        return self.opcodeValue().name();
+    }
+
     pub fn writeDebug(self: TraceStep, writer: anytype) !void {
-        const op = opcode.Opcode.fromByte(self.opcode_byte);
         try writer.print(
             "{s} offset={} {s} (0x{x:0>2}) execute_before={} early_return_before={} stack={} alt={} cond={} ops_before={} last_cs_before={}",
             .{
                 self.phase.label(),
                 self.opcode_offset,
-                op.name(),
+                self.opcodeName(),
                 self.opcode_byte,
                 self.should_execute_before,
                 self.early_return_before,
@@ -326,6 +333,8 @@ test "execution trace captures independent snapshots" {
     try std.testing.expectEqualSlices(u8, &[_]u8{0x02}, trace.steps.items[0].alt_stack[0]);
     try std.testing.expectEqualSlices(bool, &[_]bool{true}, trace.steps.items[0].condition_stack);
     try std.testing.expectEqual(@as(?*const TraceStep, &trace.steps.items[0]), trace.lastStep());
+    try std.testing.expectEqual(opcode.Opcode.OP_DUP, trace.steps.items[0].opcodeValue());
+    try std.testing.expectEqualStrings("OP_DUP", trace.steps.items[0].opcodeName());
 
     var rendered: std.ArrayListUnmanaged(u8) = .empty;
     defer rendered.deinit(allocator);

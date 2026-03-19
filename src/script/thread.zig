@@ -56,6 +56,10 @@ pub const TracedExecutionResult = struct {
         self.result.deinit(allocator);
         self.trace.deinit(allocator);
     }
+
+    pub fn lastStep(self: *const TracedExecutionResult) ?*const context.TraceStep {
+        return self.trace.lastStep();
+    }
 };
 
 pub const TracedVerificationResult = struct {
@@ -65,6 +69,17 @@ pub const TracedVerificationResult = struct {
     pub fn deinit(self: *TracedVerificationResult, allocator: std.mem.Allocator) void {
         self.result.deinit(allocator);
         self.trace.deinit(allocator);
+    }
+
+    pub fn lastStep(self: *const TracedVerificationResult) ?*const context.TraceStep {
+        return self.trace.lastStep();
+    }
+
+    pub fn failureStep(self: *const TracedVerificationResult) ?*const context.TraceStep {
+        return switch (self.result.terminal) {
+            .success => null,
+            .false_result, .script_error => self.trace.lastStep(),
+        };
     }
 
     pub fn writeDebug(self: TracedVerificationResult, writer: anytype) !void {
@@ -438,6 +453,9 @@ test "thread verifyScriptsTraced captures opcode snapshots before terminal failu
     try std.testing.expectEqual(@as(u8, @intFromEnum(@import("opcode.zig").Opcode.OP_1)), traced.trace.steps.items[0].opcode_byte);
     try std.testing.expectEqual(@as(u8, @intFromEnum(@import("opcode.zig").Opcode.OP_FROMALTSTACK)), traced.trace.steps.items[1].opcode_byte);
     try std.testing.expectEqual(@as(usize, 1), traced.trace.steps.items[1].stack.len);
+    try std.testing.expectEqual(@as(?*const context.TraceStep, &traced.trace.steps.items[1]), traced.lastStep());
+    try std.testing.expectEqual(@as(?*const context.TraceStep, &traced.trace.steps.items[1]), traced.failureStep());
+    try std.testing.expectEqualStrings("OP_FROMALTSTACK", traced.failureStep().?.opcodeName());
 
     var rendered: std.ArrayListUnmanaged(u8) = .empty;
     defer rendered.deinit(allocator);
