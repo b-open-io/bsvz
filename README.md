@@ -206,3 +206,40 @@ Project direction:
 - no HD wallet derivation in core scope
 - target full BSV consensus compliance for script execution
 - prioritize script execution and downstream Runar integration before broadening into secondary areas
+
+## Benchmarking
+
+The repo now includes two interpreter benchmark harnesses:
+
+- `zig build bench`
+  - runs [benchmarks/script_engine.zig](/Users/satchmo/code/bsvz/benchmarks/script_engine.zig)
+  - measures `bsvz` interpreter hot paths on prebuilt workloads
+- `cd benchmarks/go_sdk && GOCACHE=/tmp/go-build-bsvz go test -run '^$' -bench . -benchmem`
+  - runs [benchmarks/go_sdk/script_engine_bench_test.go](/Users/satchmo/code/bsvz/benchmarks/go_sdk/script_engine_bench_test.go)
+  - measures the local `go-sdk` interpreter against matching workloads
+
+Current benchmark shape:
+
+- arithmetic verification
+- branching verification
+- `SHA256` verification
+- `HASH160` verification
+- stack-operation verification
+- Runar arithmetic verification
+- prebuilt P2PKH verification
+
+The benchmark harnesses intentionally use prebuilt script/transaction fixtures for verification workloads. They do not include key generation or per-iteration signing overhead in the hot loop.
+
+Current local baseline on Apple M3 Max:
+
+| Workload | `bsvz` | `go-sdk` |
+| --- | --- | --- |
+| arithmetic verify | ~20.1 us/op | ~3.7 us/op |
+| branching verify | ~23.2 us/op | ~4.6 us/op |
+| `SHA256` verify | ~15.4 us/op | ~3.6 us/op |
+| `HASH160` verify | ~15.3 us/op | ~3.7 us/op |
+| stack ops verify | ~52.2 us/op | ~11.8 us/op |
+| Runar arithmetic verify | ~71.8 us/op | ~19.3 us/op |
+| P2PKH verify | ~473.5 us/op | ~206.1 us/op |
+
+Those numbers are a baseline, not a final performance claim. The important thing is that `bsvz` now has a repeatable apples-to-apples interpreter benchmark against the local Go SDK instead of only internal Zig timing.

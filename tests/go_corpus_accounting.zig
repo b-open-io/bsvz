@@ -9,7 +9,7 @@ fn accessOrSkip(rel_path: []const u8) !void {
     };
 }
 
-fn collectExactRowRefs(allocator: std.mem.Allocator) !std.AutoHashMap(usize, void) {
+fn collectAccountedRowRefs(allocator: std.mem.Allocator) !std.AutoHashMap(usize, void) {
     var rows = std.AutoHashMap(usize, void).init(allocator);
     errdefer rows.deinit();
 
@@ -44,23 +44,12 @@ fn collectExactRowRefs(allocator: std.mem.Allocator) !std.AutoHashMap(usize, voi
     return rows;
 }
 
-fn isExecutableCorpusRow(value: std.json.Value) bool {
-    if (value != .array) return false;
-    const items = value.array.items;
-    if (items.len < 4 or items.len > 6) return false;
-    if (items[0] == .array) {
-        if (items.len < 5 or items[0].array.items.len == 0 or items[0].array.items[0] != .float) return false;
-        return items[1] == .string and items[2] == .string and items[3] == .string and items[4] == .string;
-    }
-    return items[0] == .string and items[1] == .string and items[2] == .string and items[3] == .string;
-}
-
 test "all go corpus rows are explicitly accounted for" {
     const allocator = std.testing.allocator;
     try accessOrSkip(corpus_path);
 
-    var exact_rows = try collectExactRowRefs(allocator);
-    defer exact_rows.deinit();
+    var accounted_rows = try collectAccountedRowRefs(allocator);
+    defer accounted_rows.deinit();
 
     const file = try std.fs.cwd().readFileAlloc(allocator, corpus_path, 8 * 1024 * 1024);
     defer allocator.free(file);
@@ -74,7 +63,7 @@ test "all go corpus rows are explicitly accounted for" {
     var first_missing_row: ?usize = null;
 
     for (parsed.value.array.items, 0..) |value, index| {
-        if (exact_rows.contains(index)) continue;
+        if (accounted_rows.contains(index)) continue;
         _ = value;
         uncovered_count += 1;
         if (first_missing_row == null) first_missing_row = index;
