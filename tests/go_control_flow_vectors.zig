@@ -22,6 +22,29 @@ fn runRows(allocator: std.mem.Allocator, rows: []const GoRow) !void {
     }
 }
 
+fn repeatedElseElseSha1Chain(allocator: std.mem.Allocator, leading_opcode_hex: []const u8) ![]u8 {
+    const suffix = "681468ca4fec736264c13b859bac43d5173df687168287";
+    const repeated = "6767a7";
+    const total_len = leading_opcode_hex.len + 2 + (19 * repeated.len) + suffix.len;
+    const hex = try allocator.alloc(u8, total_len);
+    errdefer allocator.free(hex);
+
+    var cursor: usize = 0;
+    @memcpy(hex[cursor .. cursor + leading_opcode_hex.len], leading_opcode_hex);
+    cursor += leading_opcode_hex.len;
+    @memcpy(hex[cursor .. cursor + 2], "a7");
+    cursor += 2;
+    for (0..19) |_| {
+        @memcpy(hex[cursor .. cursor + repeated.len], repeated);
+        cursor += repeated.len;
+    }
+    @memcpy(hex[cursor .. cursor + suffix.len], suffix);
+    cursor += suffix.len;
+
+    std.debug.assert(cursor == total_len);
+    return hex;
+}
+
 test "go direct control-flow rows: compact op_return and sigpushonly" {
     const allocator = std.testing.allocator;
 
@@ -202,6 +225,24 @@ test "go direct script rows: op_return in different branches" {
     try runRows(allocator, &[_]GoRow{
         .{ .name = "legacy branch-selected op_return still errors", .unlocking_hex = "00", .locking_hex = "636a05646174613167516a05646174613268", .flags = legacy_flags, .expected = .{ .err = error.ReturnEncountered } },
         .{ .name = "post-genesis branch-selected op_return keeps success when else branch pushes one first", .unlocking_hex = "00", .locking_hex = "636a05646174613167516a05646174613268", .flags = post_genesis_flags, .expected = .{ .success = true } },
+    });
+}
+
+test "go direct script rows: exact repeated else else sha1 chains" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    const if_chain = try repeatedElseElseSha1Chain(allocator, "63");
+    defer allocator.free(if_chain);
+    const notif_chain = try repeatedElseElseSha1Chain(allocator, "64");
+    defer allocator.free(notif_chain);
+
+    try runRows(allocator, &[_]GoRow{
+        .{ .name = "row 56 legacy repeated else else sha1 chain under if succeeds", .unlocking_hex = "0051", .locking_hex = if_chain, .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .name = "row 61 post-genesis repeated else else sha1 chain under if is unbalanced", .unlocking_hex = "0051", .locking_hex = if_chain, .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .name = "row 66 legacy repeated else else sha1 chain under notif succeeds", .unlocking_hex = "0000", .locking_hex = notif_chain, .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .name = "row 71 post-genesis repeated else else sha1 chain under notif is unbalanced", .unlocking_hex = "0000", .locking_hex = notif_chain, .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
     });
 }
 

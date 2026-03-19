@@ -5,6 +5,7 @@ comptime {
     _ = @import("go_bin2num_vectors.zig");
     _ = @import("go_boolean_numeric_vectors.zig");
     _ = @import("go_bytes_hash_vectors.zig");
+    _ = @import("go_corpus_filtered_vectors.zig");
     _ = @import("go_disabled_opcode_vectors.zig");
     _ = @import("go_minimaldata_vectors.zig");
     _ = @import("go_numeric_vectors.zig");

@@ -548,3 +548,16 @@ test "go direct script rows: boolean underflow parity" {
         .{ .row = 1438, .name = "numequalverify underflows with one stack item", .unlocking_hex = "51", .locking_hex = "9d51", .expected = .{ .err = error.StackUnderflow } },
     });
 }
+
+test "go direct script rows: compact boolean and arithmetic result shapes" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 528, .name = "abs over negative one leaves a truthy result", .unlocking_hex = "4f90", .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 529, .name = "not over zero leaves a truthy result", .unlocking_hex = "0091", .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 530, .name = "zeronotequal over negative one leaves a truthy result", .unlocking_hex = "4f92", .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 532, .name = "add over one and zero leaves a truthy result", .unlocking_hex = "510093", .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 533, .name = "sub over one and zero leaves a truthy result", .unlocking_hex = "510094", .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 545, .name = "within over negative one in negative one to zero leaves a truthy result", .unlocking_hex = "4f4f00a5", .locking_hex = "", .expected = .{ .success = true } },
+    });
+}
