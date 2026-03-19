@@ -460,7 +460,7 @@ test "go direct script rows: size parity" {
         .{ .row = 244, .name = "go row 244: size of -2147483648 is five bytes", .unlocking_hex = unlock_neg_2147483648, .locking_hex = size_eq_5, .expected = .{ .success = true } },
         .{ .row = 248, .name = "go row 248: size of alphabet payload is twenty-six", .unlocking_hex = unlock_alpha, .locking_hex = size_eq_26, .expected = .{ .success = true } },
         .{ .row = 250, .name = "go row 250: size does not consume its argument", .unlocking_hex = unlock_42, .locking_hex = size_preserves_arg, .expected = .{ .success = true } },
-        .{ .row = 1035, .name = "go row 1035: size underflows on empty stack after nop", .unlocking_hex = "61", .locking_hex = size_underflow, .expected = .{ .err = error.StackUnderflow } },
+        .{ .name = "go row 1035: size underflows on empty stack after nop", .unlocking_hex = "61", .locking_hex = size_underflow, .expected = .{ .err = error.StackUnderflow } },
     });
 }
 

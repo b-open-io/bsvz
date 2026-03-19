@@ -4,7 +4,7 @@ const harness = @import("support/go_script_harness.zig");
 const builders = @import("support/go_vector_builders.zig");
 
 const GoRow = struct {
-    row: usize,
+    row: ?usize = null,
     name: []const u8,
     unlocking_hex: []const u8,
     locking_hex: []const u8,
@@ -428,7 +428,6 @@ test "go direct parser rows: compact bad-op precedence after conditionals" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 131,
             .name = "row 131 untaken if keeps verif inert in else form",
             .unlocking_hex = "00",
             .locking_hex = "6365675168",
@@ -442,7 +441,6 @@ test "go direct parser rows: compact bad-op precedence after conditionals" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 135,
             .name = "row 135 top-level ver is a bad opcode after genesis",
             .unlocking_hex = "51",
             .locking_hex = "62",
@@ -456,7 +454,6 @@ test "go direct parser rows: compact bad-op precedence after conditionals" {
             .expected = .{ .err = error.UnknownOpcode },
         },
         .{
-            .row = 137,
             .name = "row 137 top-level reserved1 is a bad opcode after genesis",
             .unlocking_hex = "51",
             .locking_hex = "89",

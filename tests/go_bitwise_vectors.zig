@@ -3,7 +3,7 @@ const bsvz = @import("bsvz");
 const harness = @import("support/go_script_harness.zig");
 
 const GoRow = struct {
-    row: usize,
+    row: ?usize = null,
     name: []const u8,
     unlocking_hex: []const u8,
     locking_hex: []const u8,
@@ -45,7 +45,6 @@ test "go bitwise rows: truthiness and size-adjacent bytes" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 149,
             .name = "row 149 negative zero is false in if",
             .unlocking_hex = "510180",
             .locking_hex = "630068",
@@ -59,7 +58,6 @@ test "go bitwise rows: truthiness and size-adjacent bytes" {
             .expected = .{ .success = true },
         },
         .{
-            .row = 540,
             .name = "row 540 raw op 0 remains zero bytes under size",
             .unlocking_hex = "00",
             .locking_hex = "820087",

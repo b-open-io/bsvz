@@ -280,7 +280,6 @@ test "go direct script rows: minimaldata numeric arguments" {
 
     try runRows(allocator, flags, &[_]GoRow{
         .{
-            .row = 944,
             .name = "row 944 mul rejects non-minimal left operand under minimaldata",
             .unlocking_hex = "03ff0000",
             .locking_hex = "529502fe0187",
@@ -393,8 +392,8 @@ test "go direct script rows: minimaldata ignored in untaken branches" {
         .{ .row = 570, .name = "non-minimal pusdata1 is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "634c006851", .expected = .{ .success = true } },
         .{ .row = 571, .name = "non-minimal pusdata2 is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "634d00006851", .expected = .{ .success = true } },
         .{ .row = 572, .name = "non-minimal pusdata4 is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "634e000000006851", .expected = .{ .success = true } },
-        .{ .row = 573, .name = "1negate-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301816851", .expected = .{ .success = true } },
-        .{ .row = 574, .name = "op_1-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301016851", .expected = .{ .success = true } },
+        .{ .name = "1negate-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301816851", .expected = .{ .success = true } },
+        .{ .name = "op_1-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301016851", .expected = .{ .success = true } },
         .{ .row = 575, .name = "op_2-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301026851", .expected = .{ .success = true } },
         .{ .row = 576, .name = "op_3-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301036851", .expected = .{ .success = true } },
         .{ .row = 577, .name = "op_4-equivalent push is ignored in untaken branch", .unlocking_hex = "00", .locking_hex = "6301046851", .expected = .{ .success = true } },
