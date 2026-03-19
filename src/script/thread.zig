@@ -14,6 +14,15 @@ pub const ExecutionResult = context.ExecutionResult;
 pub const ExecutionTrace = context.ExecutionTrace;
 pub const ScriptPhase = context.ScriptPhase;
 pub const VerificationTerminal = context.VerificationTerminal;
+pub const VerificationOutcome = union(enum) {
+    success,
+    false_result,
+    script_error: Error,
+
+    pub fn ok(self: VerificationOutcome) bool {
+        return self == .success;
+    }
+};
 
 pub const VerificationResult = struct {
     success: bool,
@@ -29,6 +38,14 @@ pub const VerificationResult = struct {
     pub fn toLegacy(self: VerificationResult) Error!bool {
         if (self.script_error) |err| return err;
         return self.success;
+    }
+
+    pub fn outcome(self: VerificationResult) VerificationOutcome {
+        return switch (self.terminal) {
+            .success => .success,
+            .false_result => .false_result,
+            .script_error => .{ .script_error = self.script_error.? },
+        };
     }
 
     pub fn writeDebug(self: VerificationResult, writer: anytype) !void {
@@ -82,6 +99,10 @@ pub const TracedVerificationResult = struct {
             .success => null,
             .false_result, .script_error => self.trace.lastStep(),
         };
+    }
+
+    pub fn outcome(self: TracedVerificationResult) VerificationOutcome {
+        return self.result.outcome();
     }
 
     pub fn writeDebug(self: TracedVerificationResult, writer: anytype) !void {
@@ -270,6 +291,11 @@ pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_sc
     var result = verifyScriptsDetailed(ctx, unlocking_script, locking_script);
     defer result.deinit(ctx.allocator);
     return result.toLegacy();
+}
+
+pub fn verificationOutcome(result: Error!bool) VerificationOutcome {
+    const verified = result catch |err| return .{ .script_error = err };
+    return if (verified) .success else .false_result;
 }
 
 pub fn verifyScriptsDetailed(
@@ -500,6 +526,7 @@ test "thread verifyScriptsTraced captures opcode snapshots before terminal failu
     try std.testing.expectEqual(@as(?*const context.TraceStep, &traced.trace.steps.items[1]), traced.lastStep());
     try std.testing.expectEqual(@as(?*const context.TraceStep, &traced.trace.steps.items[1]), traced.failureStep());
     try std.testing.expectEqualStrings("OP_FROMALTSTACK", traced.failureStep().?.opcodeName());
+    try std.testing.expectEqualDeep(VerificationOutcome{ .script_error = error.AltStackUnderflow }, traced.outcome());
 
     var rendered: std.ArrayListUnmanaged(u8) = .empty;
     defer rendered.deinit(allocator);
@@ -507,6 +534,15 @@ test "thread verifyScriptsTraced captures opcode snapshots before terminal failu
     try std.testing.expect(std.mem.indexOf(u8, rendered.items, "VerificationResult") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered.items, "AltStackUnderflow") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered.items, "OP_FROMALTSTACK") != null);
+}
+
+test "thread verificationOutcome maps legacy bool-or-error results" {
+    try std.testing.expectEqualDeep(VerificationOutcome.success, verificationOutcome(@as(Error!bool, true)));
+    try std.testing.expectEqualDeep(VerificationOutcome.false_result, verificationOutcome(@as(Error!bool, false)));
+    try std.testing.expectEqualDeep(
+        VerificationOutcome{ .script_error = error.CleanStack },
+        verificationOutcome(@as(Error!bool, error.CleanStack)),
+    );
 }
 
 test "thread verifyPrevoutSpendDetailed uses previous output directly" {

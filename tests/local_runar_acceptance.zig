@@ -1581,7 +1581,7 @@ fn verifyInputAgainstOutput(
         spend_input_index,
     )) {
         .success => true,
-        .eval_false => false,
+        .false_result => false,
         .script_error => |err| return err,
     };
 }
@@ -1611,8 +1611,8 @@ fn expectVerificationOutcome(
             .success => {},
             else => try std.testing.expect(false),
         },
-        .eval_false => switch (actual) {
-            .eval_false => {},
+        .false_result => switch (actual) {
+            .false_result => {},
             else => try std.testing.expect(false),
         },
         .script_error => |want_err| switch (actual) {
@@ -1656,7 +1656,7 @@ fn expectVerifyFalse(
             spend_tx_hex,
             spend_input_index,
         ),
-        .eval_false,
+        .false_result,
     );
 }
 
@@ -1698,7 +1698,7 @@ fn expectFirstInputVerifyFalse(
 ) !void {
     try expectVerificationOutcome(
         try verifyFirstInputAgainstFirstOutputOutcome(allocator, deploy_tx_hex, call_tx_hex),
-        .eval_false,
+        .false_result,
     );
 }
 

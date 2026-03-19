@@ -9,6 +9,7 @@ const Transaction = @import("../transaction/transaction.zig").Transaction;
 pub const Error = thread.Error;
 pub const ScriptPhase = thread.ScriptPhase;
 pub const VerificationTerminal = thread.VerificationTerminal;
+pub const VerificationOutcome = thread.VerificationOutcome;
 pub const VerificationResult = thread.VerificationResult;
 pub const TracedVerificationResult = thread.TracedVerificationResult;
 

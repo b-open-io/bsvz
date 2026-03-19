@@ -16,11 +16,7 @@ pub const SpendSpec = struct {
     signing_key: [32]u8,
 };
 
-pub const VerificationOutcome = union(enum) {
-    success,
-    eval_false,
-    script_error: bsvz.script.thread.Error,
-};
+pub const VerificationOutcome = bsvz.script.thread.VerificationOutcome;
 pub const VerificationResult = bsvz.script.thread.VerificationResult;
 pub const TracedVerificationResult = bsvz.script.thread.TracedVerificationResult;
 
@@ -36,8 +32,7 @@ pub const Case = struct {
 const default_output_script = [_]u8{0x6a};
 
 pub fn verificationOutcome(result: bsvz.script.thread.Error!bool) VerificationOutcome {
-    const verified = result catch |err| return .{ .script_error = err };
-    return if (verified) .success else .eval_false;
+    return bsvz.script.thread.verificationOutcome(result);
 }
 
 pub fn verificationOutcomeDetailed(
@@ -49,7 +44,7 @@ pub fn verificationOutcomeDetailed(
 
     return switch (result.terminal) {
         .success => .success,
-        .false_result => .eval_false,
+        .false_result => .false_result,
         .script_error => .{ .script_error = result.script_error.? },
     };
 }
@@ -197,7 +192,7 @@ pub fn runCaseOutcome(allocator: std.mem.Allocator, case: Case) !VerificationOut
 pub fn runCase(allocator: std.mem.Allocator, case: Case) !bool {
     return switch (try runCaseOutcome(allocator, case)) {
         .success => true,
-        .eval_false => false,
+        .false_result => false,
         .script_error => |err| return err,
     };
 }
