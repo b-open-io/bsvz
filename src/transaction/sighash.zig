@@ -223,43 +223,22 @@ pub fn hashOutputs(allocator: std.mem.Allocator, tx: *const Transaction, input_i
         if (input_index >= tx.outputs.len) return crypto.Hash256.zero();
 
         const output = tx.outputs[input_index];
-        const buf = try serializeOutput(allocator, output);
+        const buf = try output.serialize(allocator);
         defer allocator.free(buf);
         return crypto.hash.hash256(buf);
     }
 
     var total_len: usize = 0;
-    for (tx.outputs) |output| total_len += serializedOutputLen(output);
+    for (tx.outputs) |output| total_len += output.serializedLen();
     var buf = try allocator.alloc(u8, total_len);
     defer allocator.free(buf);
 
     var cursor: usize = 0;
     for (tx.outputs) |output| {
-        cursor += writeOutput(buf[cursor..], output);
+        cursor += output.writeInto(buf[cursor..]);
     }
 
     return crypto.hash.hash256(buf);
-}
-
-fn serializedOutputLen(output: Output) usize {
-    return 8 + primitives.varint.VarInt.encodedLen(output.locking_script.bytes.len) + output.locking_script.bytes.len;
-}
-
-fn serializeOutput(allocator: std.mem.Allocator, output: Output) ![]u8 {
-    const len = serializedOutputLen(output);
-    const buf = try allocator.alloc(u8, len);
-    _ = writeOutput(buf, output);
-    return buf;
-}
-
-fn writeOutput(out: []u8, output: Output) usize {
-    var cursor: usize = 0;
-    std.mem.writeInt(i64, out[cursor..][0..8], output.satoshis, .little);
-    cursor += 8;
-    cursor += primitives.varint.VarInt.encodeInto(out[cursor..], output.locking_script.bytes.len) catch unreachable;
-    @memcpy(out[cursor..][0..output.locking_script.bytes.len], output.locking_script.bytes);
-    cursor += output.locking_script.bytes.len;
-    return cursor;
 }
 
 fn legacySingleBugBytes() [32]u8 {
