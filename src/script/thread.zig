@@ -3,6 +3,8 @@ const context = @import("context.zig");
 const bytes = @import("bytes.zig");
 const engine = @import("engine.zig");
 const Script = @import("script.zig").Script;
+const Output = @import("../transaction/output.zig").Output;
+const Transaction = @import("../transaction/transaction.zig").Transaction;
 
 pub const Error = engine.Error;
 pub const ExecutionContext = context.ExecutionContext;
@@ -335,6 +337,48 @@ pub fn verifyExecutableScriptsTraced(
     };
 }
 
+pub fn verifyPrevoutSpend(
+    allocator: std.mem.Allocator,
+    tx: *const Transaction,
+    input_index: usize,
+    previous_output: Output,
+    unlocking_script: Script,
+) Error!bool {
+    return verifyExecutableScripts(
+        ExecutionContext.forPrevoutSpend(allocator, tx, input_index, previous_output),
+        unlocking_script,
+        previous_output.locking_script,
+    );
+}
+
+pub fn verifyPrevoutSpendDetailed(
+    allocator: std.mem.Allocator,
+    tx: *const Transaction,
+    input_index: usize,
+    previous_output: Output,
+    unlocking_script: Script,
+) VerificationResult {
+    return verifyExecutableScriptsDetailed(
+        ExecutionContext.forPrevoutSpend(allocator, tx, input_index, previous_output),
+        unlocking_script,
+        previous_output.locking_script,
+    );
+}
+
+pub fn verifyPrevoutSpendTraced(
+    allocator: std.mem.Allocator,
+    tx: *const Transaction,
+    input_index: usize,
+    previous_output: Output,
+    unlocking_script: Script,
+) TracedVerificationResult {
+    return verifyExecutableScriptsTraced(
+        ExecutionContext.forPrevoutSpend(allocator, tx, input_index, previous_output),
+        unlocking_script,
+        previous_output.locking_script,
+    );
+}
+
 fn finalResult(ctx: ExecutionContext, state: *ExecutionState) Error!bool {
     if (state.condition_stack.items.len != 0) return error.UnbalancedConditionals;
     if (state.stack.items.len == 0) return false;
@@ -463,4 +507,42 @@ test "thread verifyScriptsTraced captures opcode snapshots before terminal failu
     try std.testing.expect(std.mem.indexOf(u8, rendered.items, "VerificationResult") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered.items, "AltStackUnderflow") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered.items, "OP_FROMALTSTACK") != null);
+}
+
+test "thread verifyPrevoutSpendDetailed uses previous output directly" {
+    const allocator = std.testing.allocator;
+    var tx = Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = Script.init(&[_]u8{}),
+                .sequence = 0xffff_ffff,
+            },
+        },
+        .outputs = &[_]Output{
+            .{
+                .satoshis = 1,
+                .locking_script = Script.init(&[_]u8{
+                    @intFromEnum(@import("opcode.zig").Opcode.OP_0),
+                }),
+            },
+        },
+        .lock_time = 0,
+    };
+
+    var result = verifyPrevoutSpendDetailed(
+        allocator,
+        &tx,
+        0,
+        tx.outputs[0],
+        tx.inputs[0].unlocking_script,
+    );
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqual(VerificationTerminal.false_result, result.terminal);
+    try std.testing.expectEqual(ScriptPhase.final, result.phase);
 }
