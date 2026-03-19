@@ -15,18 +15,19 @@ BSV foundation library for Zig. Covers primitives, crypto, script execution, and
 
 ## Status
 
-The script engine is the mature core. SPV and broadcast are stubs.
+The script engine and crypto primitives are the mature core. SPV has merkle path support. Broadcast is a stub.
 
 <details>
 <summary>Details</summary>
 
 **Implemented:**
 
-- `primitives`: hex, varint, base58, base58check, network/version-byte helpers
-- `crypto`: sha256, hash256, ripemd160, hash160, secp256k1 private/public keys, secp256k1 point API, DER signatures, tx-signature helpers
+- `primitives`: hex, varint, base58, base58check, network/version-byte helpers, chainhash (display-order hash type), EC curve wrapper, ECDSA signatures with low-S normalization, Schnorr proofs, AES-CBC, AES-GCM, symmetric key encryption, Shamir secret sharing (key shares, backup format), HMAC-DRBG
+- `crypto`: sha256, sha512, hash256, ripemd160, hash160, hmacSha256, hmacSha512, secp256k1 private/public keys, secp256k1 point API, DER signatures, tx-signature helpers
 - `compat`: P2PKH address and WIF encode/decode
-- `transaction`: transaction parse/serialize, txid, replay-protected sighash/preimage helpers, P2PKH spend helpers
+- `transaction`: transaction parse/serialize (standard and extended format), txid, replay-protected sighash/preimage helpers, P2PKH spend helpers, BEEF V1/V2/Atomic parse and serialize
 - `script`: ScriptNum, byte helpers, script parser/chunks, broad opcode set, execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, Go-shaped policy enforcement, P2PKH and OP_RETURN templates
+- `spv`: MerklePath parse/serialize/computeRoot/combine, MerkleTreeParent
 
 **Go corpus accounting:**
 
@@ -37,7 +38,6 @@ The script engine is the mature core. SPV and broadcast are stubs.
 
 **Construction zones:**
 
-- `spv`: type stubs only
 - `broadcast`: namespace scaffolding only
 - Runar local acceptance is broad but not complete
 
@@ -82,11 +82,21 @@ zig build test-runar-acceptance
 | Module | Description |
 | --- | --- |
 | `bsvz.primitives` | Hex, varint, base58, base58check, version-byte helpers |
-| `bsvz.crypto` | SHA256, RIPEMD160, secp256k1 keys and point API, DER signatures |
+| `bsvz.primitives.chainhash` | Display-order (reverse hex) hash type, single/double hash helpers |
+| `bsvz.primitives.ec` | EC curve wrapper, PrivateKey, PublicKey, key generation, WIF import |
+| `bsvz.primitives.ecdsa` | ECDSA signature type with DER encoding and low-S normalization |
+| `bsvz.primitives.schnorr` | Schnorr DLEQ proof generation and verification |
+| `bsvz.primitives.keyshares` | Shamir secret sharing: polynomial, key shares, backup format |
+| `bsvz.primitives.aescbc` | AES-CBC encrypt/decrypt with PKCS7 padding (128/256-bit keys) |
+| `bsvz.primitives.aesgcm` | AES-GCM encrypt/decrypt with authentication tags (128/256-bit keys) |
+| `bsvz.primitives.symmetric` | Symmetric key wrapper with encrypt/decrypt |
+| `bsvz.primitives.drbg` | HMAC-DRBG deterministic random bit generator |
+| `bsvz.crypto` | SHA256, SHA512, RIPEMD160, HASH160, HASH256, HMAC-SHA256, HMAC-SHA512, secp256k1 keys and point API, DER signatures |
 | `bsvz.script` | Script parser, opcode set, execution engine, policy flags |
-| `bsvz.transaction` | Parse, serialize, sighash, P2PKH spend helpers |
+| `bsvz.transaction` | Parse, serialize (standard + extended format), sighash, P2PKH spend helpers |
+| `bsvz.transaction.beef` | BEEF V1/V2/Atomic parse, serialize, and transaction extraction |
 | `bsvz.compat` | P2PKH address and WIF encode/decode |
-| `bsvz.spv` | Construction zone |
+| `bsvz.spv` | MerklePath, MerkleTreeParent, BlockHeader |
 | `bsvz.broadcast` | Construction zone |
 
 ## Script Verification APIs
@@ -220,7 +230,7 @@ const hash_all = try bsvz.transaction.Output.hashAll(allocator, &[_]bsvz.transac
 | `CODESEPARATOR` parity | broad | legacy and ForkID scriptCode behavior, chained separator tests, parser/scanner coverage |
 | Go parity vectors | full | all 1,499 rows in Go's `script_tests.json` accounted for; 1,438 executable exact-row references; 61 non-executable rows explicitly tracked |
 | Runar conformance | smoke lane | `zig build test` runs `tests/runar_conformance.zig`; full acceptance suite is `zig build test-runar-acceptance` |
-| SPV / proof tooling | construction zone | not part of the interpreter core |
+| SPV / proof tooling | partial | MerklePath parse/serialize/computeRoot/combine and MerkleTreeParent implemented; block header chain validation not yet present |
 
 **Scope:**
 
