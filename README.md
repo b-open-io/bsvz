@@ -24,8 +24,8 @@ The script engine is the mature core. SPV and broadcast are stubs.
 
 - `primitives`: hex, varint, base58, base58check, network/version-byte helpers
 - `crypto`: sha256, hash256, ripemd160, hash160, secp256k1 private/public keys, secp256k1 point API, DER signatures, tx-signature helpers
-- `compat`: legacy P2PKH address and WIF encode/decode
-- `transaction`: legacy transaction parse/serialize, txid, replay-protected sighash/preimage helpers, P2PKH spend helpers
+- `compat`: P2PKH address and WIF encode/decode
+- `transaction`: transaction parse/serialize, txid, replay-protected sighash/preimage helpers, P2PKH spend helpers
 - `script`: ScriptNum, byte helpers, script parser/chunks, broad opcode set, execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, Go-shaped policy enforcement, P2PKH and OP_RETURN templates
 
 **Go corpus accounting:**
@@ -85,7 +85,7 @@ zig build test-runar-acceptance
 | `bsvz.crypto` | SHA256, RIPEMD160, secp256k1 keys and point API, DER signatures |
 | `bsvz.script` | Script parser, opcode set, execution engine, policy flags |
 | `bsvz.transaction` | Parse, serialize, sighash, P2PKH spend helpers |
-| `bsvz.compat` | Legacy P2PKH address and WIF encode/decode |
+| `bsvz.compat` | P2PKH address and WIF encode/decode |
 | `bsvz.spv` | Construction zone |
 | `bsvz.broadcast` | Construction zone |
 
