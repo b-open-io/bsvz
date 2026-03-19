@@ -64,7 +64,7 @@ Current interpreter target:
 - plain executable pair: `bsvz.script.thread.verifyScripts(...)` or `ScriptThread.verifyPair(...)`
 - spend with transaction context: `bsvz.script.thread.verifyExecutableScripts(...)`
 - spend directly against a previous output: `bsvz.script.thread.verifyPrevoutSpend(...)`, `verifyPrevoutSpendDetailed(...)`, `verifyPrevoutSpendTraced(...)`
-- small spend wrapper: `bsvz.script.interpreter.verify(...)`
+- small spend wrappers: `bsvz.script.interpreter.verify(...)` and `verifyPrevout(...)`
 - detailed verification result: `bsvz.script.thread.verifyScriptsDetailed(...)`, `verifyExecutableScriptsDetailed(...)`, and `bsvz.script.interpreter.verifyDetailed(...)`
 - opt-in execution traces: `bsvz.script.thread.verifyScriptsTraced(...)`, `verifyExecutableScriptsTraced(...)`, and `bsvz.script.interpreter.verifyTraced(...)`
 

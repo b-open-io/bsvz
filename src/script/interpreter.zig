@@ -21,6 +21,14 @@ pub const P2pkhSpendContext = struct {
     locking_script: Script,
 };
 
+pub const PrevoutSpendContext = struct {
+    allocator: std.mem.Allocator,
+    tx: *const Transaction,
+    input_index: usize,
+    previous_output: Output,
+    unlocking_script: Script,
+};
+
 pub fn verify(ctx: P2pkhSpendContext) Error!bool {
     var result = verifyDetailed(ctx);
     defer result.deinit(ctx.allocator);
@@ -40,6 +48,36 @@ pub fn verifyTraced(ctx: P2pkhSpendContext) TracedVerificationResult {
         .forSpend(ctx.allocator, ctx.tx, ctx.input_index, ctx.previous_satoshis),
         ctx.unlocking_script,
         ctx.locking_script,
+    );
+}
+
+pub fn verifyPrevout(ctx: PrevoutSpendContext) Error!bool {
+    return thread.verifyPrevoutSpend(
+        ctx.allocator,
+        ctx.tx,
+        ctx.input_index,
+        ctx.previous_output,
+        ctx.unlocking_script,
+    );
+}
+
+pub fn verifyPrevoutDetailed(ctx: PrevoutSpendContext) VerificationResult {
+    return thread.verifyPrevoutSpendDetailed(
+        ctx.allocator,
+        ctx.tx,
+        ctx.input_index,
+        ctx.previous_output,
+        ctx.unlocking_script,
+    );
+}
+
+pub fn verifyPrevoutTraced(ctx: PrevoutSpendContext) TracedVerificationResult {
+    return thread.verifyPrevoutSpendTraced(
+        ctx.allocator,
+        ctx.tx,
+        ctx.input_index,
+        ctx.previous_output,
+        ctx.unlocking_script,
     );
 }
 
@@ -75,6 +113,45 @@ test "interpreter verifyDetailed exposes structured false results" {
         .previous_satoshis = 1,
         .unlocking_script = Script.init(&[_]u8{}),
         .locking_script = tx.outputs[0].locking_script,
+    });
+    defer result.deinit(allocator);
+
+    try std.testing.expect(!result.success);
+    try std.testing.expectEqual(VerificationTerminal.false_result, result.terminal);
+    try std.testing.expectEqual(ScriptPhase.final, result.phase);
+}
+
+test "interpreter verifyPrevoutDetailed exposes structured false results" {
+    const allocator = std.testing.allocator;
+    var tx = Transaction{
+        .version = 2,
+        .inputs = &[_]Input{
+            .{
+                .previous_outpoint = OutPoint{
+                    .txid = .{ .bytes = [_]u8{0} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = Script.init(&[_]u8{}),
+                .sequence = 0xffff_ffff,
+            },
+        },
+        .outputs = &[_]Output{
+            .{
+                .satoshis = 1,
+                .locking_script = Script.init(&[_]u8{
+                    @intFromEnum(@import("opcode.zig").Opcode.OP_0),
+                }),
+            },
+        },
+        .lock_time = 0,
+    };
+
+    var result = verifyPrevoutDetailed(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_output = tx.outputs[0],
+        .unlocking_script = tx.inputs[0].unlocking_script,
     });
     defer result.deinit(allocator);
 
