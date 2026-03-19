@@ -177,47 +177,28 @@ pub const ScriptThread = struct {
     }
 
     pub fn verifyPairDetailed(self: *ScriptThread, unlocking_script: Script, locking_script: Script) VerificationResult {
-        if (self.ctx.flags.sig_push_only) {
-            const push_only = engine.isPushOnly(unlocking_script) catch |err| {
-                return self.finishVerification(.script_error, .unlocking, err);
-            };
-            if (!push_only) return self.finishVerification(.script_error, .unlocking, error.SigPushOnly);
-        }
-
-        if (self.executePhaseDetailed(.unlocking, unlocking_script)) |result| return result;
-        self.state.clearAltStack(self.ctx.allocator);
-        if (self.executePhaseDetailed(.locking, locking_script)) |result| return result;
-
-        const success = finalResult(self.ctx, &self.state) catch |err| {
-            return self.finishVerification(.script_error, .final, err);
-        };
-        return self.finishVerification(if (success) .success else .false_result, .final, null);
+        return self.verifyPairImpl(unlocking_script, locking_script, null);
     }
 
     pub fn verifyPairTraced(self: *ScriptThread, unlocking_script: Script, locking_script: Script) TracedVerificationResult {
         var trace: ExecutionTrace = .{};
         return .{
-            .result = self.verifyPairDetailedTraced(unlocking_script, locking_script, &trace),
+            .result = self.verifyPairImpl(unlocking_script, locking_script, &trace),
             .trace = trace,
         };
     }
 
-    fn verifyPairDetailedTraced(
+    fn verifyPairImpl(
         self: *ScriptThread,
         unlocking_script: Script,
         locking_script: Script,
-        trace: *ExecutionTrace,
+        trace: ?*ExecutionTrace,
     ) VerificationResult {
-        if (self.ctx.flags.sig_push_only) {
-            const push_only = engine.isPushOnly(unlocking_script) catch |err| {
-                return self.finishVerification(.script_error, .unlocking, err);
-            };
-            if (!push_only) return self.finishVerification(.script_error, .unlocking, error.SigPushOnly);
-        }
+        if (self.checkSigPushOnly(unlocking_script)) |result| return result;
 
-        if (self.executePhaseDetailedTraced(.unlocking, unlocking_script, trace)) |result| return result;
+        if (self.executePhaseDetailedImpl(.unlocking, unlocking_script, trace)) |result| return result;
         self.state.clearAltStack(self.ctx.allocator);
-        if (self.executePhaseDetailedTraced(.locking, locking_script, trace)) |result| return result;
+        if (self.executePhaseDetailedImpl(.locking, locking_script, trace)) |result| return result;
 
         const success = finalResult(self.ctx, &self.state) catch |err| {
             return self.finishVerification(.script_error, .final, err);
@@ -225,40 +206,34 @@ pub const ScriptThread = struct {
         return self.finishVerification(if (success) .success else .false_result, .final, null);
     }
 
-    fn executePhaseDetailed(self: *ScriptThread, which: ScriptPhase, script: Script) ?VerificationResult {
-        const result = switch (which) {
-            .unlocking => engine.executeUnlockingScript(self.ctx, &self.state, script),
-            .locking => engine.executeLockingScript(self.ctx, &self.state, script),
-            .final => unreachable,
-        };
+    fn checkSigPushOnly(self: *ScriptThread, unlocking_script: Script) ?VerificationResult {
+        if (!self.ctx.flags.sig_push_only) return null;
 
-        result catch |err| switch (err) {
-            error.VerifyFailed => return self.finishVerification(.false_result, which, null),
-            error.ReturnEncountered => if (self.ctx.flags.utxo_after_genesis) {
-                return self.finishVerification(.false_result, which, null);
-            } else {
-                return self.finishVerification(.script_error, which, err);
-            },
-            else => return self.finishVerification(.script_error, which, err),
+        const push_only = engine.isPushOnly(unlocking_script) catch |err| {
+            return self.finishVerification(.script_error, .unlocking, err);
         };
-
-        if (self.state.condition_stack.items.len != 0) {
-            return self.finishVerification(.script_error, which, error.UnbalancedConditionals);
-        }
+        if (!push_only) return self.finishVerification(.script_error, .unlocking, error.SigPushOnly);
         return null;
     }
 
-    fn executePhaseDetailedTraced(
+    fn executePhaseDetailedImpl(
         self: *ScriptThread,
         which: ScriptPhase,
         script: Script,
-        trace: *ExecutionTrace,
+        trace: ?*ExecutionTrace,
     ) ?VerificationResult {
-        const result = switch (which) {
-            .unlocking => engine.executeUnlockingScriptTraced(self.ctx, &self.state, script, trace),
-            .locking => engine.executeLockingScriptTraced(self.ctx, &self.state, script, trace),
-            .final => unreachable,
-        };
+        const result = if (trace) |execution_trace|
+            switch (which) {
+                .unlocking => engine.executeUnlockingScriptTraced(self.ctx, &self.state, script, execution_trace),
+                .locking => engine.executeLockingScriptTraced(self.ctx, &self.state, script, execution_trace),
+                .final => unreachable,
+            }
+        else
+            switch (which) {
+                .unlocking => engine.executeUnlockingScript(self.ctx, &self.state, script),
+                .locking => engine.executeLockingScript(self.ctx, &self.state, script),
+                .final => unreachable,
+            };
 
         result catch |err| switch (err) {
             error.VerifyFailed => return self.finishVerification(.false_result, which, null),
@@ -397,7 +372,7 @@ pub fn verifyExecutableScriptsTraced(
         };
     };
     return .{
-        .result = thread.verifyPairDetailedTraced(unlocking_script, executable_locking_script, &trace),
+        .result = thread.verifyPairImpl(unlocking_script, executable_locking_script, &trace),
         .trace = trace,
     };
 }
