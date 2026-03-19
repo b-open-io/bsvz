@@ -4,9 +4,11 @@ pub const signature = @import("signature.zig");
 
 pub const Hash160 = hash.Hash160;
 pub const Hash256 = hash.Hash256;
+pub const Secp256k1Error = secp256k1.Error;
 pub const Point = secp256k1.Point;
 pub const PrivateKey = secp256k1.PrivateKey;
 pub const PublicKey = secp256k1.PublicKey;
 pub const Sec1Bytes = secp256k1.Sec1Bytes;
+pub const AffineBytes32 = secp256k1.AffineBytes32;
 pub const DerSignature = signature.DerSignature;
 pub const TxSignature = signature.TxSignature;

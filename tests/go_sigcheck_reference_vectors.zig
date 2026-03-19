@@ -152,7 +152,7 @@ test "exact go sigcheck reference rows execute through bsvz" {
     const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
 
     const ExactRow = struct {
-        row: usize,
+        row: ?usize = null,
         name: []const u8,
         unlocking_asm: []const u8,
         locking_asm: []const u8,

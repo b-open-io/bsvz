@@ -294,14 +294,13 @@ test "go direct script rows: legacy versus post-genesis multiple else" {
     const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
 
     try runRows(allocator, &[_]GoRow{
-        .{ .name = "legacy multiple else inverts execution when if branch is false", .unlocking_hex = "00", .locking_hex = "63006751670068", .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "legacy multiple else succeeds when the first branch is taken", .unlocking_hex = "51", .locking_hex = "635167006768", .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "legacy empty first branch still reaches the final true branch", .unlocking_hex = "51", .locking_hex = "636700675168", .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "legacy multiple else with add and equal yields true", .unlocking_hex = "51", .locking_hex = "63516700675168935287", .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "post-genesis multiple else is unbalanced when if branch is false", .unlocking_hex = "00", .locking_hex = "63006751670068", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
-        .{ .name = "post-genesis multiple else is unbalanced when the first branch is taken", .unlocking_hex = "51", .locking_hex = "635167006768", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
-        .{ .name = "post-genesis empty first branch is unbalanced", .unlocking_hex = "51", .locking_hex = "636700675168", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
-        .{ .name = "post-genesis multiple else add and equal is unbalanced", .unlocking_hex = "51", .locking_hex = "63516700675168935287", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 53, .name = "row 53 legacy multiple else inverts execution when if branch is false", .unlocking_hex = "00", .locking_hex = "63006751670068", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .row = 54, .name = "row 54 legacy multiple else succeeds when the first branch is taken", .unlocking_hex = "51", .locking_hex = "635167006768", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .row = 55, .name = "row 55 legacy multiple else with add and equal yields true", .unlocking_hex = "51", .locking_hex = "63516700675168935287", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .row = 57, .name = "row 57 post-genesis multiple else is unbalanced when if branch is false", .unlocking_hex = "00", .locking_hex = "63006751670068", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 58, .name = "row 58 post-genesis multiple else is unbalanced when the first branch is taken", .unlocking_hex = "51", .locking_hex = "635167006768", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 59, .name = "row 59 post-genesis empty first branch is unbalanced", .unlocking_hex = "51", .locking_hex = "636700675168", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 60, .name = "row 60 post-genesis multiple else add and equal is unbalanced", .unlocking_hex = "51", .locking_hex = "63516700675168935287", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
     });
 }
 
@@ -311,14 +310,14 @@ test "go direct script rows: exact multiple else with notif" {
     const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
 
     try runRows(allocator, &[_]GoRow{
-        .{ .name = "legacy notif multiple else inverts execution when notif is not taken", .unlocking_hex = "51", .locking_hex = "64006751670068", .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "legacy notif multiple else succeeds when the first branch is taken", .unlocking_hex = "00", .locking_hex = "645167006768", .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "legacy notif empty first branch still reaches the final true branch", .unlocking_hex = "00", .locking_hex = "646700675168", .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "legacy notif multiple else with add and equal yields true", .unlocking_hex = "00", .locking_hex = "64516700675168935287", .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "post-genesis notif multiple else is unbalanced when notif is not taken", .unlocking_hex = "51", .locking_hex = "64006751670068", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
-        .{ .name = "post-genesis notif multiple else is unbalanced when the first branch is taken", .unlocking_hex = "00", .locking_hex = "645167006768", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
-        .{ .name = "post-genesis notif empty first branch is unbalanced", .unlocking_hex = "00", .locking_hex = "646700675168", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
-        .{ .name = "post-genesis notif multiple else add and equal is unbalanced", .unlocking_hex = "00", .locking_hex = "64516700675168935287", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 62, .name = "row 62 legacy notif multiple else inverts execution when notif is not taken", .unlocking_hex = "51", .locking_hex = "64006751670068", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .row = 63, .name = "row 63 legacy notif multiple else succeeds when the first branch is taken", .unlocking_hex = "00", .locking_hex = "645167006768", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .row = 64, .name = "row 64 legacy notif empty first branch still reaches the final true branch", .unlocking_hex = "00", .locking_hex = "646700675168", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .row = 65, .name = "row 65 legacy notif multiple else with add and equal yields true", .unlocking_hex = "00", .locking_hex = "64516700675168935287", .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .row = 67, .name = "row 67 post-genesis notif multiple else is unbalanced when notif is not taken", .unlocking_hex = "51", .locking_hex = "64006751670068", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 68, .name = "row 68 post-genesis notif multiple else is unbalanced when the first branch is taken", .unlocking_hex = "00", .locking_hex = "645167006768", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 69, .name = "row 69 post-genesis notif empty first branch is unbalanced", .unlocking_hex = "00", .locking_hex = "646700675168", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 70, .name = "row 70 post-genesis notif multiple else add and equal is unbalanced", .unlocking_hex = "00", .locking_hex = "64516700675168935287", .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
     });
 }
 
@@ -400,10 +399,10 @@ test "go direct script rows: exact repeated else else sha1 chains" {
     defer allocator.free(notif_chain);
 
     try runRows(allocator, &[_]GoRow{
-        .{ .name = "legacy repeated else else sha1 chain under if succeeds", .unlocking_hex = "0051", .locking_hex = if_chain, .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "post-genesis repeated else else sha1 chain under if is unbalanced", .unlocking_hex = "0051", .locking_hex = if_chain, .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
-        .{ .name = "legacy repeated else else sha1 chain under notif succeeds", .unlocking_hex = "0000", .locking_hex = notif_chain, .flags = legacy_flags, .expected = .{ .success = true } },
-        .{ .name = "post-genesis repeated else else sha1 chain under notif is unbalanced", .unlocking_hex = "0000", .locking_hex = notif_chain, .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 56, .name = "row 56 legacy repeated else else sha1 chain under if succeeds", .unlocking_hex = "0051", .locking_hex = if_chain, .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .row = 61, .name = "row 61 post-genesis repeated else else sha1 chain under if is unbalanced", .unlocking_hex = "0051", .locking_hex = if_chain, .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
+        .{ .row = 66, .name = "row 66 legacy repeated else else sha1 chain under notif succeeds", .unlocking_hex = "0000", .locking_hex = notif_chain, .flags = legacy_flags, .expected = .{ .success = true } },
+        .{ .row = 71, .name = "row 71 post-genesis repeated else else sha1 chain under notif is unbalanced", .unlocking_hex = "0000", .locking_hex = notif_chain, .flags = post_genesis_flags, .expected = .{ .err = error.UnbalancedConditionals } },
     });
 }
 

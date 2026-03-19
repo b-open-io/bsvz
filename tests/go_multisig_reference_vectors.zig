@@ -157,7 +157,7 @@ test "exact go multisig reference rows execute through bsvz" {
     const allocator = std.testing.allocator;
 
     const ExactRow = struct {
-        row: usize,
+        row: ?usize = null,
         name: []const u8,
         unlocking_asm: []const u8,
         locking_asm: []const u8,
@@ -199,8 +199,7 @@ test "exact go multisig reference rows execute through bsvz" {
             .expected = .{ .err = error.InvalidSignatureEncoding },
         },
         .{
-            .row = 1309,
-            .name = "row 1309 strict 2-of-3 multisig with parse-error signature",
+            .name = "strict 2-of-3 multisig with parse-error signature",
             .unlocking_asm = "0 0x47 0x304402205451ce65ad844dbb978b8bdedf5082e33b43cae8279c30f2c74d9e9ee49a94f802203fe95a7ccf74da7a232ee523ef4a53cb4d14bdd16289680cdb97a63819b8f42f01 0x46 0x304402205451ce65ad844dbb978b8bdedf5082e33b43cae8279c30f2c74d9e9ee49a94f802203fe95a7ccf74da7a232ee523ef4a53cb4d14bdd16289680cdb97a63819b8f42f",
             .locking_asm = "2 0x21 0x02a673638cb9587cb68ea08dbef685c6f2d2a751a8b3c6f2a7e9a4999e6e4bfaf5 0x21 0x02a673638cb9587cb68ea08dbef685c6f2d2a751a8b3c6f2a7e9a4999e6e4bfaf5 0x21 0x02a673638cb9587cb68ea08dbef685c6f2d2a751a8b3c6f2a7e9a4999e6e4bfaf5 3 CHECKMULTISIG",
             .flags = blk: {
@@ -417,7 +416,7 @@ test "exact go multisig reference rows execute through bsvz" {
             .expected = row.expected,
         }) catch |err| {
             std.debug.print(
-                "exact go multisig reference row {} failed\n  name: {s}\n  unlocking: {s}\n  locking: {s}\n",
+                "exact go multisig reference row {?} failed\n  name: {s}\n  unlocking: {s}\n  locking: {s}\n",
                 .{ row.row, row.name, row.unlocking_asm, row.locking_asm },
             );
             return err;

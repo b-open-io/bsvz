@@ -150,6 +150,13 @@ test "go direct parser rows: compact if return tail families" {
 
     const legacy_rows = [_]GoRow{
         .{
+            .row = 89,
+            .name = "row 89 if return stays unbalanced before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a",
+            .expected = .{ .err = error.UnbalancedConditionals },
+        },
+        .{
             .row = 91,
             .name = "row 91 if five return errors before genesis",
             .unlocking_hex = "51",
@@ -250,6 +257,13 @@ test "go direct parser rows: compact if return tail families" {
     };
 
     const post_genesis_rows = [_]GoRow{
+        .{
+            .row = 90,
+            .name = "row 90 if return stays unbalanced after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a",
+            .expected = .{ .err = error.UnbalancedConditionals },
+        },
         .{
             .row = 98,
             .name = "row 98 if five return bad opcode tail is unbalanced after genesis",
