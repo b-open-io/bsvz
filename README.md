@@ -37,6 +37,9 @@ Non-goals for the first milestone:
 
 This repository is a standalone BSV library under active development.
 
+<details>
+<summary>Current status and scope</summary>
+
 Current implemented areas:
 
 - primitives: hex, varint, base58, base58check, network/version-byte helpers
@@ -63,9 +66,14 @@ Current script-interpreter status:
 - the suite also keeps a 1,099-row filtered bulk-corpus lane plus focused filtered sigcheck and multisig reference lanes for mixed policy/result-shape coverage
 - that does not mean the entire repository is “done”: SPV and broadcast are still construction zones, Runar local acceptance is broad but not complete, and the project still treats full BSV consensus confidence as the long-term script target
 
+</details>
+
 ## Script Verification APIs
 
 `bsvz` does not ship a framework-specific adapter layer, but the current public verification and tracing surface is already usable from downstream consumers such as `runar-zig` and local fixture-driven flows.
+
+<details>
+<summary>Verification, tracing, and integration APIs</summary>
 
 - plain script pair: `bsvz.script.thread.verifyScripts(...)` or `ScriptThread.verifyPair(...)`
 - executable/full-locking-script pair: `bsvz.script.thread.verifyExecutableScripts(...)`
@@ -171,9 +179,14 @@ std.debug.print("{s} {x}\n", .{ std.fmt.fmtSliceHexLower(raw), hash_all });
 _ = parsed;
 ```
 
+</details>
+
 ## Script Interpreter Coverage
 
 This is the current interpreter map for `bsvz.script`.
+
+<details>
+<summary>Interpreter coverage map</summary>
 
 | Area | Coverage | Notes |
 | --- | --- | --- |
@@ -213,9 +226,14 @@ Project direction:
 - target full BSV consensus compliance for script execution
 - prioritize script execution and downstream Runar integration before broadening into secondary areas
 
+</details>
+
 ## Benchmarking
 
 The repo now includes two interpreter benchmark harnesses:
+
+<details>
+<summary>Benchmark harnesses and current results</summary>
 
 - `zig build bench`
   - runs [benchmarks/script_engine.zig](/Users/satchmo/code/bsvz/benchmarks/script_engine.zig)
@@ -281,3 +299,5 @@ Final measured phase split on that corpus:
 That split matters because it shows the remaining cost is concentrated in secp verification, not the script engine or sighash path. `bsvz` now uses a secp256k1 double-base verification fast path built on Zig stdlib curve primitives, which is what moved full P2PKH verification from roughly ~433 us/op down to ~199 us/op.
 
 These numbers are a local baseline, not a universal claim. The important point is that `bsvz` now has a repeatable local benchmark story against the Go SDK, and the benchmark picture is no longer dominated by allocator noise or avoidable verifier overhead.
+
+</details>
