@@ -15,6 +15,9 @@ pub const Case = struct {
     flags: bsvz.script.engine.ExecutionFlags,
     expected: Expectation,
     previous_satoshis: i64 = 1_000,
+    tx_version: i32 = 2,
+    tx_lock_time: u32 = 0,
+    input_sequence: u32 = 0xffff_fffe,
 };
 
 pub fn runCase(allocator: std.mem.Allocator, case: Case) !void {
@@ -35,7 +38,7 @@ pub fn runCase(allocator: std.mem.Allocator, case: Case) !void {
                 .index = 0,
             },
             .unlocking_script = Script.init(""),
-            .sequence = 0xffff_fffe,
+            .sequence = case.input_sequence,
         },
     };
     var outputs = [_]bsvz.transaction.Output{
@@ -45,10 +48,10 @@ pub fn runCase(allocator: std.mem.Allocator, case: Case) !void {
         },
     };
     const tx = bsvz.transaction.Transaction{
-        .version = 2,
+        .version = case.tx_version,
         .inputs = &inputs,
         .outputs = &outputs,
-        .lock_time = 0,
+        .lock_time = case.tx_lock_time,
     };
 
     var exec_ctx = bsvz.script.engine.ExecutionContext.forSpend(

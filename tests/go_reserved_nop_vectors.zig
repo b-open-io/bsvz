@@ -8,6 +8,9 @@ const GoRow = struct {
     locking_hex: []const u8,
     flags: bsvz.script.engine.ExecutionFlags,
     expected: harness.Expectation,
+    tx_version: i32 = 2,
+    tx_lock_time: u32 = 0,
+    input_sequence: u32 = 0xffff_fffe,
 };
 
 fn runRows(allocator: std.mem.Allocator, rows: []const GoRow) !void {
@@ -18,6 +21,9 @@ fn runRows(allocator: std.mem.Allocator, rows: []const GoRow) !void {
             .locking_hex = row.locking_hex,
             .flags = row.flags,
             .expected = row.expected,
+            .tx_version = row.tx_version,
+            .tx_lock_time = row.tx_lock_time,
+            .input_sequence = row.input_sequence,
         });
     }
 }
@@ -127,8 +133,23 @@ test "reserved and version opcodes fail when executed and do not affect skipped 
 test "nop family and cltv csv aliases behave as no-ops in the current BSV profile" {
     const allocator = std.testing.allocator;
     const flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
 
     try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 345 nop1 through nop10 chain preserves one before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "b0b1b2b3b4b5b6b7b8b95187",
+            .flags = legacy_flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 555 checkscript sees cltv alias as nop when verify flag is off",
+            .unlocking_hex = "61",
+            .locking_hex = "b151",
+            .flags = legacy_flags,
+            .expected = .{ .success = true },
+        },
         .{
             .name = "plain nop behaves as a no-op",
             .unlocking_hex = "",
@@ -213,6 +234,13 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
             .flags = flags,
             .expected = .{ .success = true },
         },
+        .{
+            .name = "go row 1237 nop1 through nop10 chain fails equality against two before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "b0b1b2b3b4b5b6b7b8b95287",
+            .flags = legacy_flags,
+            .expected = .{ .success = false },
+        },
     });
 }
 
@@ -291,6 +319,77 @@ test "discourage_upgradable_nops rejects executed nop soft-fork surface" {
             .locking_hex = "b9",
             .flags = flags,
             .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+        .{
+            .name = "go row 1252 discouraged nop10 in unlocking script",
+            .unlocking_hex = "b9",
+            .locking_hex = "51",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+    });
+}
+
+test "go csv corpus rows map onto the legacy verify_check_sequence surface" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.verify_check_sequence = true;
+
+    var minimal_flags = flags;
+    minimal_flags.minimal_data = true;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 2345 csv fails on empty stack",
+            .unlocking_hex = "",
+            .locking_hex = "b2",
+            .flags = flags,
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 2346 csv fails on negative operand",
+            .unlocking_hex = "4f",
+            .locking_hex = "b2",
+            .flags = flags,
+            .expected = .{ .err = error.NegativeLockTime },
+        },
+        .{
+            .name = "go row 2347 csv enforces minimal encoding on operand",
+            .unlocking_hex = "020100",
+            .locking_hex = "b2",
+            .flags = minimal_flags,
+            .expected = .{ .err = error.MinimalData },
+        },
+        .{
+            .name = "go row 2348 csv fails when tx version is below two",
+            .unlocking_hex = "00",
+            .locking_hex = "b2",
+            .flags = flags,
+            .expected = .{ .err = error.UnsatisfiedLockTime },
+            .tx_version = 1,
+        },
+        .{
+            .name = "go row 2349 csv fails when operand exceeds uint32",
+            .unlocking_hex = "050000000001",
+            .locking_hex = "b2",
+            .flags = flags,
+            .expected = .{ .err = error.UnsatisfiedLockTime },
+        },
+    });
+}
+
+test "go row 1495 script-sig push-only policy rejects nop in unlocking script" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.sig_push_only = true;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 1495 sig_push_only rejects nop1 in unlocking script",
+            .unlocking_hex = "b0010151",
+            .locking_hex = "a914da1745e9b549bd0bfa1a569971c77eba30cd5a4b87",
+            .flags = flags,
+            .expected = .{ .err = error.SigPushOnly },
         },
     });
 }
