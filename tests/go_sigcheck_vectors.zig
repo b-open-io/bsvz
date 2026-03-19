@@ -104,6 +104,14 @@ test "go strict sigcheck rows: signature policy gates" {
     low_s_flags.low_s = true;
 
     try harness.runCase(allocator, .{
+        .name = "row 2020 p2pk with high s under low_s",
+        .unlocking_hex = "48304502203e4516da7253cf068effec6b95c41221c0cf3a8e6ccb8cbf1725b562e9afde2c022100ab1e3da73d67e32045a20e0b999e049978ea8d6ee5480d485fcf2ce0d03b2ef001",
+        .locking_hex = "2103363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640ac",
+        .flags = low_s_flags,
+        .expected = .{ .err = error.HighS },
+    });
+
+    try harness.runCase(allocator, .{
         .name = "row 1375 p2pk with high s",
         .unlocking_hex = "48304502203e4516da7253cf068effec6b95c41221c0cf3a8e6ccb8cbf1725b562e9afde2c022100ab1e3da73d67e32045a20e0b999e049978ea8d6ee5480d485fcf2ce0d03b2ef001",
         .locking_hex = "2103363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640ac",
@@ -126,9 +134,7 @@ test "go strict sigcheck rows: signature policy gates" {
 test "go direct checksig rows: bip66 example 4 nullfail matrix" {
     const allocator = std.testing.allocator;
     const locking_hex =
-        "21"
-        ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
-        ++ "ac91";
+        "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "ac91";
 
     var base_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
     base_flags.der_signatures = true;
@@ -172,9 +178,7 @@ test "go direct checksig rows: bip66 example 4 nullfail matrix" {
 test "go direct checksig rows: additional bip66 result shapes" {
     const allocator = std.testing.allocator;
     const locking_hex =
-        "21"
-        ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
-        ++ "ac";
+        "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "ac";
 
     var relaxed_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
     relaxed_flags.der_signatures = false;
@@ -259,10 +263,7 @@ test "go direct checksig rows: padding-related dersig policy rows" {
     try harness.runCase(allocator, .{
         .name = "p2pk checksig not bad sig with too much r padding without dersig",
         .unlocking_hex = "4730440220005ece1335e7f757a1a1f476a7fb5bd90964e8a022489f890614a04acfb734c002206c12b8294a6513c7710e8c82d3c23d75cdbfe83200eb7efb495701958501a5d601",
-        .locking_hex =
-            "21"
-            ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640"
-            ++ "ac91",
+        .locking_hex = "21" ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640" ++ "ac91",
         .flags = relaxed_flags,
         .expected = .{ .success = true },
     });
@@ -270,10 +271,7 @@ test "go direct checksig rows: padding-related dersig policy rows" {
     try harness.runCase(allocator, .{
         .name = "p2pk checksig not bad sig with too much r padding with dersig",
         .unlocking_hex = "4730440220005ece1335e7f757a1a1f476a7fb5bd90964e8a022489f890614a04acfb734c002206c12b8294a6513c7710e8c82d3c23d75cdbfe83200eb7efb495701958501a5d601",
-        .locking_hex =
-            "21"
-            ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640"
-            ++ "ac91",
+        .locking_hex = "21" ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640" ++ "ac91",
         .flags = dersig_flags,
         .expected = .{ .err = error.InvalidSignatureEncoding },
     });
@@ -281,10 +279,7 @@ test "go direct checksig rows: padding-related dersig policy rows" {
     try harness.runCase(allocator, .{
         .name = "p2pk checksig too little r padding with dersig",
         .unlocking_hex = "4730440220d7a0417c3f6d1a15094d1cf2a3378ca0503eb8a57630953a9e2987e21ddd0a6502207a6266d686c99090920249991d3d42065b6d43eb70187b219c0db82e4f94d1a201",
-        .locking_hex =
-            "21"
-            ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
-            ++ "ac",
+        .locking_hex = "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "ac",
         .flags = dersig_flags,
         .expected = .{ .err = error.InvalidSignatureEncoding },
     });
@@ -292,10 +287,7 @@ test "go direct checksig rows: padding-related dersig policy rows" {
     try harness.runCase(allocator, .{
         .name = "p2pk checksig too much r padding with dersig",
         .unlocking_hex = "47304402200060558477337b9022e70534f1fea71a318caf836812465a2509931c5e7c4987022078ec32bd50ac9e03a349ba953dfd9fe1c8d2dd8bdb1d38ddca844d3d5c78c11801",
-        .locking_hex =
-            "21"
-            ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
-            ++ "ac",
+        .locking_hex = "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "ac",
         .flags = dersig_flags,
         .expected = .{ .err = error.InvalidSignatureEncoding },
     });
@@ -303,10 +295,7 @@ test "go direct checksig rows: padding-related dersig policy rows" {
     try harness.runCase(allocator, .{
         .name = "p2pk checksig too much s padding with dersig",
         .unlocking_hex = "48304502202de8c03fc525285c9c535631019a5f2af7c6454fa9eb392a3756a4917c420edd02210046130bf2baf7cfc065067c8b9e33a066d9c15edcea9feb0ca2d233e3597925b401",
-        .locking_hex =
-            "21"
-            ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508"
-            ++ "ac",
+        .locking_hex = "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "ac",
         .flags = dersig_flags,
         .expected = .{ .err = error.InvalidSignatureEncoding },
     });
@@ -372,9 +361,7 @@ test "go direct checksig rows: sighash policy gates" {
     const allocator = std.testing.allocator;
 
     const checksig_not_locking_hex =
-        "21"
-        ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
-        ++ "ac91";
+        "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0" ++ "ac91";
 
     var legacy_strict = bsvz.script.engine.ExecutionFlags.legacyReference();
     legacy_strict.strict_encoding = true;
@@ -409,37 +396,21 @@ test "go direct checksig rows: sighash policy gates" {
     try harness.runCase(allocator, .{
         .name = "p2pk rejects invalid forkid under legacy strict policy",
         .unlocking_hex = "4730440220368d68340dfbebf99d5ec87d77fba899763e466c0a7ab2fa0221fb868ab0f3ef0220266c1a52a8e5b7b597613b80cf53814d3925dfb6715dce712c8e7a25e63a044041",
-        .locking_hex =
-            "41"
-            ++ "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
-            ++ "ac",
+        .locking_hex = "41" ++ "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8" ++ "ac",
         .flags = legacy_strict,
         .expected = .{ .err = error.IllegalForkId },
     });
 
     try harness.runCase(allocator, .{
         .name = "p2pkh rejects invalid sighash type under legacy strict policy",
-        .unlocking_hex =
-            "4730440220647a83507454f15f85f7e24de6e70c9d7b1d4020c71d0e53f4412425487e1dde022015737290670b4ab17b6783697a88ddd581c2d9c9efe26a59ac213076fc67f53021"
-            ++ "41"
-            ++ "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
-        .locking_hex =
-            "76"
-            ++ "a9"
-            ++ "14"
-            ++ "91b24bf9f5288532960ac687abb035127b1d28a5"
-            ++ "88"
-            ++ "ac",
+        .unlocking_hex = "4730440220647a83507454f15f85f7e24de6e70c9d7b1d4020c71d0e53f4412425487e1dde022015737290670b4ab17b6783697a88ddd581c2d9c9efe26a59ac213076fc67f53021" ++ "41" ++ "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
+        .locking_hex = "76" ++ "a9" ++ "14" ++ "91b24bf9f5288532960ac687abb035127b1d28a5" ++ "88" ++ "ac",
         .flags = legacy_strict,
         .expected = .{ .err = error.InvalidSigHashType },
     });
 
     const checkmultisig_not_locking_hex =
-        "51"
-        ++ "21"
-        ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
-        ++ "51"
-        ++ "ae91";
+        "51" ++ "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0" ++ "51" ++ "ae91";
 
     try harness.runCase(allocator, .{
         .name = "checkmultisig not rejects illegal forkid under legacy strict policy",

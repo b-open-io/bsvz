@@ -10,6 +10,9 @@ const chunk = @import("chunk.zig");
 const Script = @import("script.zig").Script;
 const script_helpers = @import("bytes.zig");
 const sighash = @import("../transaction/sighash.zig");
+const Input = @import("../transaction/input.zig").Input;
+const Output = @import("../transaction/output.zig").Output;
+const Transaction = @import("../transaction/transaction.zig").Transaction;
 
 pub const Error = errors.ScriptError || sighash.Error || num.Error || error{
     OutOfMemory,
@@ -26,6 +29,12 @@ const secp256k1_half_order_be = [_]u8{
     0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d,
     0xdf, 0xe9, 0x2f, 0x46, 0x68, 0x1b, 0x20, 0xa0,
 };
+
+const lock_time_threshold: i64 = 500_000_000;
+const max_tx_in_sequence_num: u32 = 0xffff_ffff;
+const sequence_locktime_disabled: u32 = 1 << 31;
+const sequence_locktime_is_seconds: u32 = 1 << 22;
+const sequence_locktime_mask: u32 = 0x0000_ffff;
 
 pub const ExecutionContext = context.ExecutionContext;
 pub const ExecutionFlags = context.ExecutionFlags;
@@ -126,7 +135,7 @@ fn executeIntoState(
         cursor += 1;
 
         if (byte >= 0x01 and byte <= 0x4b) {
-            try handlePushData(ctx, state, script, &cursor, byte, byte, early_return_after_genesis);
+            try handlePushData(ctx, state, script, &cursor, byte, byte);
             continue;
         }
 
@@ -137,19 +146,19 @@ fn executeIntoState(
 
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA1)) {
             const len = try readPushLength(u8, script.bytes, &cursor);
-            try handlePushData(ctx, state, script, &cursor, len, byte, early_return_after_genesis);
+            try handlePushData(ctx, state, script, &cursor, len, byte);
             continue;
         }
 
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA2)) {
             const len = try readPushLength(u16, script.bytes, &cursor);
-            try handlePushData(ctx, state, script, &cursor, len, byte, early_return_after_genesis);
+            try handlePushData(ctx, state, script, &cursor, len, byte);
             continue;
         }
 
         if (byte == @intFromEnum(opcode.Opcode.OP_PUSHDATA4)) {
             const len = try readPushLength(u32, script.bytes, &cursor);
-            try handlePushData(ctx, state, script, &cursor, len, byte, early_return_after_genesis);
+            try handlePushData(ctx, state, script, &cursor, len, byte);
             continue;
         }
 
@@ -162,7 +171,7 @@ fn executeIntoState(
         switch (op) {
             .OP_IF, .OP_NOTIF => {
                 try countOp(ctx, state);
-                if (!early_return_after_genesis and shouldExecute(state)) {
+                if (shouldExecute(state)) {
                     const cond_bytes = try popOwned(state);
                     defer ctx.allocator.free(cond_bytes);
                     if (ctx.flags.minimal_if) {
@@ -197,7 +206,8 @@ fn executeIntoState(
             else => {},
         }
 
-        if (early_return_after_genesis or !shouldExecute(state)) continue;
+        if (!shouldExecute(state)) continue;
+        if (early_return_after_genesis and op != .OP_RETURN) continue;
 
         if (!ctx.flags.enable_reenabled_opcodes) {
             switch (op) {
@@ -222,10 +232,8 @@ fn executeIntoState(
 
         switch (op) {
             .OP_0, .OP_PUSHDATA1, .OP_PUSHDATA2, .OP_PUSHDATA4, .OP_1NEGATE, .OP_1, .OP_2, .OP_3, .OP_4, .OP_5, .OP_6, .OP_7, .OP_8, .OP_9, .OP_10, .OP_11, .OP_12, .OP_13, .OP_14, .OP_15, .OP_16, .OP_IF, .OP_NOTIF, .OP_ELSE, .OP_ENDIF => unreachable,
-            .OP_NOP,
+            .OP_NOP => try countOp(ctx, state),
             .OP_NOP1,
-            .OP_CHECKLOCKTIMEVERIFY,
-            .OP_CHECKSEQUENCEVERIFY,
             .OP_NOP4,
             .OP_NOP5,
             .OP_NOP6,
@@ -233,7 +241,26 @@ fn executeIntoState(
             .OP_NOP8,
             .OP_NOP9,
             .OP_NOP10,
-            => try countOp(ctx, state),
+            => {
+                try countOp(ctx, state);
+                if (ctx.flags.discourage_upgradable_nops) return error.DiscourageUpgradableNops;
+            },
+            .OP_CHECKLOCKTIMEVERIFY => {
+                try countOp(ctx, state);
+                if (!ctx.flags.verify_check_locktime or ctx.flags.utxo_after_genesis) {
+                    if (ctx.flags.discourage_upgradable_nops) return error.DiscourageUpgradableNops;
+                } else {
+                    try executeCheckLockTimeVerify(ctx, state);
+                }
+            },
+            .OP_CHECKSEQUENCEVERIFY => {
+                try countOp(ctx, state);
+                if (!ctx.flags.verify_check_sequence or ctx.flags.utxo_after_genesis) {
+                    if (ctx.flags.discourage_upgradable_nops) return error.DiscourageUpgradableNops;
+                } else {
+                    try executeCheckSequenceVerify(ctx, state);
+                }
+            },
             .OP_RESERVED,
             .OP_VER,
             .OP_VERIF,
@@ -248,9 +275,11 @@ fn executeIntoState(
                 if (!isTruthy(value)) return error.VerifyFailed;
             },
             .OP_RETURN => {
+                if (!shouldExecute(state)) continue;
                 if (!ctx.flags.utxo_after_genesis) return error.ReturnEncountered;
                 if (state.condition_stack.items.len == 0) return;
                 early_return_after_genesis = true;
+                continue;
             },
             .OP_CODESEPARATOR => {
                 try countOp(ctx, state);
@@ -291,8 +320,10 @@ fn executeIntoState(
             },
             .OP_2OVER => {
                 try countOp(ctx, state);
-                try pushCopy(ctx, state, try peek(state, 3));
-                try pushCopy(ctx, state, try peek(state, 2));
+                const a = try peek(state, 3);
+                const b = try peek(state, 2);
+                try pushCopy(ctx, state, a);
+                try pushCopy(ctx, state, b);
             },
             .OP_2ROT => {
                 try countOp(ctx, state);
@@ -630,12 +661,11 @@ fn handlePushData(
     cursor: *usize,
     len: usize,
     push_opcode: u8,
-    early_return_after_genesis: bool,
 ) Error!void {
     if (len > ctx.flags.max_script_element_size) return error.ElementTooBig;
     if (script.bytes.len < cursor.* + len) return error.InvalidPushData;
 
-    if (!early_return_after_genesis and shouldExecute(state)) {
+    if (shouldExecute(state)) {
         const data = script.bytes[cursor.* .. cursor.* + len];
         if (ctx.flags.minimal_data and !isMinimalPush(push_opcode, data)) return error.MinimalData;
         try pushCopy(ctx, state, data);
@@ -727,10 +757,84 @@ fn decodeScriptNum(ctx: ExecutionContext, value_bytes: []const u8) Error!num.Scr
     return num.ScriptNum.decodeOwned(ctx.allocator, value_bytes);
 }
 
+fn decodeScriptNumWithMaxLen(ctx: ExecutionContext, value_bytes: []const u8, max_len: usize) Error!num.ScriptNum {
+    if (value_bytes.len > max_len) return error.NumberTooBig;
+    if (ctx.flags.minimal_data) {
+        return num.ScriptNum.decodeMinimalOwned(ctx.allocator, value_bytes) catch |err| switch (err) {
+            error.NonMinimalEncoding => error.MinimalData,
+            error.InvalidEncoding => error.InvalidEncoding,
+            error.Overflow => error.Overflow,
+            error.OutOfMemory => error.OutOfMemory,
+        };
+    }
+    return num.ScriptNum.decodeOwned(ctx.allocator, value_bytes);
+}
+
 fn popIndex(ctx: ExecutionContext, state: *ExecutionState) Error!usize {
     var value = try popNum(ctx, state);
     defer value.deinit();
     return value.toIndex() catch error.InvalidStackIndex;
+}
+
+fn scriptNumToI64(value: *const num.ScriptNum) Error!i64 {
+    return switch (value.*) {
+        .small => |small| small,
+        .big => |big_value| big_value.toInt(i64) catch error.Overflow,
+    };
+}
+
+fn verifyLockTime(tx_lock_time: i64, threshold: i64, lock_time: i64) Error!void {
+    if ((tx_lock_time < threshold and lock_time >= threshold) or
+        (tx_lock_time >= threshold and lock_time < threshold))
+    {
+        return error.UnsatisfiedLockTime;
+    }
+
+    if (lock_time > tx_lock_time) return error.UnsatisfiedLockTime;
+}
+
+fn executeCheckLockTimeVerify(ctx: ExecutionContext, state: *ExecutionState) Error!void {
+    const tx = ctx.tx orelse return error.MissingChecksigContext;
+    if (ctx.input_index >= tx.inputs.len) return error.MissingChecksigContext;
+
+    const operand = try peek(state, 0);
+    var lock_time = try decodeScriptNumWithMaxLen(ctx, operand, 5);
+    defer lock_time.deinit();
+
+    if (lock_time.isNegative()) return error.NegativeLockTime;
+    const lock_time_value = try scriptNumToI64(&lock_time);
+
+    try verifyLockTime(tx.lock_time, lock_time_threshold, lock_time_value);
+
+    if (tx.inputs[ctx.input_index].sequence == max_tx_in_sequence_num) {
+        return error.UnsatisfiedLockTime;
+    }
+}
+
+fn executeCheckSequenceVerify(ctx: ExecutionContext, state: *ExecutionState) Error!void {
+    const tx = ctx.tx orelse return error.MissingChecksigContext;
+    if (ctx.input_index >= tx.inputs.len) return error.MissingChecksigContext;
+
+    const operand = try peek(state, 0);
+    var stack_sequence = try decodeScriptNumWithMaxLen(ctx, operand, 5);
+    defer stack_sequence.deinit();
+
+    if (stack_sequence.isNegative()) return error.NegativeLockTime;
+    const sequence = try scriptNumToI64(&stack_sequence);
+    const sequence_u64 = std.math.cast(u64, sequence) orelse return error.Overflow;
+    if ((sequence_u64 & sequence_locktime_disabled) != 0) return;
+
+    if (tx.version < 2) return error.UnsatisfiedLockTime;
+
+    const tx_sequence = tx.inputs[ctx.input_index].sequence;
+    if ((tx_sequence & sequence_locktime_disabled) != 0) return error.UnsatisfiedLockTime;
+
+    const lock_time_mask = sequence_locktime_is_seconds | sequence_locktime_mask;
+    try verifyLockTime(
+        @as(i64, @intCast(tx_sequence & lock_time_mask)),
+        sequence_locktime_is_seconds,
+        @as(i64, @intCast(sequence_u64 & @as(u64, lock_time_mask))),
+    );
 }
 
 fn shiftBytes(allocator: std.mem.Allocator, data: []const u8, shift: usize, left: bool) Error![]u8 {
@@ -5760,4 +5864,116 @@ test "engine treats equivalent pushdata forms equally at 75-byte and 255-byte bo
     }, Script.init(script_255));
     defer result_255.deinit(allocator);
     try std.testing.expect(result_255.success);
+}
+
+test "engine enforces active checklocktimeverify semantics in legacy reference mode" {
+    const allocator = std.testing.allocator;
+
+    var inputs = [_]Input{
+        .{
+            .previous_outpoint = .{
+                .txid = .{ .bytes = [_]u8{0x01} ** 32 },
+                .index = 0,
+            },
+            .unlocking_script = Script.init(""),
+            .sequence = 0xffff_fffe,
+        },
+    };
+    var outputs = [_]Output{
+        .{
+            .satoshis = 1,
+            .locking_script = Script.init(""),
+        },
+    };
+    const tx = Transaction{
+        .version = 2,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = 5,
+    };
+
+    var flags = ExecutionFlags.legacyReference();
+    flags.verify_check_locktime = true;
+
+    const success_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_5),
+        @intFromEnum(opcode.Opcode.OP_CHECKLOCKTIMEVERIFY),
+        @intFromEnum(opcode.Opcode.OP_1),
+    });
+    var success = try executeScript(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .flags = flags,
+    }, success_script);
+    defer success.deinit(allocator);
+    try std.testing.expect(success.success);
+
+    const failure_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_6),
+        @intFromEnum(opcode.Opcode.OP_CHECKLOCKTIMEVERIFY),
+        @intFromEnum(opcode.Opcode.OP_1),
+    });
+    try std.testing.expectError(error.UnsatisfiedLockTime, executeScript(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .flags = flags,
+    }, failure_script));
+}
+
+test "engine enforces active checksequenceverify semantics in legacy reference mode" {
+    const allocator = std.testing.allocator;
+
+    var inputs = [_]Input{
+        .{
+            .previous_outpoint = .{
+                .txid = .{ .bytes = [_]u8{0x02} ** 32 },
+                .index = 0,
+            },
+            .unlocking_script = Script.init(""),
+            .sequence = 10,
+        },
+    };
+    var outputs = [_]Output{
+        .{
+            .satoshis = 1,
+            .locking_script = Script.init(""),
+        },
+    };
+    const tx = Transaction{
+        .version = 2,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = 0,
+    };
+
+    var flags = ExecutionFlags.legacyReference();
+    flags.verify_check_sequence = true;
+
+    const success_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_5),
+        @intFromEnum(opcode.Opcode.OP_CHECKSEQUENCEVERIFY),
+        @intFromEnum(opcode.Opcode.OP_1),
+    });
+    var success = try executeScript(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .flags = flags,
+    }, success_script);
+    defer success.deinit(allocator);
+    try std.testing.expect(success.success);
+
+    const failure_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_11),
+        @intFromEnum(opcode.Opcode.OP_CHECKSEQUENCEVERIFY),
+        @intFromEnum(opcode.Opcode.OP_1),
+    });
+    try std.testing.expectError(error.UnsatisfiedLockTime, executeScript(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .flags = flags,
+    }, failure_script));
 }

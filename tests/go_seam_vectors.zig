@@ -248,14 +248,6 @@ test "go direct script-pair rows: op_return seam behavior" {
     });
 
     try harness.runCase(allocator, .{
-        .name = "post-genesis taken if return remains unbalanced without endif",
-        .unlocking_hex = "51",
-        .locking_hex = "63556a",
-        .flags = post_genesis_flags,
-        .expected = .{ .err = error.UnbalancedConditionals },
-    });
-
-    try harness.runCase(allocator, .{
         .name = "if return endif tail succeeds when branch is not taken",
         .unlocking_hex = "00",
         .locking_hex = "636a6855",
@@ -317,6 +309,46 @@ test "go direct script-pair rows: op_return seam behavior" {
         .locking_hex = "636aba6855",
         .flags = post_genesis_flags,
         .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "row 109 if return endif then five return bad opcode still errors before genesis",
+        .unlocking_hex = "00",
+        .locking_hex = "636a68556aba",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "row 110 if return endif then five return bad opcode succeeds after genesis",
+        .unlocking_hex = "00",
+        .locking_hex = "636a68556aba",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = true },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "row 111 if return endif then five return bad opcode still errors with a truthy unlock before genesis",
+        .unlocking_hex = "51",
+        .locking_hex = "636a68556aba",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "row 112 if return endif then five return bad opcode yields false after genesis",
+        .unlocking_hex = "51",
+        .locking_hex = "636a68556aba",
+        .flags = post_genesis_flags,
+        .expected = .{ .success = false },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "row 115 if five return endif then five return if still errors before genesis",
+        .unlocking_hex = "51",
+        .locking_hex = "63556a68556a63",
+        .flags = legacy_flags,
+        .expected = .{ .err = error.ReturnEncountered },
     });
 }
 

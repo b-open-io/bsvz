@@ -115,6 +115,7 @@ test "go direct script rows: cat parity" {
     const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
 
     try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 790, .name = "go row 790: cat with empty left operand keeps the right payload", .unlocking_hex = "0003646566", .locking_hex = "7e0364656687", .expected = .{ .success = true } },
         .{ .row = 940, .name = "cat underflows on empty stack", .unlocking_hex = "", .locking_hex = "7e0087", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 941, .name = "cat underflows with one parameter", .unlocking_hex = "0161", .locking_hex = "7e0087", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 942, .name = "cat concatenates two payloads", .unlocking_hex = "04616263640465666768", .locking_hex = "7e08616263646566676887", .expected = .{ .success = true } },
@@ -240,6 +241,10 @@ test "go direct script rows: split parity" {
     defer allocator.free(abc_split_neg1);
 
     try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 798, .name = "go row 798: split divides abcdef at index three", .unlocking_hex = "0661626364656653", .locking_hex = "7f03646566880361626387", .expected = .{ .success = true } },
+        .{ .row = 799, .name = "go row 799: split on empty string at zero keeps both halves empty", .unlocking_hex = "0000", .locking_hex = "7f00880087", .expected = .{ .success = true } },
+        .{ .row = 800, .name = "go row 800: split at zero keeps the right side intact", .unlocking_hex = "0361626300", .locking_hex = "7f03616263880087", .expected = .{ .success = true } },
+        .{ .row = 801, .name = "go row 801: split at payload length keeps the left side intact", .unlocking_hex = "0361626353", .locking_hex = "7f00880361626387", .expected = .{ .success = true } },
         .{ .row = 968, .name = "split underflows on empty stack", .unlocking_hex = "", .locking_hex = "7f", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 969, .name = "split underflows with one parameter", .unlocking_hex = "0161", .locking_hex = "7f", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 970, .name = "split divides abcdef at three", .unlocking_hex = abcdef_split_3, .locking_hex = "7f03646566880461626387", .expected = .{ .success = true } },

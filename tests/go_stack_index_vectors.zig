@@ -30,6 +30,8 @@ test "go direct script rows: pick parity" {
     const allocator = std.testing.allocator;
 
     try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 435, .name = "pick with index three reads the deepest stack item", .unlocking_hex = "5100000053", .locking_hex = "79", .expected = .{ .success = true } },
+        .{ .row = 436, .name = "pick with index zero duplicates the current top item", .unlocking_hex = "5100", .locking_hex = "79", .expected = .{ .success = true } },
         .{ .row = 198, .name = "pick index zero reads stack top without changing depth", .unlocking_hex = "011601150114", .locking_hex = "0079011488745387", .expected = .{ .success = true } },
         .{ .row = 199, .name = "pick index one reads second stack item", .unlocking_hex = "011601150114", .locking_hex = "5179011588745387", .expected = .{ .success = true } },
         .{ .row = 200, .name = "pick index two reads third stack item", .unlocking_hex = "011601150114", .locking_hex = "5279011688745387", .expected = .{ .success = true } },
@@ -48,6 +50,8 @@ test "go direct script rows: roll parity" {
     const allocator = std.testing.allocator;
 
     try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
+        .{ .row = 437, .name = "roll with index three rotates the deepest stack item to the top", .unlocking_hex = "5100000053", .locking_hex = "7a", .expected = .{ .success = true } },
+        .{ .row = 438, .name = "roll with index zero removes and re-pushes the current top item", .unlocking_hex = "5100", .locking_hex = "7a", .expected = .{ .success = true } },
         .{ .row = 201, .name = "roll index zero preserves top item and reduces depth", .unlocking_hex = "011601150114", .locking_hex = "007a011488745287", .expected = .{ .success = true } },
         .{ .row = 202, .name = "roll index one rotates second stack item to the top", .unlocking_hex = "011601150114", .locking_hex = "517a011588745287", .expected = .{ .success = true } },
         .{ .row = 203, .name = "roll index two rotates third stack item to the top", .unlocking_hex = "011601150114", .locking_hex = "527a011688745287", .expected = .{ .success = true } },

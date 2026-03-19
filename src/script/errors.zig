@@ -28,6 +28,7 @@ pub const ScriptError = error{
     CleanStack,
     MinimalData,
     MinimalIf,
+    DiscourageUpgradableNops,
     IllegalForkId,
     InvalidSigHashType,
     HighS,
@@ -37,4 +38,6 @@ pub const ScriptError = error{
     InvalidEncoding,
     NonMinimalEncoding,
     NumberTooBig,
+    NegativeLockTime,
+    UnsatisfiedLockTime,
 };

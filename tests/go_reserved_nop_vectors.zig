@@ -110,9 +110,9 @@ test "reserved and version opcodes fail when executed and do not affect skipped 
     });
 }
 
-test "nop family and cltv csv aliases currently behave as no-ops" {
+test "nop family and cltv csv aliases behave as no-ops in the current BSV profile" {
     const allocator = std.testing.allocator;
-    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
 
     try runRows(allocator, &[_]GoRow{
         .{
@@ -191,6 +191,120 @@ test "nop family and cltv csv aliases currently behave as no-ops" {
             .locking_hex = "b951",
             .flags = flags,
             .expected = .{ .success = true },
+        },
+    });
+}
+
+test "discourage_upgradable_nops rejects executed nop soft-fork surface" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.discourage_upgradable_nops = true;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "nop1 is rejected when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b0",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+        .{
+            .name = "cltv alias is rejected as nop2 when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b1",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+        .{
+            .name = "csv alias is rejected as nop3 when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b2",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+        .{
+            .name = "nop4 is rejected when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b3",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+        .{
+            .name = "nop5 is rejected when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b4",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+        .{
+            .name = "nop6 is rejected when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b5",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+        .{
+            .name = "nop7 is rejected when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b6",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+        .{
+            .name = "nop8 is rejected when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b7",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+        .{
+            .name = "nop9 is rejected when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b8",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+        .{
+            .name = "nop10 is rejected when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b9",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+    });
+}
+
+test "legacy reference flags can activate cltv and csv instead of treating them as nops" {
+    const allocator = std.testing.allocator;
+
+    var cltv_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    cltv_flags.verify_check_locktime = true;
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "legacy cltv succeeds when tx lock_time satisfies the operand",
+            .unlocking_hex = "",
+            .locking_hex = "00b151",
+            .flags = cltv_flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "legacy cltv fails when tx lock_time is lower than the operand",
+            .unlocking_hex = "",
+            .locking_hex = "51b151",
+            .flags = cltv_flags,
+            .expected = .{ .err = error.UnsatisfiedLockTime },
+        },
+    });
+
+    var csv_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    csv_flags.verify_check_sequence = true;
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "legacy csv fails when tx sequence disables relative locktime",
+            .unlocking_hex = "",
+            .locking_hex = "00b251",
+            .flags = csv_flags,
+            .expected = .{ .err = error.UnsatisfiedLockTime },
         },
     });
 }

@@ -23,6 +23,9 @@ pub const ExecutionFlags = struct {
     clean_stack: bool = false,
     minimal_data: bool = false,
     minimal_if: bool = false,
+    discourage_upgradable_nops: bool = false,
+    verify_check_locktime: bool = false,
+    verify_check_sequence: bool = false,
 
     pub fn postGenesisBsv() ExecutionFlags {
         return .{};
@@ -49,6 +52,9 @@ pub const ExecutionFlags = struct {
             .clean_stack = false,
             .minimal_data = false,
             .minimal_if = false,
+            .discourage_upgradable_nops = false,
+            .verify_check_locktime = false,
+            .verify_check_sequence = false,
         };
     }
 };
@@ -131,4 +137,7 @@ test "execution flag presets expose legacy and BSV policy envelopes" {
     try std.testing.expect(bsv.enable_sighash_forkid);
     try std.testing.expect(bsv.verify_bip143_sighash);
     try std.testing.expect(bsv.strict_encoding);
+    try std.testing.expect(!bsv.discourage_upgradable_nops);
+    try std.testing.expect(!bsv.verify_check_locktime);
+    try std.testing.expect(!bsv.verify_check_sequence);
 }

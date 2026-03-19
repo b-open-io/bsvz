@@ -130,6 +130,11 @@ const SpendFixtureJson = struct {
     call_tx_hex: []const u8,
 };
 
+const DirectSpendFixtureJson = struct {
+    previous_tx_hex: []const u8,
+    call_tx_hex: []const u8,
+};
+
 const ThreeTxFixtureJson = struct {
     deploy_tx_hex: []const u8,
     first_call_tx_hex: []const u8,
@@ -1064,6 +1069,200 @@ fn buildFungibleTokenTransferFixture(allocator: std.mem.Allocator) !std.json.Par
     });
 }
 
+fn buildEscrowFixture(
+    allocator: std.mem.Allocator,
+    method_name: []const u8,
+    signer_zero_hex: []const u8,
+    signer_one_hex: []const u8,
+    funding_txid_hex: []const u8,
+) !std.json.Parsed(SpendFixtureJson) {
+    const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "examples/ts/escrow/Escrow.runar.ts",
+    });
+    defer allocator.free(source_abs_rel);
+    try accessOrSkip(source_abs_rel);
+
+    const sdk_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "packages/runar-sdk/dist/index.js",
+    });
+    defer allocator.free(sdk_abs_rel);
+    try accessOrSkip(sdk_abs_rel);
+
+    const code = try std.fmt.allocPrint(allocator,
+        \\(async () => {{
+        \\  const fs = require('fs');
+        \\  const {{ compile }} = await import('./packages/runar-compiler/dist/index.js');
+        \\  const {{ RunarContract, MockProvider, LocalSigner }} = await import('./packages/runar-sdk/dist/index.js');
+        \\  const source = fs.readFileSync('examples/ts/escrow/Escrow.runar.ts', 'utf-8');
+        \\  const result = compile(source, {{ fileName: 'Escrow.runar.ts' }});
+        \\  if (!result.artifact) {{
+        \\    console.error(JSON.stringify(result));
+        \\    process.exit(1);
+        \\  }}
+        \\  const provider = new MockProvider();
+        \\  const buyer = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000001');
+        \\  const seller = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000002');
+        \\  const arbiter = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000003');
+        \\  const buyerPub = await buyer.getPublicKey();
+        \\  const sellerPub = await seller.getPublicKey();
+        \\  const arbiterPub = await arbiter.getPublicKey();
+        \\  const buyerAddr = await buyer.getAddress();
+        \\  provider.addUtxo(buyerAddr, {{
+        \\    txid: '{s}',
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  }});
+        \\  const contract = new RunarContract(result.artifact, [buyerPub, sellerPub, arbiterPub]);
+        \\  contract.connect(provider, buyer);
+        \\  await contract.deploy(provider, buyer, {{ satoshis: 75000 }});
+        \\  const prepared = await contract.prepareCall('{s}', [null, null]);
+        \\  const txHex = prepared.tx.toHex();
+        \\  const lockingScript = contract.getLockingScript();
+        \\  const sig0 = await (new LocalSigner('{s}')).sign(txHex, 0, lockingScript, 75000);
+        \\  const sig1 = await (new LocalSigner('{s}')).sign(txHex, 0, lockingScript, 75000);
+        \\  await contract.finalizeCall(prepared, {{ 0: sig0, 1: sig1 }});
+        \\  const txs = provider.getBroadcastedTxs();
+        \\  process.stdout.write(JSON.stringify({{
+        \\    deploy_tx_hex: txs[0],
+        \\    call_tx_hex: txs[1],
+        \\  }}));
+        \\}})();
+    , .{ funding_txid_hex, method_name, signer_zero_hex, signer_one_hex });
+    defer allocator.free(code);
+
+    const run_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "node", "-e", code },
+        .cwd = runar_root,
+        .max_output_bytes = 1024 * 1024,
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.CurrentWorkingDirectoryUnlinked => return error.SkipZigTest,
+        else => return err,
+    };
+    defer allocator.free(run_result.stderr);
+    defer allocator.free(run_result.stdout);
+
+    switch (run_result.term) {
+        .Exited => |code_value| {
+            if (code_value != 0) {
+                std.log.err("escrow fixture build failed ({s}): {s}", .{ method_name, run_result.stderr });
+                return error.RunarCompileFailed;
+            }
+        },
+        else => return error.RunarCompileFailed,
+    }
+
+    return std.json.parseFromSlice(SpendFixtureJson, allocator, run_result.stdout, .{
+        .allocate = .alloc_always,
+    });
+}
+
+fn buildTicTacToeMoveAndWinFixture(allocator: std.mem.Allocator) !std.json.Parsed(DirectSpendFixtureJson) {
+    const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "examples/ts/tic-tac-toe/TicTacToe.runar.ts",
+    });
+    defer allocator.free(source_abs_rel);
+    try accessOrSkip(source_abs_rel);
+
+    const sdk_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "packages/runar-sdk/dist/index.js",
+    });
+    defer allocator.free(sdk_abs_rel);
+    try accessOrSkip(sdk_abs_rel);
+
+    const code =
+        \\(async () => {
+        \\  const fs = require('fs');
+        \\  const { compile } = await import('./packages/runar-compiler/dist/index.js');
+        \\  const { RunarContract, MockProvider, LocalSigner } = await import('./packages/runar-sdk/dist/index.js');
+        \\  const { Hash, Utils } = await import('@bsv/sdk');
+        \\  const source = fs.readFileSync('examples/ts/tic-tac-toe/TicTacToe.runar.ts', 'utf-8');
+        \\  const result = compile(source, { fileName: 'TicTacToe.runar.ts' });
+        \\  if (!result.artifact) {
+        \\    console.error(JSON.stringify(result));
+        \\    process.exit(1);
+        \\  }
+        \\  const provider = new MockProvider();
+        \\  const playerX = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000003');
+        \\  const playerO = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000005');
+        \\  const playerXPub = await playerX.getPublicKey();
+        \\  const playerOPub = await playerO.getPublicKey();
+        \\  const playerXAddr = await playerX.getAddress();
+        \\  const playerOAddr = await playerO.getAddress();
+        \\  provider.addUtxo(playerXAddr, {
+        \\    txid: '13'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  provider.addUtxo(playerOAddr, {
+        \\    txid: '15'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  const betAmount = 1000;
+        \\  const contract = new RunarContract(result.artifact, [playerXPub, BigInt(betAmount)]);
+        \\  await contract.deploy(provider, playerX, { satoshis: betAmount });
+        \\  await contract.call('join', [playerOPub, null], provider, playerO, { satoshis: betAmount * 2 });
+        \\  await contract.call('move', [0n, playerXPub, null], provider, playerX);
+        \\  await contract.call('move', [3n, playerOPub, null], provider, playerO);
+        \\  await contract.call('move', [1n, playerXPub, null], provider, playerX);
+        \\  await contract.call('move', [4n, playerOPub, null], provider, playerO);
+        \\  const xPkhHex = Utils.toHex(Hash.hash160(Utils.toArray(playerXPub, 'hex')));
+        \\  const winnerP2PKH = '76a914' + xPkhHex + '88ac';
+        \\  await contract.call(
+        \\    'moveAndWin',
+        \\    [2n, playerXPub, null, '00'.repeat(20), 0n],
+        \\    provider,
+        \\    playerX,
+        \\    {
+        \\      terminalOutputs: [
+        \\        { scriptHex: winnerP2PKH, satoshis: betAmount * 2 },
+        \\      ],
+        \\    },
+        \\  );
+        \\  const txs = provider.getBroadcastedTxs();
+        \\  process.stdout.write(JSON.stringify({
+        \\    previous_tx_hex: txs[5],
+        \\    call_tx_hex: txs[6],
+        \\  }));
+        \\})();
+    ;
+
+    const run_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "node", "-e", code },
+        .cwd = runar_root,
+        .max_output_bytes = 2 * 1024 * 1024,
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.CurrentWorkingDirectoryUnlinked => return error.SkipZigTest,
+        else => return err,
+    };
+    defer allocator.free(run_result.stderr);
+    defer allocator.free(run_result.stdout);
+
+    switch (run_result.term) {
+        .Exited => |code_value| {
+            if (code_value != 0) {
+                std.log.err("tic-tac-toe moveAndWin fixture build failed: {s}", .{run_result.stderr});
+                return error.RunarCompileFailed;
+            }
+        },
+        else => return error.RunarCompileFailed,
+    }
+
+    return std.json.parseFromSlice(DirectSpendFixtureJson, allocator, run_result.stdout, .{
+        .allocate = .alloc_always,
+    });
+}
+
+
 fn verifyInputAgainstOutput(
     allocator: std.mem.Allocator,
     previous_tx_hex: []const u8,
@@ -1473,5 +1672,55 @@ test "local runar fungible token transfer verifies through bsvz" {
         allocator,
         fixture.value.deploy_tx_hex,
         fixture.value.call_tx_hex,
+    ));
+}
+
+test "local runar escrow release verifies through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildEscrowFixture(
+        allocator,
+        "release",
+        "0000000000000000000000000000000000000000000000000000000000000002",
+        "0000000000000000000000000000000000000000000000000000000000000003",
+        "3131313131313131313131313131313131313131313131313131313131313131",
+    );
+    defer fixture.deinit();
+
+    try std.testing.expect(try verifyFirstInputAgainstFirstOutput(
+        allocator,
+        fixture.value.deploy_tx_hex,
+        fixture.value.call_tx_hex,
+    ));
+}
+
+test "local runar escrow refund verifies through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildEscrowFixture(
+        allocator,
+        "refund",
+        "0000000000000000000000000000000000000000000000000000000000000001",
+        "0000000000000000000000000000000000000000000000000000000000000003",
+        "3232323232323232323232323232323232323232323232323232323232323232",
+    );
+    defer fixture.deinit();
+
+    try std.testing.expect(try verifyFirstInputAgainstFirstOutput(
+        allocator,
+        fixture.value.deploy_tx_hex,
+        fixture.value.call_tx_hex,
+    ));
+}
+
+test "local runar tic-tac-toe moveAndWin verifies through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildTicTacToeMoveAndWinFixture(allocator);
+    defer fixture.deinit();
+
+    try std.testing.expect(try verifyInputAgainstOutput(
+        allocator,
+        fixture.value.previous_tx_hex,
+        0,
+        fixture.value.call_tx_hex,
+        0,
     ));
 }

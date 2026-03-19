@@ -40,7 +40,7 @@ This repository is a standalone BSV library under active development.
 Current implemented areas:
 
 - primitives: hex, varint, base58, base58check, network/version-byte helpers
-- crypto: sha256, hash256, ripemd160, hash160, secp256k1 private/public keys, DER signatures, tx-signature helpers
+- crypto: sha256, hash256, ripemd160, hash160, secp256k1 private/public keys, public secp256k1 point API backed by Zig stdlib primitives, DER signatures, tx-signature helpers
 - compat: legacy P2PKH address and WIF encode/decode
 - transaction: legacy transaction parse/serialize, txid, replay-protected sighash/preimage helpers, P2PKH spend helpers
 - script: ScriptNum, byte helpers, script parser/chunks, broad opcode set, general execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, Go-shaped policy enforcement, P2PKH and OP_RETURN templates
@@ -49,8 +49,8 @@ Current construction zones:
 
 - SPV is not yet real beyond placeholders and type stubs
 - broadcast is not yet real beyond namespace scaffolding
-- the script interpreter is materially closer to Go parity, with the direct Go-row harness now split across dedicated control-flow, seam, parser, reserved/NOP, sigcheck, multisig, minimaldata, numeric, boolean/numeric, bitwise, bytes/hash, stack-shape, stack-index, and bin2num lanes; the full Go reference corpus is still not imported
-- native execution coverage for compiled Runar contracts is broad and growing, including more auction lifecycle behavior and negative covenant checks, but not complete
+- the script interpreter is materially closer to Go parity, with 455 exact Go row references imported across 15 dedicated test lanes; the full Go reference corpus is still not imported
+- native execution coverage for compiled Runar contracts is broad and growing, including auction lifecycle, escrow, tic-tac-toe, NFT, fungible-token, and negative covenant checks, but not complete
 
 Current interpreter target:
 
@@ -76,11 +76,12 @@ This is the current interpreter map for `bsvz.script`.
 | `ScriptNum` | implemented | small-or-big numeric core using Zig stdlib bigint for promoted values |
 | `CHECKSIG` | implemented | transaction-aware, BSV-only, legacy and ForkID paths, `CODESEPARATOR` handling, scriptCode normalization |
 | `CHECKMULTISIG` | implemented | transaction-aware, post-Genesis behavior, early-exit behavior, `NULLDUMMY` / `NULLFAIL` / ForkID policy coverage |
-| Policy flags | broad coverage | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if` |
+| Policy flags | broad coverage | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if`, `discourage_upgradable_nops`, `verify_check_locktime`, `verify_check_sequence` |
+| CLTV / CSV / upgradable NOP surface | partial but real | `CLTV` and `CSV` now have tx-aware legacy/reference semantics behind explicit flags; the modern BSV profile still treats them as inert unless policy says otherwise |
 | Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding are both enforced where Go applies `MINIMALDATA`, with a dedicated minimaldata vector lane |
 | `CODESEPARATOR` parity | broad coverage | legacy and ForkID scriptCode behavior, chained separator result-shape tests, parser/scanner coverage |
-| Go parity vectors | broad but incomplete | direct Go-row coverage now spans dedicated control-flow, seam, parser, reserved/NOP, sigcheck, multisig, minimaldata, numeric, boolean/numeric, bitwise, bytes/hash, stack-shape, stack-index, and bin2num lanes, but not the full Go corpus |
-| Runar local acceptance | broad but incomplete | real local acceptance covers stateless, stateful, covenant, auction, NFT, fungible-token, and math/crypto-heavy contracts, including negative covenant checks, but the full Runar corpus is not yet green |
+| Go parity vectors | broad but incomplete | 455 exact Go-row references now span 15 dedicated lanes: control-flow, seam, parser, reserved/NOP, sigcheck, multisig, minimaldata, numeric, boolean/numeric, bitwise, bytes/hash, stack-shape, stack-index, disabled-opcode, and bin2num; the full corpus is still larger |
+| Runar local acceptance | broad but incomplete | real local acceptance now covers stateless, stateful, covenant, auction, escrow, tic-tac-toe, NFT, fungible-token, and math/crypto-heavy contracts, including negative covenant checks, but the full Runar corpus is not yet green |
 | SPV / script-adjacent proof tooling | construction zone | not part of the interpreter core yet |
 
 BSV-specific scope rules:

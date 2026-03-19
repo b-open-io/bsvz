@@ -116,6 +116,13 @@ test "go numeric rows: exact arithmetic result rows" {
     defer allocator.free(row322_locking);
 
     try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 211, .name = "go row 211: add cancels two and negative two to zero", .unlocking_hex = row252_unlocking, .locking_hex = row252_locking, .expected = .{ .success = true } },
+        .{ .row = 212, .name = "go row 212: add cancels positive and negative max int32", .unlocking_hex = "04ffffff7f04ffffffff93", .locking_hex = "0087", .expected = .{ .success = true } },
+        .{ .row = 213, .name = "go row 213: add keeps negative totals exact", .unlocking_hex = row254_unlocking, .locking_hex = row254_locking, .expected = .{ .success = true } },
+        .{ .row = 218, .name = "go row 218: add then sub lands exactly on one hundred", .unlocking_hex = "016f5193010c94", .locking_hex = "016487", .expected = .{ .success = true } },
+        .{ .row = 219, .name = "go row 219: abs keeps zero at zero", .unlocking_hex = "0090", .locking_hex = "0087", .expected = .{ .success = true } },
+        .{ .row = 220, .name = "go row 220: abs keeps positive sixteen unchanged", .unlocking_hex = "6090", .locking_hex = "6087", .expected = .{ .success = true } },
+        .{ .row = 221, .name = "go row 221: abs of negative sixteen matches negate oracle", .unlocking_hex = row263_unlocking, .locking_hex = row263_locking, .expected = .{ .success = true } },
         .{ .row = 252, .name = "go row 252: add cancels positive and negative operands", .unlocking_hex = row252_unlocking, .locking_hex = row252_locking, .expected = .{ .success = true } },
         .{ .row = 254, .name = "go row 254: add keeps negative totals exact", .unlocking_hex = row254_unlocking, .locking_hex = row254_locking, .expected = .{ .success = true } },
         .{ .row = 259, .name = "go row 259: 1sub decrements exactly", .unlocking_hex = row259_unlocking, .locking_hex = row259_locking, .expected = .{ .success = true } },
@@ -321,6 +328,8 @@ test "go numeric rows: exact modulo result rows" {
         .{ .row = 1005, .name = "go row 1005: mod keeps negative remainder with both operands negative", .unlocking_hex = row1005_unlocking, .locking_hex = row1005_locking, .expected = .{ .success = true } },
         .{ .row = 1006, .name = "go row 1006: mod of zero by one yields zero", .unlocking_hex = row1006_unlocking, .locking_hex = row1006_locking, .expected = .{ .success = true } },
         .{ .row = 1007, .name = "go row 1007: mod rejects modulo by zero", .unlocking_hex = "5100", .locking_hex = "97", .expected = .{ .err = error.DivisionByZero } },
+        .{ .row = 1008, .name = "go row 1008: mod leaves one stack item after depth check", .unlocking_hex = "51519774", .locking_hex = "5187", .expected = .{ .success = true } },
+        .{ .row = 1009, .name = "go row 1009: mod requires two operands for one", .unlocking_hex = "51", .locking_hex = "97", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1010, .name = "go row 1010: mod requires two operands", .unlocking_hex = "00", .locking_hex = "97", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 1011, .name = "go row 1011: mod keeps positive boundary remainder", .unlocking_hex = row1011_unlocking, .locking_hex = row1011_locking, .expected = .{ .success = true } },
         .{ .row = 1012, .name = "go row 1012: mod with smaller dividend keeps dividend", .unlocking_hex = row1012_unlocking, .locking_hex = row1012_locking, .expected = .{ .success = true } },
@@ -364,7 +373,7 @@ test "go numeric rows: exact false and overflow result rows" {
     defer allocator.free(row1033_unlocking);
     const row1034_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ -2_147_483_648, 0 }, &[_]Opcode{.OP_ADD});
     defer allocator.free(row1034_unlocking);
-    const row1035_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ 2_147_483_647 }, &[_]Opcode{ .OP_DUP, .OP_ADD });
+    const row1035_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{2_147_483_647}, &[_]Opcode{ .OP_DUP, .OP_ADD });
     defer allocator.free(row1035_unlocking);
     const row1035_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{4_294_967_294}, &[_]Opcode{.OP_NUMEQUAL});
     defer allocator.free(row1035_locking);

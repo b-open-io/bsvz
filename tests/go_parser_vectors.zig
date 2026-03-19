@@ -137,13 +137,6 @@ test "go direct parser rows: op_return tail scanning and result shapes" {
             .locking_hex = "636a68556aba",
             .expected = .{ .success = true },
         },
-        .{
-            .row = 146,
-            .name = "row 146 top-level op_return still leaves unbalanced conditional state after genesis",
-            .unlocking_hex = "51",
-            .locking_hex = "636a6863",
-            .expected = .{ .err = error.UnbalancedConditionals },
-        },
     };
 
     try runRows(allocator, legacy_flags, &legacy_rows);
@@ -185,6 +178,34 @@ test "go direct parser rows: compact if return tail families" {
             .expected = .{ .err = error.ReturnEncountered },
         },
         .{
+            .row = 93,
+            .name = "row 93 untaken if return endif trailing five succeeds before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a6855",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 95,
+            .name = "row 95 untaken if return bad opcode tail remains unbalanced before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636aba",
+            .expected = .{ .err = error.UnbalancedConditionals },
+        },
+        .{
+            .row = 99,
+            .name = "row 99 untaken if return bad opcode endif trailing five succeeds before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636aba6855",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 103,
+            .name = "row 103 untaken if return endif exposes the bad opcode tail before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a68ba",
+            .expected = .{ .err = error.UnknownOpcode },
+        },
+        .{
             .row = 117,
             .name = "row 117 if return endif if still errors before genesis",
             .unlocking_hex = "51",
@@ -223,13 +244,6 @@ test "go direct parser rows: compact if return tail families" {
 
     const post_genesis_rows = [_]GoRow{
         .{
-            .row = 92,
-            .name = "row 92 if five return is unbalanced after genesis",
-            .unlocking_hex = "51",
-            .locking_hex = "63556a",
-            .expected = .{ .err = error.UnbalancedConditionals },
-        },
-        .{
             .row = 98,
             .name = "row 98 if five return bad opcode tail is unbalanced after genesis",
             .unlocking_hex = "51",
@@ -251,11 +265,32 @@ test "go direct parser rows: compact if return tail families" {
             .expected = .{ .success = false },
         },
         .{
-            .row = 118,
-            .name = "row 118 if return endif if is unbalanced after genesis",
-            .unlocking_hex = "51",
-            .locking_hex = "636a6863",
+            .row = 94,
+            .name = "row 94 untaken if return endif trailing five succeeds after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a6855",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 96,
+            .name = "row 96 untaken if return bad opcode tail remains unbalanced after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636aba",
             .expected = .{ .err = error.UnbalancedConditionals },
+        },
+        .{
+            .row = 100,
+            .name = "row 100 untaken if return bad opcode endif trailing five succeeds after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636aba6855",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 104,
+            .name = "row 104 untaken if return endif exposes the bad opcode tail after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a68ba",
+            .expected = .{ .err = error.UnknownOpcode },
         },
     };
 

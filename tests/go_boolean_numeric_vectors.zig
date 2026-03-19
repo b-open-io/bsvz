@@ -127,11 +127,20 @@ test "go direct script rows: size parity" {
     try runRows(allocator, flags, &[_]GoRow{
         .{ .row = 185, .name = "size of one-byte canonical positive number is one", .unlocking_hex = "51", .locking_hex = "825187", .expected = .{ .success = true } },
         .{ .row = 186, .name = "size of one-byte minimally encoded 127 is one", .unlocking_hex = "017f", .locking_hex = "825187", .expected = .{ .success = true } },
+        .{ .row = 187, .name = "size of positive one hundred twenty eight is two bytes", .unlocking_hex = "028000", .locking_hex = "825287", .expected = .{ .success = true } },
         .{ .row = 188, .name = "size of 32767 is two bytes", .unlocking_hex = size_two_hex, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 189, .name = "size of positive thirty two thousand seven hundred sixty eight is three bytes", .unlocking_hex = "03008000", .locking_hex = "825387", .expected = .{ .success = true } },
+        .{ .row = 190, .name = "size of positive eight million three hundred eighty eight thousand six hundred seven is three bytes", .unlocking_hex = "03ffff7f", .locking_hex = "825387", .expected = .{ .success = true } },
         .{ .row = 197, .name = "size of one-byte minimally encoded negative one is one", .unlocking_hex = "4f", .locking_hex = "825187", .expected = .{ .success = true } },
         .{ .row = 198, .name = "size of one-byte minimally encoded negative 127 is one", .unlocking_hex = "01ff", .locking_hex = "825187", .expected = .{ .success = true } },
         .{ .row = 193, .name = "size of 2147483648 is five bytes", .unlocking_hex = size_five_hex, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 195, .name = "size of positive five hundred forty nine billion seven hundred fifty five million eight hundred thirteen thousand eight hundred eighty eight is six bytes", .unlocking_hex = "06000000008000", .locking_hex = "825687", .expected = .{ .success = true } },
         .{ .row = 203, .name = "size of -8388608 is four bytes", .unlocking_hex = size_four_hex, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 204, .name = "size of negative max int32 is four bytes", .unlocking_hex = "04ffffffff", .locking_hex = "825487", .expected = .{ .success = true } },
+        .{ .row = 205, .name = "size of negative two billion one hundred forty seven million four hundred eighty three thousand six hundred forty eight is five bytes", .unlocking_hex = "050000008080", .locking_hex = "825587", .expected = .{ .success = true } },
+        .{ .row = 206, .name = "size of negative five hundred forty nine billion seven hundred fifty five million eight hundred thirteen thousand eight hundred eighty seven is five bytes", .unlocking_hex = "05ffffffffff", .locking_hex = "825587", .expected = .{ .success = true } },
+        .{ .row = 207, .name = "size of negative five hundred forty nine billion seven hundred fifty five million eight hundred thirteen thousand eight hundred eighty eight is six bytes", .unlocking_hex = "06000000008080", .locking_hex = "825687", .expected = .{ .success = true } },
+        .{ .row = 208, .name = "size of negative int64 max is eight bytes", .unlocking_hex = "08ffffffffffffffff", .locking_hex = "825887", .expected = .{ .success = true } },
         .{ .row = 209, .name = "size of alphabet payload is twenty six", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = "82011a87", .expected = .{ .success = true } },
         .{ .row = 210, .name = "size does not consume its argument", .unlocking_hex = "012a", .locking_hex = "825188012a87", .expected = .{ .success = true } },
         .{ .row = 848, .name = "size with one stack item underflows at equal", .unlocking_hex = "61", .locking_hex = "8251", .expected = .{ .err = error.StackUnderflow } },
@@ -318,17 +327,17 @@ test "go direct script rows: comparison and minmax exact rows" {
         @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
     });
     defer allocator.free(min_negone_eq_lock);
-    const min_negmax_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ neg_max_i32 }, &[_]u8{
+    const min_negmax_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{neg_max_i32}, &[_]u8{
         @intFromEnum(bsvz.script.opcode.Opcode.OP_MIN),
         @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
     });
     defer allocator.free(min_negmax_eq_lock);
-    const max_maxi32_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ max_i32 }, &[_]u8{
+    const max_maxi32_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{max_i32}, &[_]u8{
         @intFromEnum(bsvz.script.opcode.Opcode.OP_MAX),
         @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
     });
     defer allocator.free(max_maxi32_eq_lock);
-    const max_100_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ hundred }, &[_]u8{
+    const max_100_eq_lock = try scriptHexForPushesAndOps(allocator, &[_][]const u8{hundred}, &[_]u8{
         @intFromEnum(bsvz.script.opcode.Opcode.OP_MAX),
         @intFromEnum(bsvz.script.opcode.Opcode.OP_NUMEQUAL),
     });
@@ -350,25 +359,25 @@ test "go direct script rows: comparison and minmax exact rows" {
     });
     defer allocator.free(within_zero_lock);
 
-    const neg11_11 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ neg_eleven }, &[_]u8{
+    const neg11_11 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{neg_eleven}, &[_]u8{
         @intFromEnum(bsvz.script.opcode.Opcode.OP_11),
     });
     defer allocator.free(neg11_11);
     const neg11_neg10 = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ neg_eleven, neg_ten }, &[_]u8{});
     defer allocator.free(neg11_neg10);
-    const zero_negmax = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ neg_max_i32 }, &[_]u8{
+    const zero_negmax = try scriptHexForPushesAndOps(allocator, &[_][]const u8{neg_max_i32}, &[_]u8{
         @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
     });
     defer allocator.free(zero_negmax);
-    const maxi32_zero = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ max_i32 }, &[_]u8{
+    const maxi32_zero = try scriptHexForPushesAndOps(allocator, &[_][]const u8{max_i32}, &[_]u8{
         @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
     });
     defer allocator.free(maxi32_zero);
-    const zero_hundred = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ hundred }, &[_]u8{
+    const zero_hundred = try scriptHexForPushesAndOps(allocator, &[_][]const u8{hundred}, &[_]u8{
         @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
     });
     defer allocator.free(zero_hundred);
-    const neghundred_zero = try scriptHexForPushesAndOps(allocator, &[_][]const u8{ neg_hundred }, &[_]u8{
+    const neghundred_zero = try scriptHexForPushesAndOps(allocator, &[_][]const u8{neg_hundred}, &[_]u8{
         @intFromEnum(bsvz.script.opcode.Opcode.OP_0),
     });
     defer allocator.free(neghundred_zero);
@@ -406,6 +415,10 @@ test "go direct script rows: comparison and minmax exact rows" {
         .{ .row = 310, .name = "max of zero and hundred is hundred", .unlocking_hex = zero_hundred, .locking_hex = max_100_eq_lock, .expected = .{ .success = true } },
         .{ .row = 311, .name = "max of negative hundred and zero is zero", .unlocking_hex = neghundred_zero, .locking_hex = max_zero_eq_lock, .expected = .{ .success = true } },
         .{ .row = 312, .name = "max of zero and negative max int32 is zero", .unlocking_hex = zero_negmax, .locking_hex = max_zero_eq_lock, .expected = .{ .success = true } },
+        .{ .row = 408, .name = "bytewise unequal one and zero-padded one become true after not", .unlocking_hex = "51", .locking_hex = "0201008791", .expected = .{ .success = true } },
+        .{ .row = 409, .name = "numerically equal one and zero-padded one stay true", .unlocking_hex = "51", .locking_hex = "0201009c", .expected = .{ .success = true } },
+        .{ .row = 410, .name = "numequal accepts minimally and non-minimally encoded eleven", .unlocking_hex = "5b", .locking_hex = "4c030b00009c", .expected = .{ .success = true } },
+        .{ .row = 416, .name = "numequal accepts larger positive values with significant zero bytes", .unlocking_hex = "03100000", .locking_hex = "04100000009c", .expected = .{ .success = true } },
         .{ .row = 536, .name = "numequal over zero and zero stays true", .unlocking_hex = "0000", .locking_hex = eq_lock, .expected = .{ .success = true } },
         .{ .row = 537, .name = "numequalverify over zero and zero stays true", .unlocking_hex = "0000", .locking_hex = eqverify_lock, .expected = .{ .success = true } },
         .{ .row = 538, .name = "numnotequal over negative one and zero stays true", .unlocking_hex = "4f00", .locking_hex = notequal_lock, .expected = .{ .success = true } },
