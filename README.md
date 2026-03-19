@@ -111,11 +111,14 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | BRC&#8209;18 | [Pay to False Return](https://bsv.brc.dev/scripts/0018) | `script.templates.op_return` |
 | BRC&#8209;30 | [Transaction Extended Format (EF)](https://bsv.brc.dev/transactions/0030) | `transaction` |
 | BRC&#8209;36 | [Format for Bitcoin Outpoints](https://bsv.brc.dev/outpoints/0036) | `transaction.OutPoint` |
+| BRC&#8209;42 | [BSV Key Derivation Scheme (Type&#8209;42)](https://bsv.brc.dev/key-derivation/0042) | `primitives.ec` (`deriveChild`, `deriveSharedSecret`) |
+| BRC&#8209;43 | [Security Levels, Protocol IDs, Key IDs](https://bsv.brc.dev/key-derivation/0043) | `primitives.ec` (invoice-based derivation) |
 | BRC&#8209;47 | [Bare Multi-Signature](https://bsv.brc.dev/scripts/0047) | `script` |
 | BRC&#8209;61 | [Compound Merkle Path Format](https://bsv.brc.dev/transactions/0061) | `spv.MerklePath` |
 | BRC&#8209;62 | [BEEF Transactions](https://bsv.brc.dev/transactions/0062) | `transaction.beef` |
 | BRC&#8209;67 | [Simplified Payment Verification](https://bsv.brc.dev/transactions/0067) | `spv` |
 | BRC&#8209;74 | [BSV Unified Merkle Path (BUMP)](https://bsv.brc.dev/transactions/0074) | `spv.MerklePath` |
+| BRC&#8209;77 | [Message Signature Creation and Verification](https://bsv.brc.dev/peer-to-peer/0077) | `compat.bsm`, `crypto.compact` |
 | BRC&#8209;94 | [Schnorr Shared Secret Revelation](https://bsv.brc.dev/key-derivation/0094) | `primitives.schnorr` |
 | BRC&#8209;95 | [Atomic BEEF Transactions](https://bsv.brc.dev/transactions/0095) | `transaction.beef` |
 | BRC&#8209;96 | [BEEF V2 Txid Only Extension](https://bsv.brc.dev/transactions/0096) | `transaction.beef` |
@@ -130,11 +133,8 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | BRC&#8209;19 | [Pay to True Return](https://bsv.brc.dev/scripts/0019) | OP_TRUE OP_RETURN template |
 | BRC&#8209;21 | [Push TX](https://bsv.brc.dev/scripts/0021) | Push TX script template |
 | BRC&#8209;32 | [BIP32 Key Derivation](https://bsv.brc.dev/key-derivation/0032) | HD key derivation, xpriv/xpub, child paths |
-| BRC&#8209;42 | [BSV Key Derivation Scheme (Type&#8209;42)](https://bsv.brc.dev/key-derivation/0042) | `DeriveChild` on PrivateKey and PublicKey, ECDH shared secret |
-| BRC&#8209;43 | [Security Levels, Protocol IDs, Key IDs](https://bsv.brc.dev/key-derivation/0043) | Protocol ID and counterparty structures for BRC&#8209;42 |
 | BRC&#8209;48 | [Pay to Push Drop](https://bsv.brc.dev/scripts/0048) | PushDrop script template |
 | BRC&#8209;75 | [Mnemonic for Master Private Key](https://bsv.brc.dev/key-derivation/0075) | BIP39 mnemonic generation and seed derivation |
-| BRC&#8209;77 | [Message Signature Creation and Verification](https://bsv.brc.dev/peer-to-peer/0077) | Bitcoin Signed Message (sign/verify/recover), compact signatures |
 | BRC&#8209;78 | [Portable Encrypted Messages](https://bsv.brc.dev/peer-to-peer/0078) | ECIES single/shared/electrum encryption |
 
 </details>
