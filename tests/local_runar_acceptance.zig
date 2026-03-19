@@ -1551,20 +1551,13 @@ fn verifyInputAgainstOutputOutcome(
 
     const previous_output = previous_tx.outputs[previous_output_index];
     const unlocking_script = spend_tx.inputs[spend_input_index].unlocking_script;
-    const locking_script = previous_output.locking_script;
-
-    const exec_ctx = bsvz.script.context.ExecutionContext.forPrevoutSpend(
-        allocator,
-        &spend_tx,
-        spend_input_index,
-        previous_output,
-    );
-    var result = bsvz.script.thread.verifyExecutableScriptsDetailed(
-        exec_ctx,
-        Script.init(unlocking_script.bytes),
-        locking_script,
-    );
-    return result.deinitToOutcome(allocator);
+    return bsvz.script.interpreter.verifyPrevoutOutcome(.{
+        .allocator = allocator,
+        .tx = &spend_tx,
+        .input_index = spend_input_index,
+        .previous_output = previous_output,
+        .unlocking_script = Script.init(unlocking_script.bytes),
+    });
 }
 
 fn verifyInputAgainstOutput(

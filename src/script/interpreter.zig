@@ -36,6 +36,14 @@ pub fn verify(ctx: P2pkhSpendContext) Error!bool {
     return result.toLegacy();
 }
 
+pub fn verifyOutcome(ctx: P2pkhSpendContext) VerificationOutcome {
+    return thread.verifyExecutableScriptsOutcome(
+        .forSpend(ctx.allocator, ctx.tx, ctx.input_index, ctx.previous_satoshis),
+        ctx.unlocking_script,
+        ctx.locking_script,
+    );
+}
+
 pub fn verifyDetailed(ctx: P2pkhSpendContext) VerificationResult {
     return thread.verifyExecutableScriptsDetailed(
         .forSpend(ctx.allocator, ctx.tx, ctx.input_index, ctx.previous_satoshis),
@@ -54,6 +62,16 @@ pub fn verifyTraced(ctx: P2pkhSpendContext) TracedVerificationResult {
 
 pub fn verifyPrevout(ctx: PrevoutSpendContext) Error!bool {
     return thread.verifyPrevoutSpend(
+        ctx.allocator,
+        ctx.tx,
+        ctx.input_index,
+        ctx.previous_output,
+        ctx.unlocking_script,
+    );
+}
+
+pub fn verifyPrevoutOutcome(ctx: PrevoutSpendContext) VerificationOutcome {
+    return thread.verifyPrevoutSpendOutcome(
         ctx.allocator,
         ctx.tx,
         ctx.input_index,
@@ -122,6 +140,41 @@ test "interpreter verifyDetailed exposes structured false results" {
     try std.testing.expectEqual(ScriptPhase.final, result.phase);
 }
 
+test "interpreter verifyOutcome exposes compact false results" {
+    const allocator = std.testing.allocator;
+    var tx = Transaction{
+        .version = 2,
+        .inputs = &[_]Input{
+            .{
+                .previous_outpoint = OutPoint{
+                    .txid = .{ .bytes = [_]u8{0} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = Script.init(&[_]u8{}),
+                .sequence = 0xffff_ffff,
+            },
+        },
+        .outputs = &[_]Output{
+            .{
+                .satoshis = 1,
+                .locking_script = Script.init(&[_]u8{
+                    @intFromEnum(@import("opcode.zig").Opcode.OP_0),
+                }),
+            },
+        },
+        .lock_time = 0,
+    };
+
+    try std.testing.expectEqualDeep(VerificationOutcome.false_result, verifyOutcome(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_satoshis = 1,
+        .unlocking_script = Script.init(&[_]u8{}),
+        .locking_script = tx.outputs[0].locking_script,
+    }));
+}
+
 test "interpreter verifyPrevoutDetailed exposes structured false results" {
     const allocator = std.testing.allocator;
     var tx = Transaction{
@@ -159,4 +212,38 @@ test "interpreter verifyPrevoutDetailed exposes structured false results" {
     try std.testing.expect(!result.success);
     try std.testing.expectEqual(VerificationTerminal.false_result, result.terminal);
     try std.testing.expectEqual(ScriptPhase.final, result.phase);
+}
+
+test "interpreter verifyPrevoutOutcome exposes compact false results" {
+    const allocator = std.testing.allocator;
+    var tx = Transaction{
+        .version = 2,
+        .inputs = &[_]Input{
+            .{
+                .previous_outpoint = OutPoint{
+                    .txid = .{ .bytes = [_]u8{0} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = Script.init(&[_]u8{}),
+                .sequence = 0xffff_ffff,
+            },
+        },
+        .outputs = &[_]Output{
+            .{
+                .satoshis = 1,
+                .locking_script = Script.init(&[_]u8{
+                    @intFromEnum(@import("opcode.zig").Opcode.OP_0),
+                }),
+            },
+        },
+        .lock_time = 0,
+    };
+
+    try std.testing.expectEqualDeep(VerificationOutcome.false_result, verifyPrevoutOutcome(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_output = tx.outputs[0],
+        .unlocking_script = Script.init(&[_]u8{}),
+    }));
 }

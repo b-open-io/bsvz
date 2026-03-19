@@ -64,6 +64,7 @@ Current interpreter target:
 - plain executable pair: `bsvz.script.thread.verifyScripts(...)` or `ScriptThread.verifyPair(...)`
 - spend with transaction context: `bsvz.script.thread.verifyExecutableScripts(...)`
 - spend directly against a previous output: `bsvz.script.thread.verifyPrevoutSpend(...)`, `verifyPrevoutSpendDetailed(...)`, `verifyPrevoutSpendTraced(...)`
+- direct compact outcomes: `verifyScriptsOutcome(...)`, `verifyExecutableScriptsOutcome(...)`, `verifyPrevoutSpendOutcome(...)`, `bsvz.script.interpreter.verifyOutcome(...)`, and `verifyPrevoutOutcome(...)`
 - small spend wrappers: `bsvz.script.interpreter.verify(...)` and `verifyPrevout(...)`
 - detailed verification result: `bsvz.script.thread.verifyScriptsDetailed(...)`, `verifyExecutableScriptsDetailed(...)`, and `bsvz.script.interpreter.verifyDetailed(...)`
 - opt-in execution traces: `bsvz.script.thread.verifyScriptsTraced(...)`, `verifyExecutableScriptsTraced(...)`, and `bsvz.script.interpreter.verifyTraced(...)`
@@ -107,23 +108,20 @@ Spend verification against a previous output:
 ```zig
 const previous_output = previous_tx.outputs[previous_output_index];
 
-var result = bsvz.script.thread.verifyExecutableScriptsDetailed(
-    bsvz.script.context.ExecutionContext.forPrevoutSpend(
-        allocator,
-        &spend_tx,
-        spend_input_index,
-        previous_output,
-    ),
-    spend_tx.inputs[spend_input_index].unlocking_script,
-    previous_output.locking_script,
-);
+var result = bsvz.script.interpreter.verifyPrevoutDetailed(.{
+    .allocator = allocator,
+    .tx = &spend_tx,
+    .input_index = spend_input_index,
+    .previous_output = previous_output,
+    .unlocking_script = spend_tx.inputs[spend_input_index].unlocking_script,
+});
 defer result.deinit(allocator);
 
 if (result.terminal == .script_error) return result.script_error.?;
 const ok = result.success;
 ```
 
-The lower-level `verifyExecutableScripts(...)` entry point trims any state suffix from the locking script for execution while still preserving the full previous locking script in the spend context for sighash checks.
+The lower-level `verifyExecutableScripts(...)` entry point still trims any state suffix from the locking script for execution while preserving the full previous locking script in the spend context for sighash checks, but `bsvz.script.interpreter.verifyPrevout*` is now the smaller Runar-facing seam.
 
 Tiny trace example:
 
@@ -144,7 +142,7 @@ There is also a tiny standalone example in [examples/script_trace_demo.zig](/Use
 Runar-adjacent helpers already present in the library:
 
 - secp256k1 point API: `bsvz.crypto.Point.fromCompressedSec1`, `fromRaw64`, `toCompressedSec1`, `toRaw64`, `xBytes32`, `yBytes32`, `add`, `mul`, `negate`
-- output serialization and hashing: `bsvz.transaction.Output.serialize(...)`, `writeInto(...)`, `hash256(...)`
+- output serialization and hashing: `bsvz.transaction.Output.serialize(...)`, `writeInto(...)`, `parse(...)`, `hash256(...)`, `hashAll(...)`
 - transaction serialization and txid: `bsvz.transaction.Transaction.serialize(...)` and `tx.txid(...)`
 
 Tiny serialization example:
@@ -155,10 +153,15 @@ const output = bsvz.transaction.Output{
     .locking_script = bsvz.script.Script.init(&[_]u8{0x6a}),
 };
 
-const raw = try output.serialize(allocator);
+var raw = try allocator.alloc(u8, output.serializedLen());
 defer allocator.free(raw);
+_ = output.writeInto(raw);
 
-std.debug.print("{s}\n", .{std.fmt.fmtSliceHexLower(raw)});
+const parsed = try bsvz.transaction.Output.parse(raw);
+const hash_all = try bsvz.transaction.Output.hashAll(allocator, &[_]bsvz.transaction.Output{output});
+
+std.debug.print("{s} {x}\n", .{ std.fmt.fmtSliceHexLower(raw), hash_all });
+_ = parsed;
 ```
 
 ## Script Interpreter Coverage

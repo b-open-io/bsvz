@@ -228,17 +228,7 @@ pub fn hashOutputs(allocator: std.mem.Allocator, tx: *const Transaction, input_i
         return crypto.hash.hash256(buf);
     }
 
-    var total_len: usize = 0;
-    for (tx.outputs) |output| total_len += output.serializedLen();
-    var buf = try allocator.alloc(u8, total_len);
-    defer allocator.free(buf);
-
-    var cursor: usize = 0;
-    for (tx.outputs) |output| {
-        cursor += output.writeInto(buf[cursor..]);
-    }
-
-    return crypto.hash.hash256(buf);
+    return Output.hashAll(allocator, tx.outputs);
 }
 
 fn legacySingleBugBytes() [32]u8 {

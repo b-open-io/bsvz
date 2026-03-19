@@ -91,11 +91,13 @@ pub fn runCaseDetailed(allocator: std.mem.Allocator, case: Case) !VerificationRe
             .satoshis = spend.previous_satoshis,
             .locking_script = locking_script,
         };
-        return bsvz.script.thread.verifyExecutableScriptsDetailed(
-            bsvz.script.context.ExecutionContext.forPrevoutSpend(allocator, &tx, 0, previous_output),
-            unlocking_script,
-            locking_script,
-        );
+        return bsvz.script.interpreter.verifyPrevoutDetailed(.{
+            .allocator = allocator,
+            .tx = &tx,
+            .input_index = 0,
+            .previous_output = previous_output,
+            .unlocking_script = unlocking_script,
+        });
     }
 
     return bsvz.script.thread.verifyScriptsDetailed(.{
@@ -159,11 +161,13 @@ pub fn runCaseTraced(allocator: std.mem.Allocator, case: Case) !TracedVerificati
             .satoshis = spend.previous_satoshis,
             .locking_script = locking_script,
         };
-        return bsvz.script.thread.verifyExecutableScriptsTraced(
-            bsvz.script.context.ExecutionContext.forPrevoutSpend(allocator, &tx, 0, previous_output),
-            unlocking_script,
-            locking_script,
-        );
+        return bsvz.script.interpreter.verifyPrevoutTraced(.{
+            .allocator = allocator,
+            .tx = &tx,
+            .input_index = 0,
+            .previous_output = previous_output,
+            .unlocking_script = unlocking_script,
+        });
     }
 
     return bsvz.script.thread.verifyScriptsTraced(.{

@@ -314,6 +314,15 @@ pub fn verifyScripts(ctx: ExecutionContext, unlocking_script: Script, locking_sc
     return result.toLegacy();
 }
 
+pub fn verifyScriptsOutcome(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    locking_script: Script,
+) VerificationOutcome {
+    var result = verifyScriptsDetailed(ctx, unlocking_script, locking_script);
+    return result.deinitToOutcome(ctx.allocator);
+}
+
 pub fn verificationOutcome(result: Error!bool) VerificationOutcome {
     const verified = result catch |err| return .{ .script_error = err };
     return if (verified) .success else .false_result;
@@ -347,6 +356,15 @@ pub fn verifyExecutableScripts(
     var result = verifyExecutableScriptsDetailed(ctx, unlocking_script, full_locking_script);
     defer result.deinit(ctx.allocator);
     return result.toLegacy();
+}
+
+pub fn verifyExecutableScriptsOutcome(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    full_locking_script: Script,
+) VerificationOutcome {
+    var result = verifyExecutableScriptsDetailed(ctx, unlocking_script, full_locking_script);
+    return result.deinitToOutcome(ctx.allocator);
 }
 
 pub fn verifyExecutableScriptsDetailed(
@@ -392,6 +410,20 @@ pub fn verifyPrevoutSpend(
     unlocking_script: Script,
 ) Error!bool {
     return verifyExecutableScripts(
+        ExecutionContext.forPrevoutSpend(allocator, tx, input_index, previous_output),
+        unlocking_script,
+        previous_output.locking_script,
+    );
+}
+
+pub fn verifyPrevoutSpendOutcome(
+    allocator: std.mem.Allocator,
+    tx: *const Transaction,
+    input_index: usize,
+    previous_output: Output,
+    unlocking_script: Script,
+) VerificationOutcome {
+    return verifyExecutableScriptsOutcome(
         ExecutionContext.forPrevoutSpend(allocator, tx, input_index, previous_output),
         unlocking_script,
         previous_output.locking_script,
@@ -493,6 +525,19 @@ test "thread verifyScriptsDetailed reports final false results without throwing"
     try std.testing.expectEqual(VerificationTerminal.false_result, result.terminal);
     try std.testing.expectEqual(ScriptPhase.final, result.phase);
     try std.testing.expectEqual(@as(?Error, null), result.script_error);
+}
+
+test "thread verifyScriptsOutcome collapses owned detailed results" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectEqualDeep(
+        VerificationOutcome.false_result,
+        verifyScriptsOutcome(
+            .{ .allocator = allocator },
+            Script.init(&[_]u8{}),
+            Script.init(&[_]u8{@intFromEnum(@import("opcode.zig").Opcode.OP_0)}),
+        ),
+    );
 }
 
 test "thread verifyScriptsDetailed reports script errors with owned state" {
@@ -609,4 +654,41 @@ test "thread verifyPrevoutSpendDetailed uses previous output directly" {
 
     try std.testing.expectEqual(VerificationTerminal.false_result, result.terminal);
     try std.testing.expectEqual(ScriptPhase.final, result.phase);
+}
+
+test "thread verifyPrevoutSpendOutcome exposes compact results directly" {
+    const allocator = std.testing.allocator;
+    var tx = Transaction{
+        .version = 2,
+        .inputs = &[_]@import("../transaction/input.zig").Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = Script.init(&[_]u8{}),
+                .sequence = 0xffff_ffff,
+            },
+        },
+        .outputs = &[_]Output{
+            .{
+                .satoshis = 1,
+                .locking_script = Script.init(&[_]u8{
+                    @intFromEnum(@import("opcode.zig").Opcode.OP_0),
+                }),
+            },
+        },
+        .lock_time = 0,
+    };
+
+    try std.testing.expectEqualDeep(
+        VerificationOutcome.false_result,
+        verifyPrevoutSpendOutcome(
+            allocator,
+            &tx,
+            0,
+            tx.outputs[0],
+            tx.inputs[0].unlocking_script,
+        ),
+    );
 }
