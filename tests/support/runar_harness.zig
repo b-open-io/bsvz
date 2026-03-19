@@ -35,20 +35,6 @@ pub fn verificationOutcome(result: bsvz.script.thread.Error!bool) VerificationOu
     return bsvz.script.thread.verificationOutcome(result);
 }
 
-pub fn verificationOutcomeDetailed(
-    allocator: std.mem.Allocator,
-    detailed_result: VerificationResult,
-) VerificationOutcome {
-    var result = detailed_result;
-    defer result.deinit(allocator);
-
-    return switch (result.terminal) {
-        .success => .success,
-        .false_result => .false_result,
-        .script_error => .{ .script_error = result.script_error.? },
-    };
-}
-
 pub fn runCaseDetailed(allocator: std.mem.Allocator, case: Case) !VerificationResult {
     var arena_state = std.heap.ArenaAllocator.init(allocator);
     errdefer arena_state.deinit();
@@ -186,7 +172,8 @@ pub fn runCaseTraced(allocator: std.mem.Allocator, case: Case) !TracedVerificati
 }
 
 pub fn runCaseOutcome(allocator: std.mem.Allocator, case: Case) !VerificationOutcome {
-    return verificationOutcomeDetailed(allocator, try runCaseDetailed(allocator, case));
+    var result = try runCaseDetailed(allocator, case);
+    return result.deinitToOutcome(allocator);
 }
 
 pub fn runCase(allocator: std.mem.Allocator, case: Case) !bool {

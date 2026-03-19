@@ -1559,11 +1559,12 @@ fn verifyInputAgainstOutputOutcome(
         spend_input_index,
         previous_output,
     );
-    return harness.verificationOutcomeDetailed(allocator, bsvz.script.thread.verifyExecutableScriptsDetailed(
+    var result = bsvz.script.thread.verifyExecutableScriptsDetailed(
         exec_ctx,
         Script.init(unlocking_script.bytes),
         locking_script,
-    ));
+    );
+    return result.deinitToOutcome(allocator);
 }
 
 fn verifyInputAgainstOutput(

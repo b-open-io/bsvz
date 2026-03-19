@@ -22,6 +22,17 @@ pub const VerificationOutcome = union(enum) {
     pub fn ok(self: VerificationOutcome) bool {
         return self == .success;
     }
+
+    pub fn label(self: VerificationOutcome) []const u8 {
+        return @tagName(self);
+    }
+
+    pub fn writeDebug(self: VerificationOutcome, writer: anytype) !void {
+        switch (self) {
+            .success, .false_result => try writer.writeAll(self.label()),
+            .script_error => |err| try writer.print("{s}({})", .{ self.label(), err }),
+        }
+    }
 };
 
 pub const VerificationResult = struct {
@@ -46,6 +57,11 @@ pub const VerificationResult = struct {
             .false_result => .false_result,
             .script_error => .{ .script_error = self.script_error.? },
         };
+    }
+
+    pub fn deinitToOutcome(self: *VerificationResult, allocator: std.mem.Allocator) VerificationOutcome {
+        defer self.deinit(allocator);
+        return self.outcome();
     }
 
     pub fn writeDebug(self: VerificationResult, writer: anytype) !void {
@@ -103,6 +119,11 @@ pub const TracedVerificationResult = struct {
 
     pub fn outcome(self: TracedVerificationResult) VerificationOutcome {
         return self.result.outcome();
+    }
+
+    pub fn deinitToOutcome(self: *TracedVerificationResult, allocator: std.mem.Allocator) VerificationOutcome {
+        defer self.deinit(allocator);
+        return self.outcome();
     }
 
     pub fn writeDebug(self: TracedVerificationResult, writer: anytype) !void {
@@ -543,6 +564,13 @@ test "thread verificationOutcome maps legacy bool-or-error results" {
         VerificationOutcome{ .script_error = error.CleanStack },
         verificationOutcome(@as(Error!bool, error.CleanStack)),
     );
+
+    var rendered: std.ArrayListUnmanaged(u8) = .empty;
+    defer rendered.deinit(std.testing.allocator);
+    const outcome = VerificationOutcome{ .script_error = error.CleanStack };
+    try outcome.writeDebug(rendered.writer(std.testing.allocator));
+    try std.testing.expect(std.mem.indexOf(u8, rendered.items, "script_error(") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered.items, "CleanStack") != null);
 }
 
 test "thread verifyPrevoutSpendDetailed uses previous output directly" {
