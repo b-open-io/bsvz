@@ -150,6 +150,119 @@ test "go direct parser rows: op_return tail scanning and result shapes" {
     try runRows(allocator, post_genesis_flags, &post_genesis_rows);
 }
 
+test "go direct parser rows: compact if return tail families" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    const legacy_rows = [_]GoRow{
+        .{
+            .row = 91,
+            .name = "row 91 if five return errors before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556a",
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .row = 97,
+            .name = "row 97 if five return bad opcode tail errors before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556aba",
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .row = 101,
+            .name = "row 101 if five return bad opcode endif errors before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556aba68",
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .row = 107,
+            .name = "row 107 if return endif then return bad opcode still errors before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a686aba",
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .row = 117,
+            .name = "row 117 if return endif if still errors before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "636a6863",
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .row = 119,
+            .name = "row 119 bare bad opcode still errors before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "ba",
+            .expected = .{ .err = error.UnknownOpcode },
+        },
+        .{
+            .row = 120,
+            .name = "row 120 bare return bad opcode still errors before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "6aba",
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .row = 121,
+            .name = "row 121 untaken if return bad opcode endif trailing five succeeds before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636aba6855",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 122,
+            .name = "row 122 if five return bad opcode endif trailing five still errors before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556aba6855",
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+    };
+
+    const post_genesis_rows = [_]GoRow{
+        .{
+            .row = 92,
+            .name = "row 92 if five return is unbalanced after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556a",
+            .expected = .{ .err = error.UnbalancedConditionals },
+        },
+        .{
+            .row = 98,
+            .name = "row 98 if five return bad opcode tail is unbalanced after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556aba",
+            .expected = .{ .err = error.UnbalancedConditionals },
+        },
+        .{
+            .row = 102,
+            .name = "row 102 if five return bad opcode endif succeeds after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556aba68",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 108,
+            .name = "row 108 if return endif then return bad opcode yields false after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "636a686aba",
+            .expected = .{ .success = false },
+        },
+        .{
+            .row = 118,
+            .name = "row 118 if return endif if is unbalanced after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "636a6863",
+            .expected = .{ .err = error.UnbalancedConditionals },
+        },
+    };
+
+    try runRows(allocator, legacy_flags, &legacy_rows);
+    try runRows(allocator, post_genesis_flags, &post_genesis_rows);
+}
+
 test "go direct parser rows: pushdata equivalence forms" {
     const allocator = std.testing.allocator;
     const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
