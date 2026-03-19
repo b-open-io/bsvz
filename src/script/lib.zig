@@ -17,6 +17,7 @@ pub const cat = bytes.cat;
 pub const substr = bytes.substr;
 pub const findStateSeparatorOpReturnOffset = bytes.findStateSeparatorOpReturnOffset;
 pub const executableCodePart = bytes.executableCodePart;
+pub const validate = parser.validate;
 
 pub const templates = struct {
     pub const p2pkh = @import("templates/p2pkh.zig");

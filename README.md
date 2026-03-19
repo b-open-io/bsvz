@@ -182,7 +182,7 @@ This is the current interpreter map for `bsvz.script`.
 | Push-only and script inspection helpers | implemented | `isPushOnly`, `hasCodeSeparator`, top-level `OP_RETURN` tail handling, and push-only seam behavior |
 | Execution core | implemented | stack, altstack, condition stack, truthiness, op counting, stack limits |
 | Control flow | implemented | `IF`, `NOTIF`, `ELSE`, `ENDIF`, `VERIFY`, legacy vs post-Genesis multi-`ELSE` behavior, post-Genesis `OP_RETURN`, `CODESEPARATOR` |
-| Stack ops | broad coverage | includes `DUP`, `DROP`, `SWAP`, `ROT`, `ROLL`, `PICK`, `2DUP`, `2DROP`, `2OVER`, `2ROT`, `2SWAP`, `3DUP`, `IFDUP`, `TOALTSTACK`, `FROMALTSTACK` |
+| Stack ops | complete | exact stack-shape, underflow, altstack, pair-rotation, and stack-index lanes cover `DUP`, `DROP`, `SWAP`, `ROT`, `ROLL`, `PICK`, `2DUP`, `2DROP`, `2OVER`, `2ROT`, `2SWAP`, `3DUP`, `IFDUP`, `TOALTSTACK`, `FROMALTSTACK`, and `TUCK` |
 | Byte/splice ops | broad coverage | `CAT`, `SPLIT`, `NUM2BIN`, `BIN2NUM`, `SIZE` |
 | Bitwise ops | implemented | `INVERT`, `AND`, `OR`, `XOR`, `LSHIFT`, `RSHIFT` |
 | Numeric and boolean ops | broad coverage | `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, comparisons, min/max, within, boolean logic |
@@ -223,6 +223,9 @@ The repo now includes two interpreter benchmark harnesses:
 - `cd benchmarks/go_sdk && GOCACHE=/tmp/go-build-bsvz go test -run '^$' -bench . -benchmem`
   - runs [benchmarks/go_sdk/script_engine_bench_test.go](/Users/satchmo/code/bsvz/benchmarks/go_sdk/script_engine_bench_test.go)
   - measures the local `go-sdk` interpreter against comparable workload families
+- `cd ../bsvz-autotrainer && bun bench:pipe`
+  - runs the live-corpus transaction pipeline benchmark against the sibling `bsvz-autotrainer` harness
+  - measures end-to-end NDJSON ingest, tx decoding/parsing, script validation, and prevout spend verification against the local Go comparison binary
 
 Current benchmark shape:
 
@@ -260,6 +263,20 @@ Useful local diagnostics for `bsvz` on the same machine:
 - P2PKH secp verify only: ~179.9 us/op
 - P2PKH verify (synthetic fixture): ~208.7 us/op
 - downstream compiled-script workload (`runar arithmetic verify`): ~0.55 us/op in `bsvz` vs ~19.7 us/op in `go-sdk`
+
+Live corpus baseline from `bsvz-autotrainer` on the same machine:
+
+| Workload | `bsvz` | `go-sdk` |
+| --- | --- | --- |
+| JungleBus-style corpus wall clock | ~1720 ms | ~1851 ms |
+| tx throughput | ~1907 tx/s | ~1772 tx/s |
+| parse+spend throughput | ~13121 ops/s | ~12194 ops/s |
+
+Final measured phase split on that corpus:
+
+- `json_dom_ms`: `bsvz` ~492 ms vs `go-sdk` ~517 ms
+- `tx_hex_ms`: `bsvz` ~38 ms vs `go-sdk` ~59 ms
+- `spend_verify_ms`: `bsvz` ~1146 ms vs `go-sdk` ~1224 ms
 
 That split matters because it shows the remaining cost is concentrated in secp verification, not the script engine or sighash path. `bsvz` now uses a secp256k1 double-base verification fast path built on Zig stdlib curve primitives, which is what moved full P2PKH verification from roughly ~433 us/op down to ~199 us/op.
 

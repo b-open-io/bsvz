@@ -584,6 +584,55 @@ test "go direct stack rows: safe underflow subset" {
     });
 }
 
+test "go local stack rows: multi-item underflows beat trailing success pushes" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "toaltstack underflows before a trailing true push can recover",
+            .unlocking_hex = "",
+            .locking_hex = "6b51",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "twodrop underflows on an empty stack before a trailing true push",
+            .unlocking_hex = "",
+            .locking_hex = "6d51",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "threedup underflows with two items before a trailing true push",
+            .unlocking_hex = "5151",
+            .locking_hex = "6f51",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "twoover underflows with three items before a trailing true push",
+            .unlocking_hex = "515151",
+            .locking_hex = "7051",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "tworot underflows with five items before a trailing true push",
+            .unlocking_hex = "5151515151",
+            .locking_hex = "7151",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "twoswap underflows with three items before a trailing true push",
+            .unlocking_hex = "515151",
+            .locking_hex = "7251",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "rot underflows with two items before a trailing true push",
+            .unlocking_hex = "5151",
+            .locking_hex = "7b51",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+    });
+}
+
 test "go row 774: tuck leaves a false top item after exact cleanup" {
     const allocator = std.testing.allocator;
 

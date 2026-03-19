@@ -132,12 +132,10 @@ test "go direct script rows: bin2num parity" {
         @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
     });
     defer allocator.free(one_hex);
-    try harness.runCase(allocator, .{
-        .name = "go row 824: bin2num underflows on empty stack",
-        .unlocking_hex = "",
-        .locking_hex = "810087",
-        .flags = flags,
-        .expected = .{ .err = error.StackUnderflow },
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .name = "go row 1010: bin2num underflows on empty stack", .unlocking_hex = "", .locking_hex = "810087", .expected = .{ .err = error.StackUnderflow } },
+        .{ .name = "go row 1032: bin2num retains significant zero bytes for intermediate positive values", .unlocking_hex = significant_zero_hex, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1033: bin2num retains significant zero bytes for intermediate negative values", .unlocking_hex = significant_zero_negative_hex, .locking_hex = "", .expected = .{ .success = true } },
     });
 
     try harness.runCase(allocator, .{
@@ -227,14 +225,14 @@ test "go direct script rows: bin2num canonical rows" {
     defer allocator.free(noncanonical_neg_max_case);
 
     try runRows(allocator, flags, &[_]GoRow{
-        .{ .name = "go row 825: bin2num canonical zero stays zero", .unlocking_hex = zero_case, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 826: bin2num canonical one-byte positive stays one", .unlocking_hex = one_case, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 827: bin2num canonical negative forty-two stays negative forty-two", .unlocking_hex = neg42_case, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 828: bin2num non-canonical zero still decodes to zero", .unlocking_hex = noncanonical_zero_case, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 829: bin2num canonical max int32 stays max int32", .unlocking_hex = max_i32_case, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 830: bin2num canonical negative max int32 stays negative max int32", .unlocking_hex = neg_max_i32_case, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 831: bin2num rejects oversized positive max int32 encoding", .unlocking_hex = oversized_max_case, .locking_hex = "", .expected = .{ .err = error.NumberTooBig } },
-        .{ .name = "go row 832: bin2num accepts non-canonical negative max int32 encoding", .unlocking_hex = noncanonical_neg_max_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1011: bin2num canonical zero stays zero", .unlocking_hex = zero_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1012: bin2num canonical one-byte positive stays one", .unlocking_hex = one_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1013: bin2num canonical negative forty-two stays negative forty-two", .unlocking_hex = neg42_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1014: bin2num non-canonical zero still decodes to zero", .unlocking_hex = noncanonical_zero_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1015: bin2num canonical max int32 stays max int32", .unlocking_hex = max_i32_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1016: bin2num canonical negative max int32 stays negative max int32", .unlocking_hex = neg_max_i32_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1017: bin2num rejects oversized positive max int32 encoding", .unlocking_hex = oversized_max_case, .locking_hex = "", .expected = .{ .err = error.NumberTooBig } },
+        .{ .name = "go row 1018: bin2num accepts non-canonical negative max int32 encoding", .unlocking_hex = noncanonical_neg_max_case, .locking_hex = "", .expected = .{ .success = true } },
     });
 }
 
@@ -368,19 +366,19 @@ test "go direct script rows: bin2num exact corpus rows" {
     defer allocator.free(row845);
 
     try runRows(allocator, flags, &[_]GoRow{
-        .{ .name = "go row 833: bin2num normalizes positive one with trailing zeros", .unlocking_hex = row833, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 834: bin2num normalizes positive two hundred fifty four with trailing zeros", .unlocking_hex = row834, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 835: bin2num relocates sign bit for negative five", .unlocking_hex = row835, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 836: bin2num retains padding when msb is set for positive one hundred twenty eight", .unlocking_hex = row836, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 837: bin2num retains padding when msb is set for negative one hundred twenty eight", .unlocking_hex = row837, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 838: bin2num canonical two-byte positive one hundred twenty eight stays positive", .unlocking_hex = row838, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 839: bin2num canonical two-byte negative one hundred twenty eight stays negative", .unlocking_hex = row839, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 840: bin2num trims unnecessary positive padding when msb is not set", .unlocking_hex = row840, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 841: bin2num trims unnecessary negative padding when msb is not set", .unlocking_hex = row841, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 842: bin2num canonical two-byte positive fifteen stays positive", .unlocking_hex = row842, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 843: bin2num canonical two-byte negative fifteen stays negative", .unlocking_hex = row843, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 844: bin2num retains significant zero bytes for large positive values", .unlocking_hex = row844, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 845: bin2num retains significant zero bytes for large negative values", .unlocking_hex = row845, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1019: bin2num normalizes positive one with trailing zeros", .unlocking_hex = row833, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1020: bin2num normalizes positive two hundred fifty four with trailing zeros", .unlocking_hex = row834, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1021: bin2num relocates sign bit for negative five", .unlocking_hex = row835, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1022: bin2num retains padding when msb is set for positive one hundred twenty eight", .unlocking_hex = row836, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1023: bin2num retains padding when msb is set for negative one hundred twenty eight", .unlocking_hex = row837, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1024: bin2num canonical two-byte positive one hundred twenty eight stays positive", .unlocking_hex = row838, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1025: bin2num canonical two-byte negative one hundred twenty eight stays negative", .unlocking_hex = row839, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1026: bin2num trims unnecessary positive padding when msb is not set", .unlocking_hex = row840, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1027: bin2num trims unnecessary negative padding when msb is not set", .unlocking_hex = row841, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1028: bin2num canonical two-byte positive fifteen stays positive", .unlocking_hex = row842, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1029: bin2num canonical two-byte negative fifteen stays negative", .unlocking_hex = row843, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1030: bin2num retains significant zero bytes for large positive values", .unlocking_hex = row844, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1031: bin2num retains significant zero bytes for large negative values", .unlocking_hex = row845, .locking_hex = "", .expected = .{ .success = true } },
     });
 }
 
@@ -519,35 +517,21 @@ test "go direct script rows: num2bin parity" {
     });
     defer allocator.free(neg_zero_three);
 
-    try harness.runCase(allocator, .{
-        .name = "go row 808: num2bin underflows on empty stack",
-        .unlocking_hex = "",
-        .locking_hex = "800087",
-        .flags = flags,
-        .expected = .{ .err = error.StackUnderflow },
-    });
-
-    try harness.runCase(allocator, .{
-        .name = "go row 809: num2bin underflows with one parameter",
-        .unlocking_hex = "00",
-        .locking_hex = "800087",
-        .flags = flags,
-        .expected = .{ .err = error.StackUnderflow },
-    });
-
     try runRows(allocator, flags, &[_]GoRow{
-        .{ .name = "go row 810: num2bin canonical zero at size zero stays empty", .unlocking_hex = zero_zero, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 811: num2bin zero-extends zero to one byte", .unlocking_hex = zero_one, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 812: num2bin zero-extends zero to seven bytes", .unlocking_hex = zero_seven, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 813: num2bin canonical one at size one stays one", .unlocking_hex = one_one, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 814: num2bin canonical negative forty-two at size one stays canonical", .unlocking_hex = neg42_one, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 815: num2bin canonical negative forty-two at size two extends sign", .unlocking_hex = neg42_two, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 816: num2bin canonical negative forty-two at size ten materializes padding", .unlocking_hex = neg42_ten, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 817: num2bin allows pushing exactly five hundred twenty bytes", .unlocking_hex = neg42_520, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 818: num2bin rejects pushing five hundred twenty one bytes", .unlocking_hex = neg42_521, .locking_hex = "", .expected = .{ .err = error.NumberTooBig } },
-        .{ .row = 819, .name = "go row 819: num2bin rejects negative sizes", .unlocking_hex = neg42_neg3, .locking_hex = "", .expected = .{ .err = error.NumberTooBig } },
-        .{ .name = "go row 820: num2bin shrinks value bytes while preserving sign bit", .unlocking_hex = shrink_case, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 821: num2bin normalizes negative zero to empty at size zero", .unlocking_hex = neg_zero_zero, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .name = "go row 822: num2bin normalizes negative zero to zero bytes at larger size", .unlocking_hex = neg_zero_three, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 993: num2bin underflows on empty stack", .unlocking_hex = "", .locking_hex = "800087", .expected = .{ .err = error.StackUnderflow } },
+        .{ .name = "go row 994: num2bin underflows with one parameter", .unlocking_hex = "00", .locking_hex = "800087", .expected = .{ .err = error.StackUnderflow } },
+        .{ .name = "go row 995: num2bin canonical zero at size zero stays empty", .unlocking_hex = zero_zero, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 996: num2bin zero-extends zero to one byte", .unlocking_hex = zero_one, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 997: num2bin zero-extends zero to seven bytes", .unlocking_hex = zero_seven, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 998: num2bin canonical one at size one stays one", .unlocking_hex = one_one, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 999: num2bin canonical negative forty-two at size one stays canonical", .unlocking_hex = neg42_one, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1000: num2bin canonical negative forty-two at size two extends sign", .unlocking_hex = neg42_two, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1001: num2bin canonical negative forty-two at size ten materializes padding", .unlocking_hex = neg42_ten, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1002: num2bin allows pushing exactly five hundred twenty bytes", .unlocking_hex = neg42_520, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1003: num2bin rejects pushing five hundred twenty one bytes", .unlocking_hex = neg42_521, .locking_hex = "", .expected = .{ .err = error.NumberTooBig } },
+        .{ .name = "go row 819: num2bin rejects negative sizes", .unlocking_hex = neg42_neg3, .locking_hex = "", .expected = .{ .err = error.NumberTooBig } },
+        .{ .name = "go row 1005: num2bin shrinks value bytes while preserving sign bit", .unlocking_hex = shrink_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1006: num2bin normalizes negative zero to empty at size zero", .unlocking_hex = neg_zero_zero, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 1007: num2bin normalizes negative zero to zero bytes at larger size", .unlocking_hex = neg_zero_three, .locking_hex = "", .expected = .{ .success = true } },
     });
 }

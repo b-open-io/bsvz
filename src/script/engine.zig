@@ -1994,6 +1994,250 @@ test "engine supports altstack and deep stack access opcodes" {
     try std.testing.expect(deep_stack_result.success);
 }
 
+fn appendEncodedPushForTest(
+    allocator: std.mem.Allocator,
+    bytes: *std.ArrayListUnmanaged(u8),
+    item: []const u8,
+) !void {
+    const push = try encodePushDataElement(allocator, item);
+    defer allocator.free(push);
+    try bytes.appendSlice(allocator, push);
+}
+
+fn executeLockingScriptToStateForTest(
+    allocator: std.mem.Allocator,
+    script_bytes: []const u8,
+) !ExecutionState {
+    var state: ExecutionState = .{};
+    errdefer state.deinit(allocator);
+    try executeLockingScript(.{ .allocator = allocator }, &state, Script.init(script_bytes));
+    return state;
+}
+
+fn expectExactStackItems(
+    actual: []const []u8,
+    expected: []const []const u8,
+) !void {
+    try std.testing.expectEqual(expected.len, actual.len);
+    for (expected, actual) |want, got| {
+        try std.testing.expectEqualSlices(u8, want, got);
+    }
+}
+
+test "engine stack copy and permutation opcodes preserve exact byte order" {
+    const allocator = std.testing.allocator;
+
+    const empty = "";
+    const negzero = &[_]u8{0x80};
+    const a = &[_]u8{0xaa};
+    const b = &[_]u8{0xbb};
+    const c = &[_]u8{0xcc};
+    const d = &[_]u8{0xdd};
+    const e = &[_]u8{0xee};
+    const f = &[_]u8{0xff};
+    const depth_two = &[_]u8{0x02};
+
+    const Case = struct {
+        name: []const u8,
+        initial: []const []const u8,
+        ops: []const opcode.Opcode,
+        expected_stack: []const []const u8,
+        expected_alt_stack: []const []const u8 = &.{},
+    };
+
+    const cases = [_]Case{
+        .{
+            .name = "toaltstack moves the top item to altstack",
+            .initial = &.{ a, b },
+            .ops = &.{.OP_TOALTSTACK},
+            .expected_stack = &.{a},
+            .expected_alt_stack = &.{b},
+        },
+        .{
+            .name = "fromaltstack restores the hidden top item",
+            .initial = &.{ a, b },
+            .ops = &.{ .OP_TOALTSTACK, .OP_FROMALTSTACK },
+            .expected_stack = &.{ a, b },
+        },
+        .{
+            .name = "2drop removes the top pair",
+            .initial = &.{ a, b, c },
+            .ops = &.{.OP_2DROP},
+            .expected_stack = &.{a},
+        },
+        .{
+            .name = "2dup copies the top pair in order",
+            .initial = &.{ a, b },
+            .ops = &.{.OP_2DUP},
+            .expected_stack = &.{ a, b, a, b },
+        },
+        .{
+            .name = "3dup copies the top triple in order",
+            .initial = &.{ a, b, c },
+            .ops = &.{.OP_3DUP},
+            .expected_stack = &.{ a, b, c, a, b, c },
+        },
+        .{
+            .name = "2over copies the lower pair to the top",
+            .initial = &.{ a, b, c, d },
+            .ops = &.{.OP_2OVER},
+            .expected_stack = &.{ a, b, c, d, a, b },
+        },
+        .{
+            .name = "2rot rotates the deepest pair to the top",
+            .initial = &.{ a, b, c, d, e, f },
+            .ops = &.{.OP_2ROT},
+            .expected_stack = &.{ c, d, e, f, a, b },
+        },
+        .{
+            .name = "2swap exchanges the top two pairs",
+            .initial = &.{ a, b, c, d },
+            .ops = &.{.OP_2SWAP},
+            .expected_stack = &.{ c, d, a, b },
+        },
+        .{
+            .name = "ifdup duplicates a truthy element",
+            .initial = &.{a},
+            .ops = &.{.OP_IFDUP},
+            .expected_stack = &.{ a, a },
+        },
+        .{
+            .name = "ifdup leaves negative zero unduplicated",
+            .initial = &.{negzero},
+            .ops = &.{.OP_IFDUP},
+            .expected_stack = &.{negzero},
+        },
+        .{
+            .name = "ifdup leaves the empty vector unduplicated",
+            .initial = &.{empty},
+            .ops = &.{.OP_IFDUP},
+            .expected_stack = &.{empty},
+        },
+        .{
+            .name = "depth appends the current stack depth",
+            .initial = &.{ a, b },
+            .ops = &.{.OP_DEPTH},
+            .expected_stack = &.{ a, b, depth_two },
+        },
+        .{
+            .name = "drop removes the top item",
+            .initial = &.{ a, b },
+            .ops = &.{.OP_DROP},
+            .expected_stack = &.{a},
+        },
+        .{
+            .name = "dup copies the top item",
+            .initial = &.{a},
+            .ops = &.{.OP_DUP},
+            .expected_stack = &.{ a, a },
+        },
+        .{
+            .name = "nip removes the second item from the top",
+            .initial = &.{ a, b },
+            .ops = &.{.OP_NIP},
+            .expected_stack = &.{b},
+        },
+        .{
+            .name = "over copies the second item to the top",
+            .initial = &.{ a, b },
+            .ops = &.{.OP_OVER},
+            .expected_stack = &.{ a, b, a },
+        },
+        .{
+            .name = "rot moves the third item to the top",
+            .initial = &.{ a, b, c },
+            .ops = &.{.OP_ROT},
+            .expected_stack = &.{ b, c, a },
+        },
+        .{
+            .name = "swap exchanges the top two items",
+            .initial = &.{ a, b },
+            .ops = &.{.OP_SWAP},
+            .expected_stack = &.{ b, a },
+        },
+        .{
+            .name = "tuck copies the top item below the second item",
+            .initial = &.{ a, b },
+            .ops = &.{.OP_TUCK},
+            .expected_stack = &.{ b, a, b },
+        },
+    };
+
+    for (cases) |case| {
+        var script_bytes: std.ArrayListUnmanaged(u8) = .empty;
+        defer script_bytes.deinit(allocator);
+
+        for (case.initial) |item| {
+            try appendEncodedPushForTest(allocator, &script_bytes, item);
+        }
+        for (case.ops) |op| {
+            try script_bytes.append(allocator, @intFromEnum(op));
+        }
+
+        var state = try executeLockingScriptToStateForTest(allocator, script_bytes.items);
+        defer state.deinit(allocator);
+
+        try expectExactStackItems(state.stack.items, case.expected_stack);
+        try expectExactStackItems(state.alt_stack.items, case.expected_alt_stack);
+    }
+}
+
+test "engine stack opcodes fail at the exact underflow boundary" {
+    const allocator = std.testing.allocator;
+
+    const a = &[_]u8{0xaa};
+    const b = &[_]u8{0xbb};
+    const c = &[_]u8{0xcc};
+    const d = &[_]u8{0xdd};
+    const e = &[_]u8{0xee};
+
+    const Case = struct {
+        name: []const u8,
+        initial: []const []const u8,
+        ops: []const opcode.Opcode,
+        expected_err: anyerror,
+    };
+
+    const cases = [_]Case{
+        .{ .name = "toaltstack requires one item", .initial = &.{}, .ops = &.{.OP_TOALTSTACK}, .expected_err = error.StackUnderflow },
+        .{ .name = "fromaltstack requires a hidden alt item", .initial = &.{}, .ops = &.{.OP_FROMALTSTACK}, .expected_err = error.AltStackUnderflow },
+        .{ .name = "2drop requires two items", .initial = &.{a}, .ops = &.{.OP_2DROP}, .expected_err = error.StackUnderflow },
+        .{ .name = "2dup requires two items", .initial = &.{a}, .ops = &.{.OP_2DUP}, .expected_err = error.StackUnderflow },
+        .{ .name = "3dup requires three items", .initial = &.{ a, b }, .ops = &.{.OP_3DUP}, .expected_err = error.StackUnderflow },
+        .{ .name = "2over requires four items", .initial = &.{ a, b, c }, .ops = &.{.OP_2OVER}, .expected_err = error.StackUnderflow },
+        .{ .name = "2rot requires six items", .initial = &.{ a, b, c, d, e }, .ops = &.{.OP_2ROT}, .expected_err = error.StackUnderflow },
+        .{ .name = "2swap requires four items", .initial = &.{ a, b, c }, .ops = &.{.OP_2SWAP}, .expected_err = error.StackUnderflow },
+        .{ .name = "ifdup requires one item", .initial = &.{}, .ops = &.{.OP_IFDUP}, .expected_err = error.StackUnderflow },
+        .{ .name = "drop requires one item", .initial = &.{}, .ops = &.{.OP_DROP}, .expected_err = error.StackUnderflow },
+        .{ .name = "dup requires one item", .initial = &.{}, .ops = &.{.OP_DUP}, .expected_err = error.StackUnderflow },
+        .{ .name = "nip requires two items", .initial = &.{a}, .ops = &.{.OP_NIP}, .expected_err = error.StackUnderflow },
+        .{ .name = "over requires two items", .initial = &.{a}, .ops = &.{.OP_OVER}, .expected_err = error.StackUnderflow },
+        .{ .name = "rot requires three items", .initial = &.{ a, b }, .ops = &.{.OP_ROT}, .expected_err = error.StackUnderflow },
+        .{ .name = "swap requires two items", .initial = &.{a}, .ops = &.{.OP_SWAP}, .expected_err = error.StackUnderflow },
+        .{ .name = "tuck requires two items", .initial = &.{a}, .ops = &.{.OP_TUCK}, .expected_err = error.StackUnderflow },
+    };
+
+    for (cases) |case| {
+        var script_bytes: std.ArrayListUnmanaged(u8) = .empty;
+        defer script_bytes.deinit(allocator);
+
+        for (case.initial) |item| {
+            try appendEncodedPushForTest(allocator, &script_bytes, item);
+        }
+        for (case.ops) |op| {
+            try script_bytes.append(allocator, @intFromEnum(op));
+        }
+
+        var state: ExecutionState = .{};
+        defer state.deinit(allocator);
+        try std.testing.expectError(case.expected_err, executeLockingScript(
+            .{ .allocator = allocator },
+            &state,
+            Script.init(script_bytes.items),
+        ));
+    }
+}
+
 test "engine verifies 2-of-2 checksig ordering with checkmultisig" {
     const allocator = std.testing.allocator;
 

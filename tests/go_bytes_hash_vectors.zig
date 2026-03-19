@@ -166,7 +166,7 @@ test "go direct script rows: cat parity" {
         .{ .row = 941, .name = "cat underflows with one parameter", .unlocking_hex = "0161", .locking_hex = "7e0087", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 942, .name = "cat concatenates two payloads", .unlocking_hex = "04616263640465666768", .locking_hex = "7e08616263646566676887", .expected = .{ .success = true } },
         .{ .row = 943, .name = "cat keeps two empty strings empty", .unlocking_hex = "0000", .locking_hex = "7e0087", .expected = .{ .success = true } },
-        .{ .name = "cat with empty string on the right keeps left", .unlocking_hex = "0361626300", .locking_hex = "7e0361626387", .expected = .{ .success = true } },
+        .{ .name = "go row 944: cat with empty string on the right keeps left", .unlocking_hex = "0361626300", .locking_hex = "7e0361626387", .expected = .{ .success = true } },
         .{ .row = 945, .name = "cat with empty string on the left keeps right", .unlocking_hex = "0003646566", .locking_hex = "7e0364656687", .expected = .{ .success = true } },
     });
 }
@@ -549,23 +549,23 @@ test "go direct script rows: exact hash vectors" {
     defer allocator.free(dup_hash256_swap_sha256_sha256_equal);
 
     try runRows(allocator, flags, &[_]GoRow{
-        .{ .row = 325, .name = "go row 325: ripemd160 of empty string", .unlocking_hex = "00", .locking_hex = ripemd160_eq_empty, .expected = .{ .success = true } },
-        .{ .row = 326, .name = "go row 326: ripemd160 of a", .unlocking_hex = "0161", .locking_hex = ripemd160_eq_a, .expected = .{ .success = true } },
-        .{ .row = 327, .name = "go row 327: ripemd160 of alphabet", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = ripemd160_eq_alpha, .expected = .{ .success = true } },
-        .{ .row = 328, .name = "go row 328: sha1 of empty string", .unlocking_hex = "00", .locking_hex = sha1_eq_empty, .expected = .{ .success = true } },
-        .{ .row = 329, .name = "go row 329: sha1 of a", .unlocking_hex = "0161", .locking_hex = sha1_eq_a, .expected = .{ .success = true } },
-        .{ .row = 330, .name = "go row 330: sha1 of alphabet", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = sha1_eq_alpha, .expected = .{ .success = true } },
-        .{ .row = 331, .name = "go row 331: sha256 of empty string", .unlocking_hex = "00", .locking_hex = sha256_eq_empty, .expected = .{ .success = true } },
-        .{ .row = 332, .name = "go row 332: sha256 of a", .unlocking_hex = "0161", .locking_hex = sha256_eq_a, .expected = .{ .success = true } },
-        .{ .row = 333, .name = "go row 333: sha256 of alphabet", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = sha256_eq_alpha, .expected = .{ .success = true } },
-        .{ .row = 334, .name = "go row 334: hash160 matches sha256 then ripemd160", .unlocking_hex = "00", .locking_hex = dup_hash160_swap_sha256_ripemd160_equal, .expected = .{ .success = true } },
-        .{ .row = 335, .name = "go row 335: hash256 matches double sha256", .unlocking_hex = "00", .locking_hex = dup_hash256_swap_sha256_sha256_equal, .expected = .{ .success = true } },
-        .{ .row = 336, .name = "go row 336: hash160 of empty string with leading nop", .unlocking_hex = "00", .locking_hex = hash160_eq_empty, .expected = .{ .success = true } },
-        .{ .row = 337, .name = "go row 337: hash160 of a with trailing nop", .unlocking_hex = "0161", .locking_hex = hash160_eq_a, .expected = .{ .success = true } },
-        .{ .row = 338, .name = "go row 338: hash160 of alphabet with explicit pushdata1 digest push", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = hash160_eq_alpha, .expected = .{ .success = true } },
-        .{ .row = 339, .name = "go row 339: hash256 of empty string", .unlocking_hex = "00", .locking_hex = hash256_eq_empty, .expected = .{ .success = true } },
-        .{ .row = 340, .name = "go row 340: hash256 of a", .unlocking_hex = "0161", .locking_hex = hash256_eq_a, .expected = .{ .success = true } },
-        .{ .row = 341, .name = "go row 341: hash256 of alphabet with explicit pushdata1 digest push", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = hash256_eq_alpha, .expected = .{ .success = true } },
+        .{ .name = "local hash row: ripemd160 of empty string", .unlocking_hex = "00", .locking_hex = ripemd160_eq_empty, .expected = .{ .success = true } },
+        .{ .name = "local hash row: ripemd160 of a", .unlocking_hex = "0161", .locking_hex = ripemd160_eq_a, .expected = .{ .success = true } },
+        .{ .name = "local hash row: ripemd160 of alphabet", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = ripemd160_eq_alpha, .expected = .{ .success = true } },
+        .{ .name = "local hash row: sha1 of empty string", .unlocking_hex = "00", .locking_hex = sha1_eq_empty, .expected = .{ .success = true } },
+        .{ .name = "local hash row: sha1 of a", .unlocking_hex = "0161", .locking_hex = sha1_eq_a, .expected = .{ .success = true } },
+        .{ .name = "local hash row: sha1 of alphabet", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = sha1_eq_alpha, .expected = .{ .success = true } },
+        .{ .name = "local hash row: sha256 of empty string", .unlocking_hex = "00", .locking_hex = sha256_eq_empty, .expected = .{ .success = true } },
+        .{ .name = "local hash row: sha256 of a", .unlocking_hex = "0161", .locking_hex = sha256_eq_a, .expected = .{ .success = true } },
+        .{ .name = "local hash row: sha256 of alphabet", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = sha256_eq_alpha, .expected = .{ .success = true } },
+        .{ .name = "local hash row: hash160 matches sha256 then ripemd160", .unlocking_hex = "00", .locking_hex = dup_hash160_swap_sha256_ripemd160_equal, .expected = .{ .success = true } },
+        .{ .name = "local hash row: hash256 matches double sha256", .unlocking_hex = "00", .locking_hex = dup_hash256_swap_sha256_sha256_equal, .expected = .{ .success = true } },
+        .{ .name = "local hash row: hash160 of empty string with leading nop", .unlocking_hex = "00", .locking_hex = hash160_eq_empty, .expected = .{ .success = true } },
+        .{ .name = "local hash row: hash160 of a with trailing nop", .unlocking_hex = "0161", .locking_hex = hash160_eq_a, .expected = .{ .success = true } },
+        .{ .name = "local hash row: hash160 of alphabet with explicit pushdata1 digest push", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = hash160_eq_alpha, .expected = .{ .success = true } },
+        .{ .name = "local hash row: hash256 of empty string", .unlocking_hex = "00", .locking_hex = hash256_eq_empty, .expected = .{ .success = true } },
+        .{ .name = "local hash row: hash256 of a", .unlocking_hex = "0161", .locking_hex = hash256_eq_a, .expected = .{ .success = true } },
+        .{ .name = "local hash row: hash256 of alphabet with explicit pushdata1 digest push", .unlocking_hex = "1a6162636465666768696a6b6c6d6e6f707172737475767778797a", .locking_hex = hash256_eq_alpha, .expected = .{ .success = true } },
     });
 }
 

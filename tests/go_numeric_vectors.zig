@@ -78,11 +78,11 @@ test "go numeric rows: exact stack-shape result rows" {
     const allocator = std.testing.allocator;
 
     try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
-        .{ .name = "go row 191: ifdup over zero preserves false stack shape", .unlocking_hex = "0073", .locking_hex = "7451880087", .expected = .{ .success = true } },
-        .{ .name = "go row 192: ifdup over one duplicates true value", .unlocking_hex = "5173", .locking_hex = "74528851885187", .expected = .{ .success = true } },
-        .{ .name = "go row 194: drop over zero leaves empty depth", .unlocking_hex = "0075", .locking_hex = "740087", .expected = .{ .success = true } },
-        .{ .name = "go row 196: nip drops the second stack item", .unlocking_hex = "0051", .locking_hex = "77", .expected = .{ .success = true } },
-        .{ .name = "go row 217: swap reverses the top two items", .unlocking_hex = "5100", .locking_hex = "7c51880087", .expected = .{ .success = true } },
+        .{ .name = "ifdup over zero preserves false stack shape", .unlocking_hex = "0073", .locking_hex = "7451880087", .expected = .{ .success = true } },
+        .{ .name = "ifdup over one duplicates true value", .unlocking_hex = "5173", .locking_hex = "74528851885187", .expected = .{ .success = true } },
+        .{ .name = "drop over zero leaves empty depth", .unlocking_hex = "0075", .locking_hex = "740087", .expected = .{ .success = true } },
+        .{ .name = "nip drops the second stack item", .unlocking_hex = "0051", .locking_hex = "77", .expected = .{ .success = true } },
+        .{ .name = "swap reverses the top two items", .unlocking_hex = "5100", .locking_hex = "7c51880087", .expected = .{ .success = true } },
     });
 }
 
@@ -152,24 +152,19 @@ test "go numeric rows: exact arithmetic result rows" {
 
     try runRows(allocator, flags, &[_]GoRow{
         .{ .name = "add cancels two and negative two to zero", .unlocking_hex = row252_unlocking, .locking_hex = row252_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 253: add cancels positive and negative max int32", .unlocking_hex = "04ffffff7f04ffffffff93", .locking_hex = "0087", .expected = .{ .success = true } },
+        .{ .name = "add cancels positive and negative max int32", .unlocking_hex = "04ffffff7f04ffffffff93", .locking_hex = "0087", .expected = .{ .success = true } },
         .{ .name = "add keeps negative totals exact", .unlocking_hex = row254_unlocking, .locking_hex = row254_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 260: add then sub lands exactly on one hundred", .unlocking_hex = "016f5193010c94", .locking_hex = "016487", .expected = .{ .success = true } },
+        .{ .name = "add then sub lands exactly on one hundred", .unlocking_hex = "016f5193010c94", .locking_hex = "016487", .expected = .{ .success = true } },
         .{ .name = "abs keeps zero at zero", .unlocking_hex = "0090", .locking_hex = "0087", .expected = .{ .success = true } },
         .{ .name = "abs keeps positive sixteen unchanged", .unlocking_hex = "6090", .locking_hex = "6087", .expected = .{ .success = true } },
-        .{ .name = "go row 257: add one and one yields two", .unlocking_hex = row257_unlocking, .locking_hex = row257_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 258: 1add over one yields two", .unlocking_hex = row258_unlocking, .locking_hex = row258_locking, .expected = .{ .success = true } },
+        .{ .name = "add one and one yields two", .unlocking_hex = row257_unlocking, .locking_hex = row257_locking, .expected = .{ .success = true } },
+        .{ .name = "1add over one yields two", .unlocking_hex = row258_unlocking, .locking_hex = row258_locking, .expected = .{ .success = true } },
         .{ .name = "abs of negative sixteen matches negate oracle", .unlocking_hex = row263_unlocking, .locking_hex = row263_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 321: subtracting equal max int32 values yields zero", .unlocking_hex = row278_unlocking, .locking_hex = row278_locking, .expected = .{ .success = true } },
+        .{ .name = "subtracting equal max int32 values yields zero", .unlocking_hex = row278_unlocking, .locking_hex = row278_locking, .expected = .{ .success = true } },
         .{ .name = "duplicate add allows greater-than-32-bit equality", .unlocking_hex = row279_unlocking, .locking_hex = row279_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 323: negate duplicate add preserves large negative equality", .unlocking_hex = row280_unlocking, .locking_hex = row280_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 252: add cancels positive and negative operands", .unlocking_hex = row252_unlocking, .locking_hex = row252_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 254: add keeps negative totals exact", .unlocking_hex = row254_unlocking, .locking_hex = row254_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 259: 1sub decrements exactly", .unlocking_hex = row259_unlocking, .locking_hex = row259_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 261: abs over zero yields zero", .unlocking_hex = row261_unlocking, .locking_hex = row261_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 262: abs over positive sixteen stays positive sixteen", .unlocking_hex = row262_unlocking, .locking_hex = row262_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 263: abs matches negate of negative operand", .unlocking_hex = row263_unlocking, .locking_hex = row263_locking, .expected = .{ .success = true } },
-        .{ .name = "go row 322: dup add supports greater-than-32-bit equality", .unlocking_hex = row322_unlocking, .locking_hex = row322_locking, .expected = .{ .success = true } },
+        .{ .name = "negate duplicate add preserves large negative equality", .unlocking_hex = row280_unlocking, .locking_hex = row280_locking, .expected = .{ .success = true } },
+        .{ .name = "1sub decrements exactly", .unlocking_hex = row259_unlocking, .locking_hex = row259_locking, .expected = .{ .success = true } },
+        .{ .name = "duplicate add supports greater-than-32-bit equality via helper-built script", .unlocking_hex = row322_unlocking, .locking_hex = row322_locking, .expected = .{ .success = true } },
     });
 }
 
@@ -187,9 +182,9 @@ test "go numeric rows: exact unary arithmetic result-shape rows" {
     defer allocator.free(row527_unlocking);
 
     try runRows(allocator, flags, &[_]GoRow{
-        .{ .row = 525, .name = "go row 525: 1add over zero leaves a truthy result", .unlocking_hex = row525_unlocking, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .row = 526, .name = "go row 526: 1sub over two leaves a truthy result", .unlocking_hex = row526_unlocking, .locking_hex = "", .expected = .{ .success = true } },
-        .{ .row = 527, .name = "go row 527: negate over negative one leaves a truthy result", .unlocking_hex = row527_unlocking, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "1add over zero leaves a truthy result", .unlocking_hex = row525_unlocking, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "1sub over two leaves a truthy result", .unlocking_hex = row526_unlocking, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "negate over negative one leaves a truthy result", .unlocking_hex = row527_unlocking, .locking_hex = "", .expected = .{ .success = true } },
     });
 }
 
@@ -476,7 +471,7 @@ test "go numeric rows: exact false and overflow result rows" {
 
     try runRows(allocator, flags, &[_]GoRow{
         .{ .name = "equal not errors on empty stack", .unlocking_hex = "", .locking_hex = "8791", .expected = .{ .err = error.StackUnderflow } },
-        .{ .name = "go row 1227: equal not errors on single stack item", .unlocking_hex = "00", .locking_hex = "8791", .expected = .{ .err = error.StackUnderflow } },
+        .{ .name = "equal not errors on single stack item", .unlocking_hex = "00", .locking_hex = "8791", .expected = .{ .err = error.StackUnderflow } },
         .{ .name = "go row 1228: equal over zero and one yields false", .unlocking_hex = row1030_unlocking, .locking_hex = row1030_locking, .expected = .{ .success = false } },
         .{ .name = "go row 1229: add then equal against zero yields false", .unlocking_hex = row1031_unlocking, .locking_hex = row1031_locking, .expected = .{ .success = false } },
         .{ .name = "go row 1230: chained arithmetic equal against eleven yields false", .unlocking_hex = row1032_unlocking, .locking_hex = row1032_locking, .expected = .{ .success = false } },
@@ -495,6 +490,6 @@ test "go numeric rows: exact stack underflow result rows" {
         .{ .row = 1402, .name = "go row 1402: 2drop requires two stack items", .unlocking_hex = "51", .locking_hex = "6d51", .expected = .{ .err = error.StackUnderflow } },
         .{ .name = "nip requires two stack items", .unlocking_hex = "51", .locking_hex = "77", .expected = .{ .err = error.StackUnderflow } },
         .{ .name = "go row 1417: rot requires three stack items", .unlocking_hex = "5151", .locking_hex = "7b", .expected = .{ .err = error.StackUnderflow } },
-        .{ .row = 1419, .name = "go row 1419: tuck requires two stack items", .unlocking_hex = "51", .locking_hex = "7d", .expected = .{ .err = error.StackUnderflow } },
+        .{ .name = "tuck requires two stack items", .unlocking_hex = "51", .locking_hex = "7d", .expected = .{ .err = error.StackUnderflow } },
     });
 }

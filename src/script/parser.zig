@@ -18,9 +18,64 @@ fn updateConditionalDepth(op: Opcode, depth: *usize) bool {
     return false;
 }
 
+fn countChunks(script: Script) Error!usize {
+    var count: usize = 0;
+    var cursor: usize = 0;
+    var conditional_depth: usize = 0;
+    while (cursor < script.bytes.len) {
+        const opcode_byte = script.bytes[cursor];
+        cursor += 1;
+        const op = Opcode.fromByte(opcode_byte);
+        count += 1;
+
+        if (updateConditionalDepth(op, &conditional_depth)) return count;
+
+        if (opcode_byte >= 0x01 and opcode_byte <= 0x4b) {
+            if (script.bytes.len < cursor + opcode_byte) return error.InvalidPushData;
+            cursor += opcode_byte;
+            continue;
+        }
+
+        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA1)) {
+            if (cursor >= script.bytes.len) return error.InvalidPushData;
+            const len = script.bytes[cursor];
+            cursor += 1;
+            if (script.bytes.len < cursor + len) return error.InvalidPushData;
+            cursor += len;
+            continue;
+        }
+
+        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA2)) {
+            if (script.bytes.len < cursor + 2) return error.InvalidPushData;
+            const len = std.mem.readInt(u16, script.bytes[cursor..][0..2], .little);
+            cursor += 2;
+            if (script.bytes.len < cursor + len) return error.InvalidPushData;
+            cursor += len;
+            continue;
+        }
+
+        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA4)) {
+            if (script.bytes.len < cursor + 4) return error.InvalidPushData;
+            const len32 = std.mem.readInt(u32, script.bytes[cursor..][0..4], .little);
+            const len = std.math.cast(usize, len32) orelse return error.Overflow;
+            cursor += 4;
+            if (script.bytes.len < cursor + len) return error.InvalidPushData;
+            cursor += len;
+            continue;
+        }
+    }
+
+    return count;
+}
+
+pub fn validate(script: Script) Error!void {
+    _ = try countChunks(script);
+}
+
 pub fn parseAlloc(allocator: std.mem.Allocator, script: Script) Error![]chunk.ScriptChunk {
     var chunks: std.ArrayListUnmanaged(chunk.ScriptChunk) = .empty;
     errdefer chunks.deinit(allocator);
+    try chunks.ensureTotalCapacityPrecise(allocator, try countChunks(script));
 
     var cursor: usize = 0;
     var conditional_depth: usize = 0;
