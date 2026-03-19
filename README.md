@@ -87,6 +87,8 @@ If you need negative-path debugging, the traced APIs also return a step trace wi
 - condition stack snapshot
 - `ops_executed` and `last_code_separator` before the step
 
+Both `VerificationResult` and traced results now have `writeDebug(...)` helpers for direct Zig-side debugging.
+
 Minimal pair verification:
 
 ```zig
@@ -121,6 +123,22 @@ const ok = result.success;
 ```
 
 The lower-level `verifyExecutableScripts(...)` entry point trims any state suffix from the locking script for execution while still preserving the full previous locking script in the spend context for sighash checks.
+
+Tiny trace example:
+
+```zig
+var traced = bsvz.script.thread.verifyScriptsTraced(.{
+    .allocator = allocator,
+}, bsvz.script.Script.init(&[_]u8{}), bsvz.script.Script.init(&[_]u8{
+    @intFromEnum(bsvz.script.opcode.Opcode.OP_1),
+    @intFromEnum(bsvz.script.opcode.Opcode.OP_FROMALTSTACK),
+}));
+defer traced.deinit(allocator);
+
+try traced.writeDebug(std.io.getStdOut().writer());
+```
+
+There is also a tiny standalone example in [examples/script_trace_demo.zig](/Users/satchmo/code/bsvz/examples/script_trace_demo.zig).
 
 Runar-adjacent helpers already present in the library:
 
