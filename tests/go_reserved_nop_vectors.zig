@@ -344,6 +344,107 @@ test "discourage_upgradable_nops rejects executed nop soft-fork surface" {
     });
 }
 
+test "go exact discourage_upgradable_nops rows keep nop semantics narrow" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.discourage_upgradable_nops = true;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 348 discourage_upgradable_nops still allows plain nop",
+            .unlocking_hex = "51",
+            .locking_hex = "61",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 350 discourage_upgradable_nops does not fire for untaken nop10",
+            .unlocking_hex = "00",
+            .locking_hex = "63b96851",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+    });
+}
+
+test "go exact nop alias rows treat cltv csv and nopx as no-ops when verify flags are off" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 554 nop in unlocking script still allows nop1 in locking script",
+            .unlocking_hex = "61",
+            .locking_hex = "b051",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 556 nop in unlocking script still allows csv alias in locking script",
+            .unlocking_hex = "61",
+            .locking_hex = "b251",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 557 nop in unlocking script still allows nop4 in locking script",
+            .unlocking_hex = "61",
+            .locking_hex = "b351",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 558 nop in unlocking script still allows nop5 in locking script",
+            .unlocking_hex = "61",
+            .locking_hex = "b451",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 559 nop in unlocking script still allows nop6 in locking script",
+            .unlocking_hex = "61",
+            .locking_hex = "b551",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 560 nop in unlocking script still allows nop7 in locking script",
+            .unlocking_hex = "61",
+            .locking_hex = "b651",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 561 nop in unlocking script still allows nop8 in locking script",
+            .unlocking_hex = "61",
+            .locking_hex = "b751",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 562 nop in unlocking script still allows nop9 in locking script",
+            .unlocking_hex = "61",
+            .locking_hex = "b851",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 563 nop in unlocking script still allows nop10 in locking script",
+            .unlocking_hex = "61",
+            .locking_hex = "b951",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 1373 nop aliases compare false against a different nop alias",
+            .unlocking_hex = "b0",
+            .locking_hex = "b9",
+            .flags = flags,
+            .expected = .{ .success = false },
+        },
+    });
+}
+
 test "go csv corpus rows map onto the legacy verify_check_sequence surface" {
     const allocator = std.testing.allocator;
     var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
@@ -388,6 +489,13 @@ test "go csv corpus rows map onto the legacy verify_check_sequence surface" {
             .locking_hex = "b2",
             .flags = flags,
             .expected = .{ .err = error.UnsatisfiedLockTime },
+        },
+        .{
+            .name = "go row 814 csv passes when the disable flag bit is set in the operand",
+            .unlocking_hex = "050000008000",
+            .locking_hex = "b2",
+            .flags = flags,
+            .expected = .{ .success = true },
         },
     });
 }

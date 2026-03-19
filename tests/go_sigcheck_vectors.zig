@@ -357,6 +357,25 @@ test "go direct checksig rows: malformed dersig matrix" {
     }
 }
 
+test "go direct checksig rows: exact malformed dersig checksig-not rows" {
+    const allocator = std.testing.allocator;
+    const locking_hex = "00ac91";
+
+    var dersig_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    dersig_flags.der_signatures = true;
+
+    try runRows(allocator, dersig_flags, &[_]GoRow{
+        .{ .row = 1311, .name = "row 1311 overly long signature is invalid under dersig", .unlocking_hex = "4a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", .locking_hex = locking_hex, .expected = .{ .err = error.InvalidSignatureEncoding } },
+        .{ .row = 1312, .name = "row 1312 missing s is invalid under dersig", .unlocking_hex = "24302202200000000000000000000000000000000000000000000000000000000000000000", .locking_hex = locking_hex, .expected = .{ .err = error.InvalidSignatureEncoding } },
+        .{ .row = 1313, .name = "row 1313 invalid s length is invalid under dersig", .unlocking_hex = "273024021077777777777777777777777777777777020a7777777777777777777777777777777701", .locking_hex = locking_hex, .expected = .{ .err = error.InvalidSignatureEncoding } },
+        .{ .row = 1314, .name = "row 1314 non-integer r is invalid under dersig", .unlocking_hex = "27302403107777777777777777777777777777777702107777777777777777777777777777777701", .locking_hex = locking_hex, .expected = .{ .err = error.InvalidSignatureEncoding } },
+        .{ .row = 1315, .name = "row 1315 non-integer s is invalid under dersig", .unlocking_hex = "27302402107777777777777777777777777777777703107777777777777777777777777777777701", .locking_hex = locking_hex, .expected = .{ .err = error.InvalidSignatureEncoding } },
+        .{ .row = 1316, .name = "row 1316 zero-length r is invalid under dersig", .unlocking_hex = "173014020002107777777777777777777777777777777701", .locking_hex = locking_hex, .expected = .{ .err = error.InvalidSignatureEncoding } },
+        .{ .row = 1317, .name = "row 1317 zero-length s is invalid under dersig", .unlocking_hex = "173014021077777777777777777777777777777777020001", .locking_hex = locking_hex, .expected = .{ .err = error.InvalidSignatureEncoding } },
+        .{ .row = 1318, .name = "row 1318 negative s is invalid under dersig", .unlocking_hex = "27302402107777777777777777777777777777777702108777777777777777777777777777777701", .locking_hex = locking_hex, .expected = .{ .err = error.InvalidSignatureEncoding } },
+    });
+}
+
 test "go direct checksig rows: sighash policy gates" {
     const allocator = std.testing.allocator;
 
@@ -450,6 +469,57 @@ test "go direct checksig rows: sighash policy gates" {
         .locking_hex = checkmultisig_not_locking_hex,
         .flags = forkid_flags,
         .expected = .{ .success = true },
+    });
+}
+
+test "go direct checksig rows: exact checksig-not padding and strict sighash rows" {
+    const allocator = std.testing.allocator;
+
+    var dersig_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    dersig_flags.der_signatures = true;
+
+    try runRows(allocator, dersig_flags, &[_]GoRow{
+        .{
+            .row = 1342,
+            .name = "row 1342 checksig not with bad sig and too much r padding under dersig",
+            .unlocking_hex = "4730440220005ece1335e7f757a1a1f476a7fb5bd90964e8a022489f890614a04acfb734c002206c12b8294a6513c7710e8c82d3c23d75cdbfe83200eb7efb495701958501a5d601",
+            .locking_hex = "21" ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640" ++ "ac91",
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .row = 1344,
+            .name = "row 1344 checksig not with too much r padding under dersig",
+            .unlocking_hex = "4730440220005ece1335e7f657a1a1f476a7fb5bd90964e8a022489f890614a04acfb734c002206c12b8294a6513c7710e8c82d3c23d75cdbfe83200eb7efb495701958501a5d601",
+            .locking_hex = "21" ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640" ++ "ac91",
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+    });
+
+    var strict_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    strict_flags.strict_encoding = true;
+
+    try runRows(allocator, strict_flags, &[_]GoRow{
+        .{
+            .row = 1386,
+            .name = "row 1386 p2pk rejects undefined sighash type under strictenc",
+            .unlocking_hex = "47304402206177d513ec2cda444c021a1f4f656fc4c72ba108ae063e157eb86dc3575784940220666fc66702815d0e5413bb9b1df22aed44f5f1efb8b99d41dd5dc9a5be6d205205",
+            .locking_hex = "41" ++ "048282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f5150811f8a8098557dfe45e8256e830b60ace62d613ac2f7b17bed31b6eaff6e26caf" ++ "ac",
+            .expected = .{ .err = error.InvalidSigHashType },
+        },
+        .{
+            .row = 1388,
+            .name = "row 1388 p2pkh rejects invalid sighash type under strictenc",
+            .unlocking_hex = "4730440220647a83507454f15f85f7e24de6e70c9d7b1d4020c71d0e53f4412425487e1dde022015737290670b4ab17b6783697a88ddd581c2d9c9efe26a59ac213076fc67f53021" ++ "41" ++ "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
+            .locking_hex = "76" ++ "a9" ++ "14" ++ "91b24bf9f5288532960ac687abb035127b1d28a5" ++ "88" ++ "ac",
+            .expected = .{ .err = error.InvalidSigHashType },
+        },
+        .{
+            .row = 1392,
+            .name = "row 1392 checksig not rejects invalid sighash type under strictenc",
+            .unlocking_hex = "47304402207409b5b320296e5e2136a7b281a7f803028ca4ca44e2b83eebd46932677725de02202d4eea1c8d3c98e6f42614f54764e6e5e6542e213eb4d079737e9a8b6e9812ec05",
+            .locking_hex = "41" ++ "048282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f5150811f8a8098557dfe45e8256e830b60ace62d613ac2f7b17bed31b6eaff6e26caf" ++ "ac91",
+            .expected = .{ .err = error.InvalidSigHashType },
+        },
     });
 }
 

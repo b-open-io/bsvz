@@ -201,6 +201,22 @@ test "go multisig rows: exact bip66 result-shape rows" {
     });
 }
 
+test "go multisig rows: exact sigpushonly row" {
+    const allocator = std.testing.allocator;
+
+    var pushonly_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    pushonly_flags.sig_push_only = true;
+
+    try runRows(allocator, pushonly_flags, &[_]GoRow{
+        .{
+            .name = "row 2182 2-of-2 checkmultisig with op_dup under sigpushonly",
+            .unlocking_hex = "00" ++ "47" ++ "304402200abeb4bd07f84222f474aed558cfbdfc0b4e96cde3c2935ba7098b1ff0bd74c302204a04c1ca67b2a20abee210cf9a21023edccbbf8024b988812634233115c6b73901" ++ "76",
+            .locking_hex = "52" ++ "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "52" ++ "ae",
+            .expected = .{ .err = error.SigPushOnly },
+        },
+    });
+}
+
 test "go multisig rows: exact nulldummy rows with real signatures" {
     const allocator = std.testing.allocator;
     const checksig_locking_hex =

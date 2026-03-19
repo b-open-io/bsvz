@@ -257,6 +257,84 @@ test "go direct stack rows: safe positive stack-shape subset" {
     });
 }
 
+test "go row 150: toaltstack and fromaltstack preserve the hidden element" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 150: toaltstack and fromaltstack preserve the hidden element",
+            .unlocking_hex = "5a005b6b756c",
+            .locking_hex = "93011587",
+            .expected = .{ .success = true },
+        },
+    });
+}
+
+test "go row 151: altstack round-trip preserves byte payloads exactly" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 151: altstack round-trip preserves byte payloads exactly",
+            .unlocking_hex = "0e676176696e5f7761735f686572656b5b6c",
+            .locking_hex = "0e676176696e5f7761735f68657265885b87",
+            .expected = .{ .success = true },
+        },
+    });
+}
+
+test "go row 179: tuck produces the exact three-item shape before cleanup" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 179: tuck produces the exact three-item shape before cleanup",
+            .unlocking_hex = "0051",
+            .locking_hex = "7d7453887c6d",
+            .expected = .{ .success = true },
+        },
+    });
+}
+
+test "go row 180: 2dup copies both items for pairwise equality" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 180: 2dup copies both items for pairwise equality",
+            .unlocking_hex = "5d5e",
+            .locking_hex = "6e7b8887",
+            .expected = .{ .success = true },
+        },
+    });
+}
+
+test "go row 182: 2over copies the lower pair for the exact sum checks" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 182: 2over copies the lower pair for the exact sum checks",
+            .unlocking_hex = "51525355",
+            .locking_hex = "709393588893935687",
+            .expected = .{ .success = true },
+        },
+    });
+}
+
+test "go row 183: 2swap exchanges the top pairs before the add checks" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 183: 2swap exchanges the top pairs before the add checks",
+            .unlocking_hex = "51535557",
+            .locking_hex = "72935488935c87",
+            .expected = .{ .success = true },
+        },
+    });
+}
+
 test "go direct stack rows: safe underflow subset" {
     const allocator = std.testing.allocator;
 
@@ -307,6 +385,66 @@ test "go direct stack rows: safe underflow subset" {
             .name = "row 1160 twodup on one item errors",
             .unlocking_hex = "51",
             .locking_hex = "6e",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 1158: fromaltstack underflows with no prior alt push",
+            .unlocking_hex = "51",
+            .locking_hex = "6c",
+            .expected = .{ .err = error.AltStackUnderflow },
+        },
+        .{
+            .name = "go row 1161: 3dup requires three stack items",
+            .unlocking_hex = "5151",
+            .locking_hex = "6f",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 1162: 2over requires four stack items",
+            .unlocking_hex = "515151",
+            .locking_hex = "70",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 1163: 2rot requires six stack items",
+            .unlocking_hex = "5151515151",
+            .locking_hex = "71",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 1164: 2swap requires four stack items",
+            .unlocking_hex = "515151",
+            .locking_hex = "72",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 1165: ifdup underflows on an empty stack even with trailing success",
+            .unlocking_hex = "61",
+            .locking_hex = "7351",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 1166: drop underflows on an empty stack even with trailing success",
+            .unlocking_hex = "61",
+            .locking_hex = "7551",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 1167: dup underflows on an empty stack even with trailing success",
+            .unlocking_hex = "61",
+            .locking_hex = "7651",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 1168: nip requires two stack items",
+            .unlocking_hex = "51",
+            .locking_hex = "77",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 1169: over requires two stack items",
+            .unlocking_hex = "51",
+            .locking_hex = "78",
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
