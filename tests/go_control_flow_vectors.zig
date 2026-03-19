@@ -61,7 +61,7 @@ test "go direct control-flow rows: compact op_return and sigpushonly" {
         },
         .{
             .name = "row 84 unlocking script op_return is sigpushonly violation after genesis",
-            .unlocking_hex = "516a",
+            .unlocking_hex = "6a",
             .locking_hex = "51",
             .flags = post_genesis_sigpushonly_flags,
             .expected = .{ .err = error.SigPushOnly },
@@ -81,11 +81,18 @@ test "go direct control-flow rows: compact op_return and sigpushonly" {
             .expected = .{ .success = true },
         },
         .{
-            .name = "row 87 return data before genesis errors",
+            .name = "row 87 return bad opcode tail before genesis errors",
             .unlocking_hex = "51",
-            .locking_hex = "6a01ba",
+            .locking_hex = "6aba",
             .flags = legacy_flags,
             .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
+            .name = "row 88 return bad opcode tail after genesis succeeds",
+            .unlocking_hex = "51",
+            .locking_hex = "6aba",
+            .flags = post_genesis_flags,
+            .expected = .{ .success = true },
         },
     });
 }

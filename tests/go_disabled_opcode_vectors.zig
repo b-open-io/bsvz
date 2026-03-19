@@ -77,6 +77,25 @@ test "go direct script rows: skipped disabled opcode exact row" {
     });
 }
 
+test "go direct script rows: exact post-genesis disabled 2mul 2div rows" {
+    const allocator = std.testing.allocator;
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+    var legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    legacy_flags.strict_encoding = true;
+
+    try runRows(allocator, post_genesis_flags, &[_]GoRow{
+        .{ .row = 143, .name = "row 143 executed 2mul is a disabled opcode after genesis", .unlocking_hex = "51", .locking_hex = "8d", .expected = .{ .err = error.UnknownOpcode } },
+        .{ .row = 144, .name = "row 144 executed 2div is a disabled opcode after genesis", .unlocking_hex = "51", .locking_hex = "8e", .expected = .{ .err = error.UnknownOpcode } },
+        .{ .row = 145, .name = "row 145 untaken if 2mul branch remains ok after genesis", .unlocking_hex = "5200", .locking_hex = "638d68", .expected = .{ .success = true } },
+        .{ .row = 146, .name = "row 146 untaken if 2div branch remains ok after genesis", .unlocking_hex = "5200", .locking_hex = "638e68", .expected = .{ .success = true } },
+    });
+
+    try runRows(allocator, legacy_flags, &[_]GoRow{
+        .{ .row = 852, .name = "row 852 taken if 2mul else one errors before genesis", .unlocking_hex = "5251", .locking_hex = "638d675168", .expected = .{ .err = error.UnknownOpcode } },
+        .{ .row = 853, .name = "row 853 taken if 2div else one errors before genesis", .unlocking_hex = "5251", .locking_hex = "638e675168", .expected = .{ .err = error.UnknownOpcode } },
+    });
+}
+
 test "go direct script rows: small integer opcode push sanity" {
     const allocator = std.testing.allocator;
 

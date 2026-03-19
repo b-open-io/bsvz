@@ -49,8 +49,8 @@ Current construction zones:
 
 - SPV is not yet real beyond placeholders and type stubs
 - broadcast is not yet real beyond namespace scaffolding
-- the script interpreter is materially closer to Go parity, with 472 exact Go row references imported across 15 dedicated test lanes; the full Go reference corpus is still not imported
-- native execution coverage for compiled Runar contracts is broad and growing, including auction lifecycle, escrow, tic-tac-toe terminal flows, fungible-token merge/transfer, NFT, and negative covenant checks, but not complete
+- the script interpreter is materially closer to Go parity, with 507 exact Go row references imported across 15 dedicated test lanes; the full Go reference corpus is still not imported
+- native execution coverage for compiled Runar contracts is broad and growing, including auction lifecycle, escrow, tic-tac-toe terminal flows, fungible-token merge/transfer, NFT, SHA-256/BLAKE3 crypto paths, `P2Blake3PKH`, and negative covenant checks, but not complete
 
 Current interpreter target:
 
@@ -80,8 +80,8 @@ This is the current interpreter map for `bsvz.script`.
 | CLTV / CSV / upgradable NOP surface | partial but real | `CLTV` and `CSV` now have tx-aware legacy/reference semantics behind explicit flags; the modern BSV profile still treats them as inert unless policy says otherwise |
 | Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding are both enforced where Go applies `MINIMALDATA`, with a dedicated minimaldata vector lane |
 | `CODESEPARATOR` parity | broad coverage | legacy and ForkID scriptCode behavior, chained separator result-shape tests, parser/scanner coverage |
-| Go parity vectors | broad but incomplete | 472 exact Go-row references now span 15 dedicated lanes: control-flow, seam, parser, reserved/NOP, sigcheck, multisig, minimaldata, numeric, boolean/numeric, bitwise, bytes/hash, stack-shape, stack-index, disabled-opcode, and bin2num; the full corpus is still larger |
-| Runar local acceptance | broad but incomplete | real local acceptance now covers stateless, stateful, covenant, auction, escrow, tic-tac-toe terminal flows, NFT, fungible-token merge/transfer, and math/crypto-heavy contracts, including negative covenant checks, but the full Runar corpus is not yet green |
+| Go parity vectors | broad but incomplete | 507 exact Go-row references now span 15 dedicated lanes: control-flow, seam, parser, reserved/NOP, sigcheck, multisig, minimaldata, numeric, boolean/numeric, bitwise, bytes/hash, stack-shape, stack-index, disabled-opcode, and bin2num; the full corpus is still larger |
+| Runar local acceptance | broad but incomplete | real local acceptance now covers stateless, stateful, covenant, auction, escrow, tic-tac-toe terminal flows, NFT, fungible-token merge/transfer, SHA-256/BLAKE3 crypto paths, and `P2Blake3PKH`, including negative covenant checks, but the full Runar corpus is not yet green |
 | SPV / script-adjacent proof tooling | construction zone | not part of the interpreter core yet |
 
 BSV-specific scope rules:

@@ -241,6 +241,8 @@ test "go direct script rows: split parity" {
     defer allocator.free(abc_split_neg1);
 
     try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 796, .name = "go row 796: split underflows on an empty stack", .unlocking_hex = "", .locking_hex = "7f", .expected = .{ .err = error.StackUnderflow } },
+        .{ .row = 797, .name = "go row 797: split underflows with only one parameter", .unlocking_hex = "0161", .locking_hex = "7f", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 798, .name = "go row 798: split divides abcdef at index three", .unlocking_hex = "0661626364656653", .locking_hex = "7f03646566880361626387", .expected = .{ .success = true } },
         .{ .row = 799, .name = "go row 799: split on empty string at zero keeps both halves empty", .unlocking_hex = "0000", .locking_hex = "7f00880087", .expected = .{ .success = true } },
         .{ .row = 800, .name = "go row 800: split at zero keeps the right side intact", .unlocking_hex = "0361626300", .locking_hex = "7f03616263880087", .expected = .{ .success = true } },

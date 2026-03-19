@@ -123,6 +123,12 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .expected = .{ .success = true },
         },
         .{
+            .name = "go row 431: drop reveals the pushed true tail",
+            .unlocking_hex = "00",
+            .locking_hex = "7551",
+            .expected = .{ .success = true },
+        },
+        .{
             .name = "row 432 dup preserves a single truthy item",
             .unlocking_hex = "51",
             .locking_hex = "76",

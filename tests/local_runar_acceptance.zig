@@ -8,6 +8,11 @@ const Transaction = bsvz.transaction.Transaction;
 const ec_gen_x_hex = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 const ec_gen_y_hex = "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
 const ec_neg_y_hex = "b7c52588d95c3b9aa25b0403f1eef75702e84bb7597aabe663b82f6f04ef2777";
+const sha256_init_hex = "6a09e667bb67ae853c6ef372a54ff53a510e527f9b05688c1f83d9ab5be0cd19";
+const blake3_hash_abc_hex = "6f9871b5d6e80fc882e7bb57857f8b279cdc229664eab9382d2838dbf7d8a20d";
+const key_one_pub_hex = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+const key_two_pub_hex = "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+const key_one_blake3_hash_hex = "907bc56d3aeb096b40bf82720f3cd180373755d1db074e87047dbbb531dfe187";
 const runar_root = "../runar";
 const compiler_dist_path = "packages/runar-compiler/dist/index.js";
 
@@ -63,6 +68,69 @@ fn compileRunarContract(
         .Exited => |code_value| {
             if (code_value != 0) {
                 std.log.err("runar local compile failed: {s}", .{run_result.stderr});
+                allocator.free(run_result.stdout);
+                return error.RunarCompileFailed;
+            }
+        },
+        else => {
+            allocator.free(run_result.stdout);
+            return error.RunarCompileFailed;
+        },
+    }
+
+    const trimmed = std.mem.trim(u8, run_result.stdout, &std.ascii.whitespace);
+    if (trimmed.ptr == run_result.stdout.ptr and trimmed.len == run_result.stdout.len) {
+        return run_result.stdout;
+    }
+
+    const copy = try allocator.dupe(u8, trimmed);
+    allocator.free(run_result.stdout);
+    return copy;
+}
+
+fn compileInlineRunarContract(
+    allocator: std.mem.Allocator,
+    source_code: []const u8,
+    file_name: []const u8,
+    args_json: []const u8,
+) ![]u8 {
+    const compiler_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ runar_root, compiler_dist_path });
+    defer allocator.free(compiler_abs_rel);
+    try accessOrSkip(compiler_abs_rel);
+
+    const source_hex = try encodeHexAlloc(allocator, source_code);
+    defer allocator.free(source_hex);
+
+    const code = try std.fmt.allocPrint(allocator,
+        \\(async () => {{
+        \\const {{ compile }} = await import('./packages/runar-compiler/dist/index.js');
+        \\const src = Buffer.from('{s}', 'hex').toString('utf8');
+        \\const args = JSON.parse('{s}');
+        \\const result = compile(src, {{ fileName: '{s}', constructorArgs: args }});
+        \\if (!result.success || !result.scriptHex) {{
+        \\  console.error(JSON.stringify(result));
+        \\  process.exit(1);
+        \\}}
+        \\process.stdout.write(result.scriptHex);
+        \\}})();
+    , .{ source_hex, args_json, file_name });
+    defer allocator.free(code);
+
+    const run_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "node", "-e", code },
+        .cwd = runar_root,
+        .max_output_bytes = 4 * 1024 * 1024,
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.CurrentWorkingDirectoryUnlinked => return error.SkipZigTest,
+        else => return err,
+    };
+    defer allocator.free(run_result.stderr);
+
+    switch (run_result.term) {
+        .Exited => |code_value| {
+            if (code_value != 0) {
+                std.log.err("runar inline compile failed: {s}", .{run_result.stderr});
                 allocator.free(run_result.stdout);
                 return error.RunarCompileFailed;
             }
@@ -1961,4 +2029,194 @@ test "local runar fungible token merge verifies both contract inputs through bsv
         fixture.value.call_tx_hex,
         1,
     ));
+}
+
+test "local runar sha256 finalize cross-verifies abc through bsvz" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\import { SmartContract, assert, sha256Finalize, sha256 } from 'runar-lang';
+        \\import type { ByteString } from 'runar-lang';
+        \\
+        \\class Sha256FinalizeCross extends SmartContract {
+        \\  readonly initState: ByteString;
+        \\
+        \\  constructor(initState: ByteString) {
+        \\    super(initState);
+        \\    this.initState = initState;
+        \\  }
+        \\
+        \\  public verify(message: ByteString, msgBitLen: bigint) {
+        \\    const computed = sha256Finalize(this.initState, message, msgBitLen);
+        \\    const native = sha256(message);
+        \\    assert(computed === native);
+        \\  }
+        \\}
+    ;
+
+    const args_json = try std.fmt.allocPrint(allocator, "{{\"initState\":\"{s}\"}}", .{sha256_init_hex});
+    defer allocator.free(args_json);
+
+    const locking_script_hex = try compileInlineRunarContract(
+        allocator,
+        source,
+        "Sha256FinalizeCross.runar.ts",
+        args_json,
+    );
+    defer allocator.free(locking_script_hex);
+
+    const actual = try harness.runCase(allocator, .{
+        .name = "local runar sha256 finalize abc",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{
+            .{ .hex = "616263" },
+            .{ .int = 24 },
+        },
+        .expect_success = true,
+    });
+    try std.testing.expect(actual);
+}
+
+test "local runar sha256 finalize chained 120-byte message verifies through bsvz" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\import { SmartContract, assert, sha256Compress, sha256Finalize, sha256 } from 'runar-lang';
+        \\import type { ByteString } from 'runar-lang';
+        \\
+        \\class Sha256FinalizeChained extends SmartContract {
+        \\  readonly initState: ByteString;
+        \\
+        \\  constructor(initState: ByteString) {
+        \\    super(initState);
+        \\    this.initState = initState;
+        \\  }
+        \\
+        \\  public verify(message: ByteString, firstBlock: ByteString, remaining: ByteString, totalBitLen: bigint) {
+        \\    const mid = sha256Compress(this.initState, firstBlock);
+        \\    const computed = sha256Finalize(mid, remaining, totalBitLen);
+        \\    const native = sha256(message);
+        \\    assert(computed === native);
+        \\  }
+        \\}
+    ;
+
+    const args_json = try std.fmt.allocPrint(allocator, "{{\"initState\":\"{s}\"}}", .{sha256_init_hex});
+    defer allocator.free(args_json);
+
+    const locking_script_hex = try compileInlineRunarContract(
+        allocator,
+        source,
+        "Sha256FinalizeChained.runar.ts",
+        args_json,
+    );
+    defer allocator.free(locking_script_hex);
+
+    const full_message_hex = "ee" ** 120;
+    const first_block_hex = full_message_hex[0..128];
+    const remaining_hex = full_message_hex[128..];
+
+    const actual = try harness.runCase(allocator, .{
+        .name = "local runar sha256 finalize chained 120-byte",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{
+            .{ .hex = full_message_hex },
+            .{ .hex = first_block_hex },
+            .{ .hex = remaining_hex },
+            .{ .int = 960 },
+        },
+        .expect_success = true,
+    });
+    try std.testing.expect(actual);
+}
+
+test "local runar blake3 hash abc verifies through bsvz" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\import { SmartContract, assert, blake3Hash } from 'runar-lang';
+        \\import type { ByteString } from 'runar-lang';
+        \\
+        \\class Blake3HashSingle extends SmartContract {
+        \\  readonly expected: ByteString;
+        \\
+        \\  constructor(expected: ByteString) {
+        \\    super(expected);
+        \\    this.expected = expected;
+        \\  }
+        \\
+        \\  public verify(message: ByteString) {
+        \\    const result = blake3Hash(message);
+        \\    assert(result === this.expected);
+        \\  }
+        \\}
+    ;
+
+    const args_json = try std.fmt.allocPrint(allocator, "{{\"expected\":\"{s}\"}}", .{blake3_hash_abc_hex});
+    defer allocator.free(args_json);
+
+    const locking_script_hex = try compileInlineRunarContract(
+        allocator,
+        source,
+        "Blake3HashSingle.runar.ts",
+        args_json,
+    );
+    defer allocator.free(locking_script_hex);
+
+    const actual = try harness.runCase(allocator, .{
+        .name = "local runar blake3 hash abc",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{.{ .hex = "616263" }},
+        .expect_success = true,
+    });
+    try std.testing.expect(actual);
+}
+
+test "local runar p2blake3pkh verifies the matching key through bsvz" {
+    const allocator = std.testing.allocator;
+    const args_json = try std.fmt.allocPrint(allocator, "{{\"pubKeyHash\":\"{s}\"}}", .{key_one_blake3_hash_hex});
+    defer allocator.free(args_json);
+
+    const locking_script_hex = try compileRunarContract(
+        allocator,
+        "examples/ts/p2blake3pkh/P2Blake3PKH.runar.ts",
+        "P2Blake3PKH.runar.ts",
+        args_json,
+    );
+    defer allocator.free(locking_script_hex);
+
+    const actual = try harness.runCase(allocator, .{
+        .name = "local runar p2blake3pkh success",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{
+            .{ .signature = {} },
+            .{ .hex = key_one_pub_hex },
+        },
+        .expect_success = true,
+        .spend = .{ .signing_key = [_]u8{0} ** 31 ++ [_]u8{1} },
+    });
+    try std.testing.expect(actual);
+}
+
+test "local runar p2blake3pkh rejects the wrong pubkey through bsvz" {
+    const allocator = std.testing.allocator;
+    const args_json = try std.fmt.allocPrint(allocator, "{{\"pubKeyHash\":\"{s}\"}}", .{key_one_blake3_hash_hex});
+    defer allocator.free(args_json);
+
+    const locking_script_hex = try compileRunarContract(
+        allocator,
+        "examples/ts/p2blake3pkh/P2Blake3PKH.runar.ts",
+        "P2Blake3PKH.runar.ts",
+        args_json,
+    );
+    defer allocator.free(locking_script_hex);
+
+    const actual = try harness.runCase(allocator, .{
+        .name = "local runar p2blake3pkh wrong pubkey",
+        .locking_script_hex = locking_script_hex,
+        .args = &[_]harness.PushValue{
+            .{ .signature = {} },
+            .{ .hex = key_two_pub_hex },
+        },
+        .expect_success = false,
+        .spend = .{ .signing_key = [_]u8{0} ** 31 ++ [_]u8{2} },
+    });
+    try std.testing.expect(!actual);
 }

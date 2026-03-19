@@ -208,6 +208,33 @@ test "go numeric rows: exact division result rows" {
     const row989_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{-1}, &[_]Opcode{.OP_EQUAL});
     defer allocator.free(row989_locking);
 
+    const row990_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ -2_147_483_647, -1 }, &[_]Opcode{.OP_DIV});
+    defer allocator.free(row990_unlocking);
+    const row990_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{2_147_483_647}, &[_]Opcode{.OP_EQUAL});
+    defer allocator.free(row990_locking);
+
+    const row991_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ -1, -2_147_483_647 }, &[_]Opcode{.OP_DIV});
+    defer allocator.free(row991_unlocking);
+    const row991_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{0}, &[_]Opcode{.OP_EQUAL});
+    defer allocator.free(row991_locking);
+
+    const row992_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ -2_147_483_647, -2_147_483_647 }, &[_]Opcode{.OP_DIV});
+    defer allocator.free(row992_unlocking);
+    const row992_locking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{1}, &[_]Opcode{.OP_EQUAL});
+    defer allocator.free(row992_locking);
+
+    const row993_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ 2_147_483_648, 1 }, &[_]Opcode{.OP_DIV});
+    defer allocator.free(row993_unlocking);
+
+    const row994_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ 1, 2_147_483_648 }, &[_]Opcode{.OP_DIV});
+    defer allocator.free(row994_unlocking);
+
+    const row995_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ -2_147_483_648, 1 }, &[_]Opcode{.OP_DIV});
+    defer allocator.free(row995_unlocking);
+
+    const row996_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{ 1, -2_147_483_648 }, &[_]Opcode{.OP_DIV});
+    defer allocator.free(row996_unlocking);
+
     try runRows(allocator, flags, &[_]GoRow{
         .{ .row = 976, .name = "go row 976: div by larger positive denominator yields zero", .unlocking_hex = row976_unlocking, .locking_hex = row976_locking, .expected = .{ .success = true } },
         .{ .row = 977, .name = "go row 977: div rejects divide by zero", .unlocking_hex = "02ff0100", .locking_hex = "96", .expected = .{ .err = error.DivisionByZero } },
@@ -223,6 +250,13 @@ test "go numeric rows: exact division result rows" {
         .{ .row = 987, .name = "go row 987: div of max int32 by negative one yields negative max int32", .unlocking_hex = row987_unlocking, .locking_hex = row987_locking, .expected = .{ .success = true } },
         .{ .row = 988, .name = "go row 988: div truncates one over negative max int32 to zero", .unlocking_hex = row988_unlocking, .locking_hex = row988_locking, .expected = .{ .success = true } },
         .{ .row = 989, .name = "go row 989: div of max int32 by negative max int32 yields negative one", .unlocking_hex = row989_unlocking, .locking_hex = row989_locking, .expected = .{ .success = true } },
+        .{ .row = 990, .name = "go row 990: div of negative max int32 by negative one yields positive max int32", .unlocking_hex = row990_unlocking, .locking_hex = row990_locking, .expected = .{ .success = true } },
+        .{ .row = 991, .name = "go row 991: div truncates negative one over negative max int32 to zero", .unlocking_hex = row991_unlocking, .locking_hex = row991_locking, .expected = .{ .success = true } },
+        .{ .row = 992, .name = "go row 992: div of equal negative max int32 values yields one", .unlocking_hex = row992_unlocking, .locking_hex = row992_locking, .expected = .{ .success = true } },
+        .{ .row = 993, .name = "go row 993: div rejects positive five-byte numerator", .unlocking_hex = row993_unlocking, .locking_hex = "96", .expected = .{ .err = error.NumberTooBig } },
+        .{ .row = 994, .name = "go row 994: div rejects positive five-byte denominator", .unlocking_hex = row994_unlocking, .locking_hex = "96", .expected = .{ .err = error.NumberTooBig } },
+        .{ .row = 995, .name = "go row 995: div rejects negative five-byte numerator", .unlocking_hex = row995_unlocking, .locking_hex = "96", .expected = .{ .err = error.NumberTooBig } },
+        .{ .row = 996, .name = "go row 996: div rejects negative five-byte denominator", .unlocking_hex = row996_unlocking, .locking_hex = "96", .expected = .{ .err = error.NumberTooBig } },
     });
 }
 

@@ -6198,3 +6198,92 @@ test "engine honors disabled-bit and version or type edge cases for checksequenc
         .flags = flags,
     }, mismatch_script));
 }
+
+test "engine rejects negative checksequenceverify operands" {
+    const allocator = std.testing.allocator;
+
+    var inputs = [_]Input{
+        .{
+            .previous_outpoint = .{
+                .txid = .{ .bytes = [_]u8{0x06} ** 32 },
+                .index = 0,
+            },
+            .unlocking_script = Script.init(""),
+            .sequence = 10,
+        },
+    };
+    var outputs = [_]Output{
+        .{
+            .satoshis = 1,
+            .locking_script = Script.init(""),
+        },
+    };
+    const tx = Transaction{
+        .version = 2,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = 0,
+    };
+
+    var flags = ExecutionFlags.legacyReference();
+    flags.verify_check_sequence = true;
+
+    const script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1NEGATE),
+        @intFromEnum(opcode.Opcode.OP_CHECKSEQUENCEVERIFY),
+        @intFromEnum(opcode.Opcode.OP_1),
+    });
+
+    try std.testing.expectError(error.NegativeLockTime, executeScript(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .flags = flags,
+    }, script));
+}
+
+test "engine applies minimal-data rules to active checklocktimeverify operands" {
+    const allocator = std.testing.allocator;
+
+    var inputs = [_]Input{
+        .{
+            .previous_outpoint = .{
+                .txid = .{ .bytes = [_]u8{0x07} ** 32 },
+                .index = 0,
+            },
+            .unlocking_script = Script.init(""),
+            .sequence = 0xffff_fffe,
+        },
+    };
+    var outputs = [_]Output{
+        .{
+            .satoshis = 1,
+            .locking_script = Script.init(""),
+        },
+    };
+    const tx = Transaction{
+        .version = 2,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = 1,
+    };
+
+    var flags = ExecutionFlags.legacyReference();
+    flags.verify_check_locktime = true;
+    flags.minimal_data = true;
+
+    const script = Script.init(&[_]u8{
+        0x02,
+        0x01,
+        0x00,
+        @intFromEnum(opcode.Opcode.OP_CHECKLOCKTIMEVERIFY),
+        @intFromEnum(opcode.Opcode.OP_1),
+    });
+
+    try std.testing.expectError(error.MinimalData, executeScript(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .flags = flags,
+    }, script));
+}

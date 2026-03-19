@@ -130,6 +130,13 @@ test "nop family and cltv csv aliases behave as no-ops in the current BSV profil
 
     try runRows(allocator, &[_]GoRow{
         .{
+            .name = "plain nop behaves as a no-op",
+            .unlocking_hex = "",
+            .locking_hex = "6151",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
             .name = "nop family chain preserves success path",
             .unlocking_hex = "51",
             .locking_hex = "b0b1b2b3b4b5b6b7b8b95187",
@@ -282,6 +289,57 @@ test "discourage_upgradable_nops rejects executed nop soft-fork surface" {
             .name = "nop10 is rejected when discourage_upgradable_nops is enabled",
             .unlocking_hex = "51",
             .locking_hex = "b9",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+    });
+}
+
+test "post-genesis bsv still treats cltv and csv as nops even if verify flags are enabled" {
+    const allocator = std.testing.allocator;
+
+    var flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+    flags.verify_check_locktime = true;
+    flags.verify_check_sequence = true;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "post-genesis cltv ignores verify_check_locktime and behaves as nop",
+            .unlocking_hex = "",
+            .locking_hex = "51b151",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "post-genesis csv ignores verify_check_sequence and behaves as nop",
+            .unlocking_hex = "",
+            .locking_hex = "51b251",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+    });
+}
+
+test "post-genesis discourage_upgradable_nops still rejects cltv and csv even if verify flags are enabled" {
+    const allocator = std.testing.allocator;
+
+    var flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+    flags.discourage_upgradable_nops = true;
+    flags.verify_check_locktime = true;
+    flags.verify_check_sequence = true;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "post-genesis cltv is still rejected as nop2 when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b1",
+            .flags = flags,
+            .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+        .{
+            .name = "post-genesis csv is still rejected as nop3 when discourage_upgradable_nops is enabled",
+            .unlocking_hex = "51",
+            .locking_hex = "b2",
             .flags = flags,
             .expected = .{ .err = error.DiscourageUpgradableNops },
         },

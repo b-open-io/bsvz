@@ -146,6 +146,61 @@ test "go multisig rows: exact strict oracle rows" {
     });
 }
 
+test "go multisig rows: exact strict hybrid pubkey row" {
+    const allocator = std.testing.allocator;
+
+    var strict_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    strict_flags.strict_encoding = true;
+
+    try runRows(allocator, strict_flags, &[_]GoRow{
+        .{
+            .name = "row 2085 1-of-2 checkmultisig with first hybrid pubkey",
+            .unlocking_hex = "00" ++ "47" ++ "3044022079c7824d6c868e0e1a273484e28c2654a27d043c8a27f49f52cb72efed0759090220452bbbf7089574fa082095a4fc1b3a16bafcf97a3a34d745fafc922cce66b27201",
+            .locking_hex = "51" ++ "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "41" ++ "0679be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8" ++ "52" ++ "ae",
+            .expected = .{ .err = error.InvalidPublicKeyEncoding },
+        },
+    });
+}
+
+test "go multisig rows: exact bip66 result-shape rows" {
+    const allocator = std.testing.allocator;
+
+    const relaxed_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    var dersig_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    dersig_flags.der_signatures = true;
+
+    try runRows(allocator, relaxed_flags, &[_]GoRow{
+        .{
+            .name = "row 1972 bip66 example 11 checkmultisig without dersig",
+            .unlocking_hex = "00" ++ "47" ++ "30440220cae00b1444babfbf6071b0ba8707f6bd373da3df494d6e74119b0430c5db810502205d5231b8c5939c8ff0c82242656d6e06edb073d42af336c99fe8837c36ea39d501" ++ "00",
+            .locking_hex = "52" ++ "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "21" ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640" ++ "52" ++ "ae",
+            .expected = .{ .success = false },
+        },
+        .{
+            .name = "row 1986 bip66 example 12 checkmultisig not without dersig",
+            .unlocking_hex = "00" ++ "47" ++ "30440220b119d67d389315308d1745f734a51ff3ec72e06081e84e236fdf9dc2f5d2a64802204b04e3bc38674c4422ea317231d642b56dc09d214a1ecbbf16ecca01ed996e2201" ++ "00",
+            .locking_hex = "52" ++ "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "21" ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640" ++ "52" ++ "ae91",
+            .expected = .{ .success = true },
+        },
+    });
+
+    try runRows(allocator, dersig_flags, &[_]GoRow{
+        .{
+            .name = "row 1979 bip66 example 11 checkmultisig with dersig",
+            .unlocking_hex = "00" ++ "47" ++ "30440220cae00b1444babfbf6071b0ba8707f6bd373da3df494d6e74119b0430c5db810502205d5231b8c5939c8ff0c82242656d6e06edb073d42af336c99fe8837c36ea39d501" ++ "00",
+            .locking_hex = "52" ++ "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "21" ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640" ++ "52" ++ "ae",
+            .expected = .{ .success = false },
+        },
+        .{
+            .name = "row 1993 bip66 example 12 checkmultisig not with dersig",
+            .unlocking_hex = "00" ++ "47" ++ "30440220b119d67d389315308d1745f734a51ff3ec72e06081e84e236fdf9dc2f5d2a64802204b04e3bc38674c4422ea317231d642b56dc09d214a1ecbbf16ecca01ed996e2201" ++ "00",
+            .locking_hex = "52" ++ "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++ "21" ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640" ++ "52" ++ "ae91",
+            .expected = .{ .success = true },
+        },
+    });
+}
+
 test "go multisig rows: exact nulldummy rows with real signatures" {
     const allocator = std.testing.allocator;
     const checksig_locking_hex =
@@ -211,6 +266,42 @@ test "go multisig rows: exact forkid policy rows" {
             .name = "row 2427 checkmultisig not accepts forkid under sighash_forkid policy",
             .unlocking_hex = unlocking_hex,
             .locking_hex = locking_hex,
+            .expected = .{ .success = true },
+        },
+    });
+}
+
+test "go multisig rows: exact checkmultisigverify zero-count rows" {
+    const allocator = std.testing.allocator;
+    const strict_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const relaxed_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    try runRows(allocator, strict_flags, &[_]GoRow{
+        .{
+            .name = "row 566 checkmultisigverify allows zero keys and zero sigs",
+            .unlocking_hex = "",
+            .locking_hex = "000000af740087",
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "row 568 checkmultisigverify ignores keys when zero sigs are required",
+            .unlocking_hex = "",
+            .locking_hex = "00000051af740087",
+            .expected = .{ .success = true },
+        },
+    });
+
+    try runRows(allocator, relaxed_flags, &[_]GoRow{
+        .{
+            .name = "row 775 checkmultisigverify succeeds with pushed zero count shape",
+            .unlocking_hex = "0000020000",
+            .locking_hex = "af51",
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "row 776 checkmultisigverify succeeds with alternate pushed zero count shape",
+            .unlocking_hex = "0002000000",
+            .locking_hex = "af51",
             .expected = .{ .success = true },
         },
     });
