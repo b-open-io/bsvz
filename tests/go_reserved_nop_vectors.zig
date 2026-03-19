@@ -409,7 +409,8 @@ test "discourage_upgradable_nops rejects executed nop soft-fork surface" {
             .expected = .{ .err = error.DiscourageUpgradableNops },
         },
         .{
-            .name = "go row 1252 discouraged nop10 in unlocking script",
+            .row = 1050,
+            .name = "go row 1050 discouraged nop10 in unlocking script",
             .unlocking_hex = "b9",
             .locking_hex = "51",
             .flags = flags,
@@ -425,14 +426,16 @@ test "go exact discourage_upgradable_nops rows keep nop semantics narrow" {
 
     try runRows(allocator, &[_]GoRow{
         .{
-            .name = "go row 348 discourage_upgradable_nops still allows plain nop",
+            .row = 301,
+            .name = "go row 301 discourage_upgradable_nops still allows plain nop",
             .unlocking_hex = "51",
             .locking_hex = "61",
             .flags = flags,
             .expected = .{ .success = true },
         },
         .{
-            .name = "go row 350 discourage_upgradable_nops does not fire for untaken nop10",
+            .row = 302,
+            .name = "go row 302 discourage_upgradable_nops does not fire for untaken nop10",
             .unlocking_hex = "00",
             .locking_hex = "63b96851",
             .flags = flags,

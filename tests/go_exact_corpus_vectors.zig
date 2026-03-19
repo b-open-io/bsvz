@@ -37,8 +37,6 @@ fn hasBlockedOpcodeTokens(unlocking_asm: []const u8, locking_asm: []const u8) bo
         "CHECKSIGVERIFY",
         "CHECKMULTISIG",
         "CHECKMULTISIGVERIFY",
-        "CHECKSEQUENCEVERIFY",
-        "CHECKLOCKTIMEVERIFY",
     };
 
     inline for (blocked) |token| {
@@ -137,6 +135,11 @@ fn parseExpected(text: []const u8) ?harness.Expectation {
     if (std.mem.eql(u8, text, "NEGATIVE_LOCKTIME")) return .{ .err = error.NegativeLockTime };
     if (std.mem.eql(u8, text, "UNSATISFIED_LOCKTIME")) return .{ .err = error.UnsatisfiedLockTime };
     if (std.mem.eql(u8, text, "UNBALANCED_CONDITIONAL")) return .{ .err = error.UnbalancedConditionals };
+    if (std.mem.eql(u8, text, "VERIFY")) return .{ .success = false };
+    if (std.mem.eql(u8, text, "EQUALVERIFY")) return .{ .success = false };
+    if (std.mem.eql(u8, text, "NUMBER_SIZE")) return .{ .err = error.NumberTooBig };
+    if (std.mem.eql(u8, text, "INVALID_NUMBER_RANGE")) return .{ .err = error.NegativeShift };
+    if (std.mem.eql(u8, text, "STACK_SIZE")) return .{ .err = error.StackSizeLimitExceeded };
     return null;
 }
 
@@ -244,6 +247,10 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 214 },
         .{ .row = 215 },
         .{ .row = 216 },
+        .{ .row = 299 },
+        .{ .row = 300 },
+        .{ .row = 301 },
+        .{ .row = 302 },
         .{ .row = 320 },
         .{ .row = 321 },
         .{ .row = 323 },
@@ -346,6 +353,8 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 463 },
         .{ .row = 464 },
         .{ .row = 465 },
+        .{ .row = 473 },
+        .{ .row = 474 },
         .{ .row = 475 },
         .{ .row = 476 },
         .{ .row = 477 },
@@ -559,7 +568,12 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 964 },
         .{ .row = 965 },
         .{ .row = 966 },
+        .{ .row = 1037 },
+        .{ .row = 1038 },
         .{ .row = 1040 },
+        .{ .row = 1041 },
+        .{ .row = 1042 },
+        .{ .row = 1050 },
         .{ .row = 1043 },
         .{ .row = 1053 },
         .{ .row = 1054 },
@@ -719,6 +733,34 @@ test "exact go corpus rows execute through bsvz" {
         .{ .row = 1441 },
         .{ .row = 1442 },
         .{ .row = 1443 },
+        .{ .row = 84 },
+        .{ .row = 211 },
+        .{ .row = 212 },
+        .{ .row = 213 },
+        .{ .row = 218 },
+        .{ .row = 219 },
+        .{ .row = 220 },
+        .{ .row = 221 },
+        .{ .row = 278 },
+        .{ .row = 279 },
+        .{ .row = 280 },
+        .{ .row = 301 },
+        .{ .row = 302 },
+        .{ .row = 1028 },
+        .{ .row = 1029 },
+        .{ .row = 1030 },
+        .{ .row = 1031 },
+        .{ .row = 1032 },
+        .{ .row = 1033 },
+        .{ .row = 1034 },
+        .{ .row = 1035 },
+        .{ .row = 1036 },
+        .{ .row = 1050 },
+        .{ .row = 740 },
+        .{ .row = 771 },
+        .{ .row = 818 },
+        .{ .row = 1133 },
+        .{ .row = 1134 },
     };
 
     for (rows) |row_ref| {

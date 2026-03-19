@@ -67,12 +67,18 @@ fn parseFlags(text: []const u8) ?bsvz.script.engine.ExecutionFlags {
             flags.clean_stack = true;
             continue;
         }
+        if (std.mem.eql(u8, part, "MINIMALIF")) {
+            flags.minimal_if = true;
+            continue;
+        }
         return null;
     }
     return flags;
 }
 
 fn parseExpected(text: []const u8) ?harness.Expectation {
+    if (std.mem.eql(u8, text, "OK")) return .{ .success = true };
+    if (std.mem.eql(u8, text, "EVAL_FALSE")) return .{ .success = false };
     if (std.mem.eql(u8, text, "SIG_DER")) return .{ .err = error.InvalidSignatureEncoding };
     if (std.mem.eql(u8, text, "PUBKEYTYPE")) return .{ .err = error.InvalidPublicKeyEncoding };
     if (std.mem.eql(u8, text, "SIG_HASHTYPE")) return .{ .err = error.InvalidSigHashType };
@@ -80,6 +86,10 @@ fn parseExpected(text: []const u8) ?harness.Expectation {
     if (std.mem.eql(u8, text, "NULLFAIL")) return .{ .err = error.NullFail };
     if (std.mem.eql(u8, text, "INVALID_STACK_OPERATION")) return .{ .err = error.StackUnderflow };
     if (std.mem.eql(u8, text, "SIG_HIGH_S")) return .{ .err = error.HighS };
+    if (std.mem.eql(u8, text, "EQUALVERIFY")) return .{ .success = false };
+    if (std.mem.eql(u8, text, "CHECKSIGVERIFY")) return .{ .success = false };
+    if (std.mem.eql(u8, text, "MINIMALIF")) return .{ .err = error.MinimalIf };
+    if (std.mem.eql(u8, text, "CLEANSTACK")) return .{ .err = error.CleanStack };
     return null;
 }
 
@@ -145,6 +155,59 @@ test "filtered go sigcheck reference rows execute through bsvz" {
 
     std.debug.print("filtered go sigcheck rows executed={}, skipped={}\n", .{ executed, skipped });
     try std.testing.expect(executed >= 25);
+}
+
+test "exact go sigcheck dynamic reference rows execute through bsvz" {
+    const allocator = std.testing.allocator;
+    try accessOrSkip(corpus_path);
+
+    const file = try std.fs.cwd().readFileAlloc(allocator, corpus_path, 8 * 1024 * 1024);
+    defer allocator.free(file);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, file, .{});
+    defer parsed.deinit();
+
+    if (parsed.value != .array) return error.InvalidEncoding;
+
+    const rows = [_]struct { row: usize }{
+        .{ .row = 655 },
+        .{ .row = 668 },
+        .{ .row = 669 },
+        .{ .row = 670 },
+        .{ .row = 671 },
+        .{ .row = 672 },
+        .{ .row = 673 },
+        .{ .row = 674 },
+        .{ .row = 675 },
+        .{ .row = 1320 },
+        .{ .row = 1321 },
+        .{ .row = 1322 },
+        .{ .row = 1323 },
+        .{ .row = 1324 },
+        .{ .row = 1325 },
+        .{ .row = 1335 },
+        .{ .row = 1345 },
+        .{ .row = 1372 },
+        .{ .row = 1400 },
+        .{ .row = 1406 },
+        .{ .row = 1407 },
+        .{ .row = 1418 },
+        .{ .row = 1495 },
+    };
+
+    for (rows) |row_ref| {
+        const row = rowFromJson(row_ref.row, parsed.value.array.items[row_ref.row]) orelse {
+            std.debug.print("go exact sigcheck row {} no longer qualifies for direct import\n", .{row_ref.row});
+            return error.InvalidEncoding;
+        };
+        runDynamicRow(allocator, row) catch |err| {
+            std.debug.print(
+                "go exact sigcheck row {} failed\n  unlocking: {s}\n  locking: {s}\n  flags: {s}\n  expected: {s}\n",
+                .{ row.index, row.unlocking_asm, row.locking_asm, row.flags_text, row.expected_text },
+            );
+            return err;
+        };
+    }
 }
 
 test "exact go sigcheck reference rows execute through bsvz" {

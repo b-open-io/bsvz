@@ -71,6 +71,18 @@ fn parseFlags(text: []const u8) ?bsvz.script.engine.ExecutionFlags {
             flags.clean_stack = true;
             continue;
         }
+        if (std.mem.eql(u8, part, "MINIMALDATA")) {
+            flags.minimal_data = true;
+            continue;
+        }
+        if (std.mem.eql(u8, part, "SIGPUSHONLY")) {
+            flags.sig_push_only = true;
+            continue;
+        }
+        if (std.mem.eql(u8, part, "UTXO_AFTER_GENESIS")) {
+            flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+            continue;
+        }
         return null;
     }
 
@@ -78,6 +90,8 @@ fn parseFlags(text: []const u8) ?bsvz.script.engine.ExecutionFlags {
 }
 
 fn parseExpected(text: []const u8) ?harness.Expectation {
+    if (std.mem.eql(u8, text, "OK")) return .{ .success = true };
+    if (std.mem.eql(u8, text, "EVAL_FALSE")) return .{ .success = false };
     if (std.mem.eql(u8, text, "SIG_DER")) return .{ .err = error.InvalidSignatureEncoding };
     if (std.mem.eql(u8, text, "PUBKEYTYPE")) return .{ .err = error.InvalidPublicKeyEncoding };
     if (std.mem.eql(u8, text, "SIG_HASHTYPE")) return .{ .err = error.InvalidSigHashType };
@@ -86,6 +100,8 @@ fn parseExpected(text: []const u8) ?harness.Expectation {
     if (std.mem.eql(u8, text, "INVALID_STACK_OPERATION")) return .{ .err = error.StackUnderflow };
     if (std.mem.eql(u8, text, "SIG_HIGH_S")) return .{ .err = error.HighS };
     if (std.mem.eql(u8, text, "SIG_NULLDUMMY")) return .{ .err = error.NullDummy };
+    if (std.mem.eql(u8, text, "SCRIPTNUM_MINENCODE")) return .{ .err = error.MinimalData };
+    if (std.mem.eql(u8, text, "SIG_PUSHONLY")) return .{ .err = error.SigPushOnly };
     return null;
 }
 
@@ -151,6 +167,112 @@ test "filtered go multisig reference rows execute through bsvz" {
 
     std.debug.print("filtered go multisig rows executed={}, skipped={}\n", .{ executed, skipped });
     try std.testing.expect(executed >= 15);
+}
+
+test "exact go multisig dynamic reference rows execute through bsvz" {
+    const allocator = std.testing.allocator;
+    try accessOrSkip(corpus_path);
+
+    const file = try std.fs.cwd().readFileAlloc(allocator, corpus_path, 8 * 1024 * 1024);
+    defer allocator.free(file);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, file, .{});
+    defer parsed.deinit();
+
+    if (parsed.value != .array) return error.InvalidEncoding;
+
+    const rows = [_]struct { row: usize }{
+        .{ .row = 482 },
+        .{ .row = 483 },
+        .{ .row = 484 },
+        .{ .row = 485 },
+        .{ .row = 486 },
+        .{ .row = 487 },
+        .{ .row = 488 },
+        .{ .row = 489 },
+        .{ .row = 490 },
+        .{ .row = 491 },
+        .{ .row = 492 },
+        .{ .row = 493 },
+        .{ .row = 494 },
+        .{ .row = 495 },
+        .{ .row = 496 },
+        .{ .row = 497 },
+        .{ .row = 498 },
+        .{ .row = 499 },
+        .{ .row = 500 },
+        .{ .row = 501 },
+        .{ .row = 502 },
+        .{ .row = 503 },
+        .{ .row = 504 },
+        .{ .row = 505 },
+        .{ .row = 506 },
+        .{ .row = 507 },
+        .{ .row = 508 },
+        .{ .row = 509 },
+        .{ .row = 510 },
+        .{ .row = 511 },
+        .{ .row = 512 },
+        .{ .row = 513 },
+        .{ .row = 514 },
+        .{ .row = 515 },
+        .{ .row = 516 },
+        .{ .row = 517 },
+        .{ .row = 518 },
+        .{ .row = 519 },
+        .{ .row = 520 },
+        .{ .row = 521 },
+        .{ .row = 522 },
+        .{ .row = 523 },
+        .{ .row = 524 },
+        .{ .row = 531 },
+        .{ .row = 650 },
+        .{ .row = 651 },
+        .{ .row = 652 },
+        .{ .row = 656 },
+        .{ .row = 665 },
+        .{ .row = 666 },
+        .{ .row = 1208 },
+        .{ .row = 1210 },
+        .{ .row = 1212 },
+        .{ .row = 1213 },
+        .{ .row = 1214 },
+        .{ .row = 1215 },
+        .{ .row = 1216 },
+        .{ .row = 1217 },
+        .{ .row = 1219 },
+        .{ .row = 1299 },
+        .{ .row = 1300 },
+        .{ .row = 1301 },
+        .{ .row = 1302 },
+        .{ .row = 1303 },
+        .{ .row = 1309 },
+        .{ .row = 1331 },
+        .{ .row = 1332 },
+        .{ .row = 1393 },
+        .{ .row = 1394 },
+        .{ .row = 1395 },
+        .{ .row = 1396 },
+        .{ .row = 1397 },
+        .{ .row = 1398 },
+        .{ .row = 1405 },
+        .{ .row = 1496 },
+        .{ .row = 1497 },
+    };
+
+    for (rows) |row_ref| {
+        const row = rowFromJson(row_ref.row, parsed.value.array.items[row_ref.row]) orelse {
+            std.debug.print("go exact multisig row {} no longer qualifies for direct import\n", .{row_ref.row});
+            return error.InvalidEncoding;
+        };
+        runDynamicRow(allocator, row) catch |err| {
+            std.debug.print(
+                "go exact multisig row {} failed\n  unlocking: {s}\n  locking: {s}\n  flags: {s}\n  expected: {s}\n",
+                .{ row.index, row.unlocking_asm, row.locking_asm, row.flags_text, row.expected_text },
+            );
+            return err;
+        };
+    }
 }
 
 test "exact go multisig reference rows execute through bsvz" {
