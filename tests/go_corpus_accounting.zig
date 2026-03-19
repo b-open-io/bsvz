@@ -55,7 +55,7 @@ fn isExecutableCorpusRow(value: std.json.Value) bool {
     return items[0] == .string and items[1] == .string and items[2] == .string and items[3] == .string;
 }
 
-test "all uncovered go corpus entries are non-executable shape rows" {
+test "all go corpus rows are explicitly accounted for" {
     const allocator = std.testing.allocator;
     try accessOrSkip(corpus_path);
 
@@ -71,19 +71,15 @@ test "all uncovered go corpus entries are non-executable shape rows" {
     if (parsed.value != .array) return error.InvalidEncoding;
 
     var uncovered_count: usize = 0;
-    var uncovered_executable_count: usize = 0;
-    var first_bad_row: ?usize = null;
+    var first_missing_row: ?usize = null;
 
     for (parsed.value.array.items, 0..) |value, index| {
         if (exact_rows.contains(index)) continue;
+        _ = value;
         uncovered_count += 1;
-        if (isExecutableCorpusRow(value)) {
-            uncovered_executable_count += 1;
-            if (first_bad_row == null) first_bad_row = index;
-        }
+        if (first_missing_row == null) first_missing_row = index;
     }
 
-    try std.testing.expect(uncovered_count > 0);
-    try std.testing.expectEqual(@as(usize, 0), uncovered_executable_count);
-    try std.testing.expectEqual(@as(?usize, null), first_bad_row);
+    try std.testing.expectEqual(@as(usize, 0), uncovered_count);
+    try std.testing.expectEqual(@as(?usize, null), first_missing_row);
 }
