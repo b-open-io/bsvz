@@ -208,6 +208,22 @@ test "go direct script rows: bin2num canonical rows" {
         @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
     });
     defer allocator.free(neg_max_i32_case);
+    const oversized_max_case = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        max_i32,
+        &[_]u8{ 0xff, 0xff, 0xff, 0xff, 0x00 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(oversized_max_case);
+    const noncanonical_neg_max_case = try scriptHexForPushesAndOps(allocator, &[_][]const u8{
+        neg_max_i32,
+        &[_]u8{ 0xff, 0xff, 0xff, 0x7f, 0x80 },
+    }, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_BIN2NUM),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(noncanonical_neg_max_case);
 
     try runRows(allocator, flags, &[_]GoRow{
         .{ .name = "go row 825: bin2num canonical zero stays zero", .unlocking_hex = zero_case, .locking_hex = "", .expected = .{ .success = true } },
@@ -216,6 +232,8 @@ test "go direct script rows: bin2num canonical rows" {
         .{ .name = "go row 828: bin2num non-canonical zero still decodes to zero", .unlocking_hex = noncanonical_zero_case, .locking_hex = "", .expected = .{ .success = true } },
         .{ .name = "go row 829: bin2num canonical max int32 stays max int32", .unlocking_hex = max_i32_case, .locking_hex = "", .expected = .{ .success = true } },
         .{ .name = "go row 830: bin2num canonical negative max int32 stays negative max int32", .unlocking_hex = neg_max_i32_case, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .name = "go row 831: bin2num rejects oversized positive max int32 encoding", .unlocking_hex = oversized_max_case, .locking_hex = "", .expected = .{ .err = error.NumberTooBig } },
+        .{ .name = "go row 832: bin2num accepts non-canonical negative max int32 encoding", .unlocking_hex = noncanonical_neg_max_case, .locking_hex = "", .expected = .{ .success = true } },
     });
 }
 

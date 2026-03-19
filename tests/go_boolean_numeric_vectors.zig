@@ -124,6 +124,82 @@ test "go direct script rows: size parity" {
     });
     defer allocator.free(size_four_hex);
 
+    const push_8388608 = try scriptNumBytes(allocator, 8_388_608);
+    defer allocator.free(push_8388608);
+    const size_8388608_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{push_8388608}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SIZE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_4),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(size_8388608_hex);
+
+    const push_2147483647 = try scriptNumBytes(allocator, 2_147_483_647);
+    defer allocator.free(push_2147483647);
+    const size_2147483647_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{push_2147483647}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SIZE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_4),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(size_2147483647_hex);
+
+    var script_num_549755813887 = try bsvz.script.ScriptNum.fromValue(allocator, @as(i128, 549_755_813_887));
+    defer script_num_549755813887.deinit();
+    const push_549755813887 = try script_num_549755813887.encodeOwned(allocator);
+    defer allocator.free(push_549755813887);
+    const size_549755813887_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{push_549755813887}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SIZE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_5),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(size_549755813887_hex);
+
+    var script_num_i64_max = try bsvz.script.ScriptNum.fromValue(allocator, @as(i128, std.math.maxInt(i64)));
+    defer script_num_i64_max.deinit();
+    const push_i64_max = try script_num_i64_max.encodeOwned(allocator);
+    defer allocator.free(push_i64_max);
+    const size_i64_max_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{push_i64_max}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SIZE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_8),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(size_i64_max_hex);
+
+    const push_neg_128 = try scriptNumBytes(allocator, -128);
+    defer allocator.free(push_neg_128);
+    const size_neg_128_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{push_neg_128}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SIZE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_2),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(size_neg_128_hex);
+
+    const push_neg_32767 = try scriptNumBytes(allocator, -32_767);
+    defer allocator.free(push_neg_32767);
+    const size_neg_32767_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{push_neg_32767}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SIZE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_2),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(size_neg_32767_hex);
+
+    const push_neg_32768 = try scriptNumBytes(allocator, -32_768);
+    defer allocator.free(push_neg_32768);
+    const size_neg_32768_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{push_neg_32768}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SIZE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_3),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(size_neg_32768_hex);
+
+    const push_neg_8388607 = try scriptNumBytes(allocator, -8_388_607);
+    defer allocator.free(push_neg_8388607);
+    const size_neg_8388607_hex = try scriptHexForPushesAndOps(allocator, &[_][]const u8{push_neg_8388607}, &[_]u8{
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_SIZE),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_3),
+        @intFromEnum(bsvz.script.opcode.Opcode.OP_EQUAL),
+    });
+    defer allocator.free(size_neg_8388607_hex);
+
     try runRows(allocator, flags, &[_]GoRow{
         .{ .row = 185, .name = "size of one-byte canonical positive number is one", .unlocking_hex = "51", .locking_hex = "825187", .expected = .{ .success = true } },
         .{ .row = 186, .name = "size of one-byte minimally encoded 127 is one", .unlocking_hex = "017f", .locking_hex = "825187", .expected = .{ .success = true } },
@@ -131,10 +207,18 @@ test "go direct script rows: size parity" {
         .{ .row = 188, .name = "size of 32767 is two bytes", .unlocking_hex = size_two_hex, .locking_hex = "", .expected = .{ .success = true } },
         .{ .row = 189, .name = "size of positive thirty two thousand seven hundred sixty eight is three bytes", .unlocking_hex = "03008000", .locking_hex = "825387", .expected = .{ .success = true } },
         .{ .row = 190, .name = "size of positive eight million three hundred eighty eight thousand six hundred seven is three bytes", .unlocking_hex = "03ffff7f", .locking_hex = "825387", .expected = .{ .success = true } },
+        .{ .row = 191, .name = "size of positive eight million three hundred eighty eight thousand six hundred eight is four bytes", .unlocking_hex = size_8388608_hex, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 192, .name = "size of positive max int32 is four bytes", .unlocking_hex = size_2147483647_hex, .locking_hex = "", .expected = .{ .success = true } },
         .{ .row = 197, .name = "size of one-byte minimally encoded negative one is one", .unlocking_hex = "4f", .locking_hex = "825187", .expected = .{ .success = true } },
         .{ .row = 198, .name = "size of one-byte minimally encoded negative 127 is one", .unlocking_hex = "01ff", .locking_hex = "825187", .expected = .{ .success = true } },
+        .{ .row = 199, .name = "size of negative one hundred twenty eight is two bytes", .unlocking_hex = size_neg_128_hex, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 200, .name = "size of negative thirty two thousand seven hundred sixty seven is two bytes", .unlocking_hex = size_neg_32767_hex, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 201, .name = "size of negative thirty two thousand seven hundred sixty eight is three bytes", .unlocking_hex = size_neg_32768_hex, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 202, .name = "size of negative eight million three hundred eighty eight thousand six hundred seven is three bytes", .unlocking_hex = size_neg_8388607_hex, .locking_hex = "", .expected = .{ .success = true } },
         .{ .row = 193, .name = "size of 2147483648 is five bytes", .unlocking_hex = size_five_hex, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 194, .name = "size of positive five hundred forty nine billion seven hundred fifty five million eight hundred thirteen thousand eight hundred eighty seven is five bytes", .unlocking_hex = size_549755813887_hex, .locking_hex = "", .expected = .{ .success = true } },
         .{ .row = 195, .name = "size of positive five hundred forty nine billion seven hundred fifty five million eight hundred thirteen thousand eight hundred eighty eight is six bytes", .unlocking_hex = "06000000008000", .locking_hex = "825687", .expected = .{ .success = true } },
+        .{ .row = 196, .name = "size of positive int64 max is eight bytes", .unlocking_hex = size_i64_max_hex, .locking_hex = "", .expected = .{ .success = true } },
         .{ .row = 203, .name = "size of -8388608 is four bytes", .unlocking_hex = size_four_hex, .locking_hex = "", .expected = .{ .success = true } },
         .{ .row = 204, .name = "size of negative max int32 is four bytes", .unlocking_hex = "04ffffffff", .locking_hex = "825487", .expected = .{ .success = true } },
         .{ .row = 205, .name = "size of negative two billion one hundred forty seven million four hundred eighty three thousand six hundred forty eight is five bytes", .unlocking_hex = "050000008080", .locking_hex = "825587", .expected = .{ .success = true } },

@@ -206,7 +206,12 @@ fn executeIntoState(
             else => {},
         }
 
-        if (!shouldExecute(state)) continue;
+        if (!shouldExecute(state)) {
+            if (!ctx.flags.utxo_after_genesis and (op == .OP_VERIF or op == .OP_VERNOTIF)) {
+                return error.UnknownOpcode;
+            }
+            continue;
+        }
         if (early_return_after_genesis and op != .OP_RETURN) continue;
 
         if (!ctx.flags.enable_reenabled_opcodes) {
@@ -408,7 +413,7 @@ fn executeIntoState(
                 try ensureCanGrow(ctx, state, 1);
                 const copy = try ctx.allocator.dupe(u8, state.stack.items[state.stack.items.len - 1]);
                 errdefer ctx.allocator.free(copy);
-                try state.stack.insert(ctx.allocator, state.stack.items.len - 1, copy);
+                try state.stack.insert(ctx.allocator, state.stack.items.len - 2, copy);
                 if (state.stack.items.len + state.alt_stack.items.len > state.max_stack_depth) {
                     state.max_stack_depth = state.stack.items.len + state.alt_stack.items.len;
                 }
@@ -5976,4 +5981,220 @@ test "engine enforces active checksequenceverify semantics in legacy reference m
         .input_index = 0,
         .flags = flags,
     }, failure_script));
+}
+
+test "engine rejects negative checklocktimeverify operands" {
+    const allocator = std.testing.allocator;
+
+    var inputs = [_]Input{
+        .{
+            .previous_outpoint = .{
+                .txid = .{ .bytes = [_]u8{0x03} ** 32 },
+                .index = 0,
+            },
+            .unlocking_script = Script.init(""),
+            .sequence = 0xffff_fffe,
+        },
+    };
+    var outputs = [_]Output{
+        .{
+            .satoshis = 1,
+            .locking_script = Script.init(""),
+        },
+    };
+    const tx = Transaction{
+        .version = 2,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = 5,
+    };
+
+    var flags = ExecutionFlags.legacyReference();
+    flags.verify_check_locktime = true;
+
+    const script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_1NEGATE),
+        @intFromEnum(opcode.Opcode.OP_CHECKLOCKTIMEVERIFY),
+        @intFromEnum(opcode.Opcode.OP_1),
+    });
+
+    try std.testing.expectError(error.NegativeLockTime, executeScript(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .flags = flags,
+    }, script));
+}
+
+test "engine enforces locktime type matching and finalized-input checks for checklocktimeverify" {
+    const allocator = std.testing.allocator;
+
+    const timestamp_operand = try num.ScriptNum.encode(allocator, @as(i64, lock_time_threshold));
+    defer allocator.free(timestamp_operand);
+    const mismatch_script_bytes = try allocator.alloc(u8, 1 + timestamp_operand.len + 2);
+    defer allocator.free(mismatch_script_bytes);
+    mismatch_script_bytes[0] = @intCast(timestamp_operand.len);
+    @memcpy(mismatch_script_bytes[1 .. 1 + timestamp_operand.len], timestamp_operand);
+    mismatch_script_bytes[1 + timestamp_operand.len] = @intFromEnum(opcode.Opcode.OP_CHECKLOCKTIMEVERIFY);
+    mismatch_script_bytes[2 + timestamp_operand.len] = @intFromEnum(opcode.Opcode.OP_1);
+    const mismatch_script = Script.init(mismatch_script_bytes);
+
+    var inputs = [_]Input{
+        .{
+            .previous_outpoint = .{
+                .txid = .{ .bytes = [_]u8{0x04} ** 32 },
+                .index = 0,
+            },
+            .unlocking_script = Script.init(""),
+            .sequence = 0xffff_fffe,
+        },
+    };
+    var outputs = [_]Output{
+        .{
+            .satoshis = 1,
+            .locking_script = Script.init(""),
+        },
+    };
+    const mismatch_tx = Transaction{
+        .version = 2,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = @intCast(lock_time_threshold - 1),
+    };
+
+    var flags = ExecutionFlags.legacyReference();
+    flags.verify_check_locktime = true;
+
+    try std.testing.expectError(error.UnsatisfiedLockTime, executeScript(.{
+        .allocator = allocator,
+        .tx = &mismatch_tx,
+        .input_index = 0,
+        .flags = flags,
+    }, mismatch_script));
+
+    inputs[0].sequence = max_tx_in_sequence_num;
+    const finalized_tx = Transaction{
+        .version = 2,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = 0,
+    };
+    const finalized_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_0),
+        @intFromEnum(opcode.Opcode.OP_CHECKLOCKTIMEVERIFY),
+        @intFromEnum(opcode.Opcode.OP_1),
+    });
+
+    try std.testing.expectError(error.UnsatisfiedLockTime, executeScript(.{
+        .allocator = allocator,
+        .tx = &finalized_tx,
+        .input_index = 0,
+        .flags = flags,
+    }, finalized_script));
+}
+
+test "engine honors disabled-bit and version or type edge cases for checksequenceverify" {
+    const allocator = std.testing.allocator;
+
+    var flags = ExecutionFlags.legacyReference();
+    flags.verify_check_sequence = true;
+
+    const disabled_operand = try num.ScriptNum.encode(allocator, @as(i64, sequence_locktime_disabled));
+    defer allocator.free(disabled_operand);
+    const disabled_script_bytes = try allocator.alloc(u8, 1 + disabled_operand.len + 2);
+    defer allocator.free(disabled_script_bytes);
+    disabled_script_bytes[0] = @intCast(disabled_operand.len);
+    @memcpy(disabled_script_bytes[1 .. 1 + disabled_operand.len], disabled_operand);
+    disabled_script_bytes[1 + disabled_operand.len] = @intFromEnum(opcode.Opcode.OP_CHECKSEQUENCEVERIFY);
+    disabled_script_bytes[2 + disabled_operand.len] = @intFromEnum(opcode.Opcode.OP_1);
+    const disabled_script = Script.init(disabled_script_bytes);
+
+    var inputs = [_]Input{
+        .{
+            .previous_outpoint = .{
+                .txid = .{ .bytes = [_]u8{0x05} ** 32 },
+                .index = 0,
+            },
+            .unlocking_script = Script.init(""),
+            .sequence = 10,
+        },
+    };
+    var outputs = [_]Output{
+        .{
+            .satoshis = 1,
+            .locking_script = Script.init(""),
+        },
+    };
+    const success_tx = Transaction{
+        .version = 2,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = 0,
+    };
+
+    var success = try executeScript(.{
+        .allocator = allocator,
+        .tx = &success_tx,
+        .input_index = 0,
+        .flags = flags,
+    }, disabled_script);
+    defer success.deinit(allocator);
+    try std.testing.expect(success.success);
+
+    const version_tx = Transaction{
+        .version = 1,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = 0,
+    };
+    const small_script = Script.init(&[_]u8{
+        @intFromEnum(opcode.Opcode.OP_5),
+        @intFromEnum(opcode.Opcode.OP_CHECKSEQUENCEVERIFY),
+        @intFromEnum(opcode.Opcode.OP_1),
+    });
+
+    try std.testing.expectError(error.UnsatisfiedLockTime, executeScript(.{
+        .allocator = allocator,
+        .tx = &version_tx,
+        .input_index = 0,
+        .flags = flags,
+    }, small_script));
+
+    inputs[0].sequence = sequence_locktime_disabled;
+    const tx_disabled_tx = Transaction{
+        .version = 2,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = 0,
+    };
+    try std.testing.expectError(error.UnsatisfiedLockTime, executeScript(.{
+        .allocator = allocator,
+        .tx = &tx_disabled_tx,
+        .input_index = 0,
+        .flags = flags,
+    }, small_script));
+
+    inputs[0].sequence = 5;
+    const time_operand = try num.ScriptNum.encode(allocator, @as(i64, sequence_locktime_is_seconds | 5));
+    defer allocator.free(time_operand);
+    const mismatch_script_bytes = try allocator.alloc(u8, 1 + time_operand.len + 2);
+    defer allocator.free(mismatch_script_bytes);
+    mismatch_script_bytes[0] = @intCast(time_operand.len);
+    @memcpy(mismatch_script_bytes[1 .. 1 + time_operand.len], time_operand);
+    mismatch_script_bytes[1 + time_operand.len] = @intFromEnum(opcode.Opcode.OP_CHECKSEQUENCEVERIFY);
+    mismatch_script_bytes[2 + time_operand.len] = @intFromEnum(opcode.Opcode.OP_1);
+    const mismatch_script = Script.init(mismatch_script_bytes);
+    const mismatch_tx = Transaction{
+        .version = 2,
+        .inputs = &inputs,
+        .outputs = &outputs,
+        .lock_time = 0,
+    };
+
+    try std.testing.expectError(error.UnsatisfiedLockTime, executeScript(.{
+        .allocator = allocator,
+        .tx = &mismatch_tx,
+        .input_index = 0,
+        .flags = flags,
+    }, mismatch_script));
 }

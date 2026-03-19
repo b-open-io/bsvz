@@ -146,6 +146,76 @@ test "go multisig rows: exact strict oracle rows" {
     });
 }
 
+test "go multisig rows: exact nulldummy rows with real signatures" {
+    const allocator = std.testing.allocator;
+    const checksig_locking_hex =
+        "53" ++
+        "21" ++ "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798" ++
+        "21" ++ "038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508" ++
+        "21" ++ "03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640" ++
+        "53" ++ "ae";
+    const checksig_not_locking_hex = checksig_locking_hex ++ "91";
+
+    const nonzero_dummy_sigs =
+        "51" ++
+        "47" ++ "3044022051254b9fb476a52d85530792b578f86fea70ec1ffb4393e661bcccb23d8d63d3022076505f94a403c86097841944e044c70c2045ce90e36de51f7e9d3828db98a07501" ++
+        "47" ++ "304402200a358f750934b3feb822f1966bfcd8bbec9eeaa3a8ca941e11ee5960e181fa01022050bf6b5a8e7750f70354ae041cb68a7bade67ec6c3ab19eb359638974410626e01" ++
+        "47" ++ "304402200955d031fff71d8653221e85e36c3c85533d2312fc3045314b19650b7ae2f81002202a6bb8505e36201909d0921f01abff390ae6b7ff97bbf959f98aedeb0a56730901";
+    const nonzero_dummy_invalid_not_sigs =
+        "51" ++
+        "47" ++ "304402201bb2edab700a5d020236df174fefed78087697143731f659bea59642c759c16d022061f42cdbae5bcd3e8790f20bf76687443436e94a634321c16a72aa54cbc7c2ea01" ++
+        "47" ++ "304402204bb4a64f2a6e5c7fb2f07fef85ee56fde5e6da234c6a984262307a20e99842d702206f8303aaba5e625d223897e2ffd3f88ef1bcffef55f38dc3768e5f2e94c923f901" ++
+        "47" ++ "3044022040c2809b71fffb155ec8b82fe7a27f666bd97f941207be4e14ade85a1249dd4d02204d56c85ec525dd18e29a0533d5ddf61b6b1bb32980c2f63edf951aebf7a27bfe01";
+
+    var nulldummy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    nulldummy_flags.null_dummy = true;
+
+    try runRows(allocator, nulldummy_flags, &[_]GoRow{
+        .{
+            .name = "row 2153 3-of-3 checkmultisig with nonzero dummy",
+            .unlocking_hex = nonzero_dummy_sigs,
+            .locking_hex = checksig_locking_hex,
+            .expected = .{ .err = error.NullDummy },
+        },
+        .{
+            .name = "row 2167 3-of-3 checkmultisig not with invalid sig and nonzero dummy",
+            .unlocking_hex = nonzero_dummy_invalid_not_sigs,
+            .locking_hex = checksig_not_locking_hex,
+            .expected = .{ .err = error.NullDummy },
+        },
+    });
+}
+
+test "go multisig rows: exact forkid policy rows" {
+    const allocator = std.testing.allocator;
+    const unlocking_hex = "00" ++ "09" ++ "300602010102010141";
+    const locking_hex = "51" ++ "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0" ++ "51" ++ "ae91";
+
+    var legacy_strict = bsvz.script.engine.ExecutionFlags.legacyReference();
+    legacy_strict.strict_encoding = true;
+
+    try runRows(allocator, legacy_strict, &[_]GoRow{
+        .{
+            .name = "row 2426 checkmultisig not rejects illegal forkid under strictenc",
+            .unlocking_hex = unlocking_hex,
+            .locking_hex = locking_hex,
+            .expected = .{ .err = error.IllegalForkId },
+        },
+    });
+
+    var forkid_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+    forkid_flags.der_signatures = true;
+
+    try runRows(allocator, forkid_flags, &[_]GoRow{
+        .{
+            .name = "row 2427 checkmultisig not accepts forkid under sighash_forkid policy",
+            .unlocking_hex = unlocking_hex,
+            .locking_hex = locking_hex,
+            .expected = .{ .success = true },
+        },
+    });
+}
+
 test "go multisig rows: zero-count parity" {
     const allocator = std.testing.allocator;
     const flags = bsvz.script.engine.ExecutionFlags.legacyReference();

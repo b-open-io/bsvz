@@ -206,6 +206,13 @@ test "go direct parser rows: compact if return tail families" {
             .expected = .{ .err = error.UnknownOpcode },
         },
         .{
+            .row = 105,
+            .name = "row 105 if five return endif bad opcode tail still errors before genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556a68ba",
+            .expected = .{ .err = error.ReturnEncountered },
+        },
+        .{
             .row = 117,
             .name = "row 117 if return endif if still errors before genesis",
             .unlocking_hex = "51",
@@ -291,6 +298,13 @@ test "go direct parser rows: compact if return tail families" {
             .unlocking_hex = "00",
             .locking_hex = "636a68ba",
             .expected = .{ .err = error.UnknownOpcode },
+        },
+        .{
+            .row = 106,
+            .name = "row 106 if five return endif bad opcode tail succeeds after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63556a68ba",
+            .expected = .{ .success = true },
         },
     };
 

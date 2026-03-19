@@ -367,7 +367,7 @@ test "go direct checksig rows: sighash policy gates" {
     legacy_strict.strict_encoding = true;
 
     try harness.runCase(allocator, .{
-        .name = "checksig not rejects illegal forkid under legacy strict policy",
+        .name = "row 2424 checksig not rejects illegal forkid under strictenc",
         .unlocking_hex = "09300602010102010141",
         .locking_hex = checksig_not_locking_hex,
         .flags = legacy_strict,
@@ -378,7 +378,7 @@ test "go direct checksig rows: sighash policy gates" {
     forkid_flags.der_signatures = true;
 
     try harness.runCase(allocator, .{
-        .name = "checksig not accepts forkid under forkid policy",
+        .name = "row 2425 checksig not accepts forkid under sighash_forkid",
         .unlocking_hex = "09300602010102010141",
         .locking_hex = checksig_not_locking_hex,
         .flags = forkid_flags,
@@ -394,6 +394,14 @@ test "go direct checksig rows: sighash policy gates" {
     });
 
     try harness.runCase(allocator, .{
+        .name = "row 2097 p2pk rejects undefined sighash type under strictenc",
+        .unlocking_hex = "47304402206177d513ec2cda444c021a1f4f656fc4c72ba108ae063e157eb86dc3575784940220666fc66702815d0e5413bb9b1df22aed44f5f1efb8b99d41dd5dc9a5be6d205205",
+        .locking_hex = "41048282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f5150811f8a8098557dfe45e8256e830b60ace62d613ac2f7b17bed31b6eaff6e26cafac",
+        .flags = legacy_strict,
+        .expected = .{ .err = error.InvalidSigHashType },
+    });
+
+    try harness.runCase(allocator, .{
         .name = "p2pk rejects invalid forkid under legacy strict policy",
         .unlocking_hex = "4730440220368d68340dfbebf99d5ec87d77fba899763e466c0a7ab2fa0221fb868ab0f3ef0220266c1a52a8e5b7b597613b80cf53814d3925dfb6715dce712c8e7a25e63a044041",
         .locking_hex = "41" ++ "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8" ++ "ac",
@@ -402,9 +410,17 @@ test "go direct checksig rows: sighash policy gates" {
     });
 
     try harness.runCase(allocator, .{
-        .name = "p2pkh rejects invalid sighash type under legacy strict policy",
+        .name = "row 2111 p2pkh rejects invalid sighash type under strictenc",
         .unlocking_hex = "4730440220647a83507454f15f85f7e24de6e70c9d7b1d4020c71d0e53f4412425487e1dde022015737290670b4ab17b6783697a88ddd581c2d9c9efe26a59ac213076fc67f53021" ++ "41" ++ "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
         .locking_hex = "76" ++ "a9" ++ "14" ++ "91b24bf9f5288532960ac687abb035127b1d28a5" ++ "88" ++ "ac",
+        .flags = legacy_strict,
+        .expected = .{ .err = error.InvalidSigHashType },
+    });
+
+    try harness.runCase(allocator, .{
+        .name = "row 2139 checksig not rejects undefined sighash type under strictenc",
+        .unlocking_hex = "47304402207409b5b320296e5e2136a7b281a7f803028ca4ca44e2b83eebd46932677725de02202d4eea1c8d3c98e6f42614f54764e6e5e6542e213eb4d079737e9a8b6e9812ec05",
+        .locking_hex = "41048282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f5150811f8a8098557dfe45e8256e830b60ace62d613ac2f7b17bed31b6eaff6e26cafac91",
         .flags = legacy_strict,
         .expected = .{ .err = error.InvalidSigHashType },
     });

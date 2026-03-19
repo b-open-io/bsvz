@@ -251,6 +251,7 @@ test "go direct script rows: minimaldata numeric arguments" {
     try expectMinimalDataBinary(allocator, flags, .OP_GREATERTHANOREQUAL, "greaterthanorequal rejects non-minimal left operand", "greaterthanorequal rejects non-minimal right operand");
     try expectMinimalDataBinary(allocator, flags, .OP_MIN, "min rejects non-minimal left operand", "min rejects non-minimal right operand");
     try expectMinimalDataBinary(allocator, flags, .OP_MAX, "max rejects non-minimal left operand", "max rejects non-minimal right operand");
+    try expectMinimalDataBinary(allocator, flags, .OP_MUL, "mul rejects non-minimal left operand", "mul rejects non-minimal right operand");
 
     const locking_within_drop_1 = try numericOpDrop1Hex(allocator, .OP_WITHIN);
     defer allocator.free(locking_within_drop_1);
@@ -275,6 +276,16 @@ test "go direct script rows: minimaldata numeric arguments" {
         .locking_hex = locking_within_drop_1,
         .flags = flags,
         .expected = .{ .err = error.MinimalData },
+    });
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{
+            .row = 944,
+            .name = "row 944 mul rejects non-minimal left operand under minimaldata",
+            .unlocking_hex = "03ff0000",
+            .locking_hex = "529502fe0187",
+            .expected = .{ .err = error.MinimalData },
+        },
     });
 }
 
@@ -353,6 +364,23 @@ test "go direct script rows: minimaldata not parity" {
         .{ .row = 1258, .name = "not rejects non-minimal ff7f encoding", .unlocking_hex = "03ff7f00", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
         .{ .row = 1259, .name = "not rejects non-minimal ffffff encoding", .unlocking_hex = "04ffff7f80", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
         .{ .row = 1260, .name = "not rejects non-minimal ffff7f encoding", .unlocking_hex = "04ffff7f00", .locking_hex = "917551", .expected = .{ .err = error.MinimalData } },
+    });
+}
+
+test "go direct script rows: minimaldata csv parity" {
+    const allocator = std.testing.allocator;
+    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    flags.minimal_data = true;
+    flags.verify_check_sequence = true;
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{
+            .row = 1423,
+            .name = "row 1423 checksequenceverify rejects non-minimal operand under minimaldata",
+            .unlocking_hex = "020100",
+            .locking_hex = "b2",
+            .expected = .{ .err = error.MinimalData },
+        },
     });
 }
 

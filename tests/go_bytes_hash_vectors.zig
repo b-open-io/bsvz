@@ -245,6 +245,8 @@ test "go direct script rows: split parity" {
         .{ .row = 799, .name = "go row 799: split on empty string at zero keeps both halves empty", .unlocking_hex = "0000", .locking_hex = "7f00880087", .expected = .{ .success = true } },
         .{ .row = 800, .name = "go row 800: split at zero keeps the right side intact", .unlocking_hex = "0361626300", .locking_hex = "7f03616263880087", .expected = .{ .success = true } },
         .{ .row = 801, .name = "go row 801: split at payload length keeps the left side intact", .unlocking_hex = "0361626353", .locking_hex = "7f00880361626387", .expected = .{ .success = true } },
+        .{ .row = 802, .name = "go row 802: split rejects an index above payload length", .unlocking_hex = "0361626354", .locking_hex = "7f", .expected = .{ .err = error.InvalidSplitPosition } },
+        .{ .row = 803, .name = "go row 803: split rejects a negative index", .unlocking_hex = "036162634f", .locking_hex = "7f", .expected = .{ .err = error.InvalidStackIndex } },
         .{ .row = 968, .name = "split underflows on empty stack", .unlocking_hex = "", .locking_hex = "7f", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 969, .name = "split underflows with one parameter", .unlocking_hex = "0161", .locking_hex = "7f", .expected = .{ .err = error.StackUnderflow } },
         .{ .row = 970, .name = "split divides abcdef at three", .unlocking_hex = abcdef_split_3, .locking_hex = "7f03646566880461626387", .expected = .{ .success = true } },

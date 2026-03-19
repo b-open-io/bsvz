@@ -32,9 +32,9 @@ test "go direct script rows: pick parity" {
     try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
         .{ .row = 435, .name = "pick with index three reads the deepest stack item", .unlocking_hex = "5100000053", .locking_hex = "79", .expected = .{ .success = true } },
         .{ .row = 436, .name = "pick with index zero duplicates the current top item", .unlocking_hex = "5100", .locking_hex = "79", .expected = .{ .success = true } },
-        .{ .row = 198, .name = "pick index zero reads stack top without changing depth", .unlocking_hex = "011601150114", .locking_hex = "0079011488745387", .expected = .{ .success = true } },
-        .{ .row = 199, .name = "pick index one reads second stack item", .unlocking_hex = "011601150114", .locking_hex = "5179011588745387", .expected = .{ .success = true } },
-        .{ .row = 200, .name = "pick index two reads third stack item", .unlocking_hex = "011601150114", .locking_hex = "5279011688745387", .expected = .{ .success = true } },
+        .{ .row = 159, .name = "go row 159: pick index zero reads the top item and preserves depth", .unlocking_hex = "011601150114", .locking_hex = "0079011488745387", .expected = .{ .success = true } },
+        .{ .row = 160, .name = "go row 160: pick index one reads the second item and preserves depth", .unlocking_hex = "011601150114", .locking_hex = "5179011588745387", .expected = .{ .success = true } },
+        .{ .row = 161, .name = "go row 161: pick index two reads the third item and preserves depth", .unlocking_hex = "011601150114", .locking_hex = "5279011688745387", .expected = .{ .success = true } },
         .{ .row = 611, .name = "pick with minimally encoded index succeeds", .unlocking_hex = "51020000", .locking_hex = "7975", .expected = .{ .success = true } },
     });
 
@@ -52,9 +52,9 @@ test "go direct script rows: roll parity" {
     try runRows(allocator, bsvz.script.engine.ExecutionFlags.legacyReference(), &[_]GoRow{
         .{ .row = 437, .name = "roll with index three rotates the deepest stack item to the top", .unlocking_hex = "5100000053", .locking_hex = "7a", .expected = .{ .success = true } },
         .{ .row = 438, .name = "roll with index zero removes and re-pushes the current top item", .unlocking_hex = "5100", .locking_hex = "7a", .expected = .{ .success = true } },
-        .{ .row = 201, .name = "roll index zero preserves top item and reduces depth", .unlocking_hex = "011601150114", .locking_hex = "007a011488745287", .expected = .{ .success = true } },
-        .{ .row = 202, .name = "roll index one rotates second stack item to the top", .unlocking_hex = "011601150114", .locking_hex = "517a011588745287", .expected = .{ .success = true } },
-        .{ .row = 203, .name = "roll index two rotates third stack item to the top", .unlocking_hex = "011601150114", .locking_hex = "527a011688745287", .expected = .{ .success = true } },
+        .{ .row = 162, .name = "go row 162: roll index zero preserves the top item while reducing depth", .unlocking_hex = "011601150114", .locking_hex = "007a011488745287", .expected = .{ .success = true } },
+        .{ .row = 163, .name = "go row 163: roll index one rotates the second item to the top", .unlocking_hex = "011601150114", .locking_hex = "517a011588745287", .expected = .{ .success = true } },
+        .{ .row = 164, .name = "go row 164: roll index two rotates the third item to the top", .unlocking_hex = "011601150114", .locking_hex = "527a011688745287", .expected = .{ .success = true } },
         .{ .row = 612, .name = "roll with minimally encoded index succeeds", .unlocking_hex = "51020000", .locking_hex = "7a7551", .expected = .{ .success = true } },
     });
 

@@ -135,6 +135,12 @@ const DirectSpendFixtureJson = struct {
     call_tx_hex: []const u8,
 };
 
+const MultiInputSpendFixtureJson = struct {
+    first_previous_tx_hex: []const u8,
+    second_previous_tx_hex: []const u8,
+    call_tx_hex: []const u8,
+};
+
 const ThreeTxFixtureJson = struct {
     deploy_tx_hex: []const u8,
     first_call_tx_hex: []const u8,
@@ -1262,6 +1268,202 @@ fn buildTicTacToeMoveAndWinFixture(allocator: std.mem.Allocator) !std.json.Parse
     });
 }
 
+fn buildTicTacToeCancelFixture(allocator: std.mem.Allocator) !std.json.Parsed(DirectSpendFixtureJson) {
+    const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "examples/ts/tic-tac-toe/TicTacToe.runar.ts",
+    });
+    defer allocator.free(source_abs_rel);
+    try accessOrSkip(source_abs_rel);
+
+    const sdk_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "packages/runar-sdk/dist/index.js",
+    });
+    defer allocator.free(sdk_abs_rel);
+    try accessOrSkip(sdk_abs_rel);
+
+    const code =
+        \\(async () => {
+        \\  const fs = require('fs');
+        \\  const { compile } = await import('./packages/runar-compiler/dist/index.js');
+        \\  const { RunarContract, MockProvider, LocalSigner } = await import('./packages/runar-sdk/dist/index.js');
+        \\  const { Hash, Utils } = await import('@bsv/sdk');
+        \\  const source = fs.readFileSync('examples/ts/tic-tac-toe/TicTacToe.runar.ts', 'utf-8');
+        \\  const result = compile(source, { fileName: 'TicTacToe.runar.ts' });
+        \\  if (!result.artifact) {
+        \\    console.error(JSON.stringify(result));
+        \\    process.exit(1);
+        \\  }
+        \\  const provider = new MockProvider();
+        \\  const playerX = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000003');
+        \\  const playerO = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000005');
+        \\  const playerXPub = await playerX.getPublicKey();
+        \\  const playerOPub = await playerO.getPublicKey();
+        \\  const playerXAddr = await playerX.getAddress();
+        \\  const playerOAddr = await playerO.getAddress();
+        \\  provider.addUtxo(playerXAddr, {
+        \\    txid: '23'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  provider.addUtxo(playerOAddr, {
+        \\    txid: '25'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 500000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  const betAmount = 1000;
+        \\  const contract = new RunarContract(result.artifact, [playerXPub, BigInt(betAmount)]);
+        \\  contract.connect(provider, playerX);
+        \\  await contract.deploy(provider, playerX, { satoshis: betAmount });
+        \\  await contract.call('join', [playerOPub, null], provider, playerO, { satoshis: betAmount * 2 });
+        \\  const xPkhHex = Utils.toHex(Hash.hash160(Utils.toArray(playerXPub, 'hex')));
+        \\  const oPkhHex = Utils.toHex(Hash.hash160(Utils.toArray(playerOPub, 'hex')));
+        \\  const prepared = await contract.prepareCall(
+        \\    'cancel',
+        \\    [null, null, '00'.repeat(20), 0n],
+        \\    {
+        \\      terminalOutputs: [
+        \\        { scriptHex: '76a914' + xPkhHex + '88ac', satoshis: betAmount },
+        \\        { scriptHex: '76a914' + oPkhHex + '88ac', satoshis: betAmount },
+        \\      ],
+        \\    },
+        \\  );
+        \\  const publicMethods = result.artifact.abi.methods.filter((method) => method.isPublic);
+        \\  const methodIndex = publicMethods.findIndex((method) => method.name === 'cancel');
+        \\  const sigSubscript = contract.getSubscriptForSigning(prepared._contractUtxo.script, methodIndex);
+        \\  const txHex = prepared.tx.toHex();
+        \\  const sigX = await playerX.sign(txHex, 0, sigSubscript, betAmount * 2);
+        \\  const sigO = await playerO.sign(txHex, 0, sigSubscript, betAmount * 2);
+        \\  await contract.finalizeCall(prepared, { 0: sigX, 1: sigO });
+        \\  const txs = provider.getBroadcastedTxs();
+        \\  process.stdout.write(JSON.stringify({
+        \\    previous_tx_hex: txs[1],
+        \\    call_tx_hex: txs[2],
+        \\  }));
+        \\})();
+    ;
+
+    const run_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "node", "-e", code },
+        .cwd = runar_root,
+        .max_output_bytes = 2 * 1024 * 1024,
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.CurrentWorkingDirectoryUnlinked => return error.SkipZigTest,
+        else => return err,
+    };
+    defer allocator.free(run_result.stderr);
+    defer allocator.free(run_result.stdout);
+
+    switch (run_result.term) {
+        .Exited => |code_value| {
+            if (code_value != 0) {
+                std.log.err("tic-tac-toe cancel fixture build failed: {s}", .{run_result.stderr});
+                return error.RunarCompileFailed;
+            }
+        },
+        else => return error.RunarCompileFailed,
+    }
+
+    return std.json.parseFromSlice(DirectSpendFixtureJson, allocator, run_result.stdout, .{
+        .allocate = .alloc_always,
+    });
+}
+
+fn buildFungibleTokenMergeFixture(allocator: std.mem.Allocator) !std.json.Parsed(MultiInputSpendFixtureJson) {
+    const source_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "examples/ts/token-ft/FungibleTokenExample.runar.ts",
+    });
+    defer allocator.free(source_abs_rel);
+    try accessOrSkip(source_abs_rel);
+
+    const sdk_abs_rel = try std.fmt.allocPrint(allocator, "{s}/{s}", .{
+        runar_root,
+        "packages/runar-sdk/dist/index.js",
+    });
+    defer allocator.free(sdk_abs_rel);
+    try accessOrSkip(sdk_abs_rel);
+
+    const code =
+        \\(async () => {
+        \\  const fs = require('fs');
+        \\  const { compile } = await import('./packages/runar-compiler/dist/index.js');
+        \\  const { RunarContract, MockProvider, LocalSigner } = await import('./packages/runar-sdk/dist/index.js');
+        \\  const source = fs.readFileSync('examples/ts/token-ft/FungibleTokenExample.runar.ts', 'utf-8');
+        \\  const result = compile(source, { fileName: 'FungibleTokenExample.runar.ts' });
+        \\  if (!result.artifact) {
+        \\    console.error(JSON.stringify(result));
+        \\    process.exit(1);
+        \\  }
+        \\  const provider = new MockProvider();
+        \\  const signer = new LocalSigner('0000000000000000000000000000000000000000000000000000000000000001');
+        \\  const address = await signer.getAddress();
+        \\  const pubKeyHex = await signer.getPublicKey();
+        \\  provider.addUtxo(address, {
+        \\    txid: '36'.repeat(32),
+        \\    outputIndex: 0,
+        \\    satoshis: 1000000,
+        \\    script: '76a914' + '00'.repeat(20) + '88ac',
+        \\  });
+        \\  const tokenIdHex = Buffer.from('FT-MERGE-LOCAL-001').toString('hex');
+        \\  const contract1 = new RunarContract(result.artifact, [pubKeyHex, 400n, 0n, tokenIdHex]);
+        \\  await contract1.deploy(provider, signer, { satoshis: 1 });
+        \\  const contract2 = new RunarContract(result.artifact, [pubKeyHex, 600n, 0n, tokenIdHex]);
+        \\  await contract2.deploy(provider, signer, { satoshis: 1 });
+        \\  const utxo2 = contract2.getUtxo();
+        \\  await contract1.call(
+        \\    'merge',
+        \\    [null, 600n, null, 1n],
+        \\    provider,
+        \\    signer,
+        \\    {
+        \\      additionalContractInputs: [utxo2],
+        \\      additionalContractInputArgs: [[null, 400n, null, 1n]],
+        \\      outputs: [
+        \\        { satoshis: 1, state: { owner: pubKeyHex, balance: 400n, mergeBalance: 600n } },
+        \\      ],
+        \\    },
+        \\  );
+        \\  const txs = provider.getBroadcastedTxs();
+        \\  process.stdout.write(JSON.stringify({
+        \\    first_previous_tx_hex: txs[0],
+        \\    second_previous_tx_hex: txs[1],
+        \\    call_tx_hex: txs[2],
+        \\  }));
+        \\})();
+    ;
+
+    const run_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "node", "-e", code },
+        .cwd = runar_root,
+        .max_output_bytes = 2 * 1024 * 1024,
+    }) catch |err| switch (err) {
+        error.FileNotFound, error.CurrentWorkingDirectoryUnlinked => return error.SkipZigTest,
+        else => return err,
+    };
+    defer allocator.free(run_result.stderr);
+    defer allocator.free(run_result.stdout);
+
+    switch (run_result.term) {
+        .Exited => |code_value| {
+            if (code_value != 0) {
+                std.log.err("fungible token merge fixture build failed: {s}", .{run_result.stderr});
+                return error.RunarCompileFailed;
+            }
+        },
+        else => return error.RunarCompileFailed,
+    }
+
+    return std.json.parseFromSlice(MultiInputSpendFixtureJson, allocator, run_result.stdout, .{
+        .allocate = .alloc_always,
+    });
+}
+
 
 fn verifyInputAgainstOutput(
     allocator: std.mem.Allocator,
@@ -1722,5 +1924,41 @@ test "local runar tic-tac-toe moveAndWin verifies through bsvz" {
         0,
         fixture.value.call_tx_hex,
         0,
+    ));
+}
+
+test "local runar tic-tac-toe cancel verifies through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildTicTacToeCancelFixture(allocator);
+    defer fixture.deinit();
+
+    try std.testing.expect(try verifyInputAgainstOutput(
+        allocator,
+        fixture.value.previous_tx_hex,
+        0,
+        fixture.value.call_tx_hex,
+        0,
+    ));
+}
+
+test "local runar fungible token merge verifies both contract inputs through bsvz" {
+    const allocator = std.testing.allocator;
+    const fixture = try buildFungibleTokenMergeFixture(allocator);
+    defer fixture.deinit();
+
+    try std.testing.expect(try verifyInputAgainstOutput(
+        allocator,
+        fixture.value.first_previous_tx_hex,
+        0,
+        fixture.value.call_tx_hex,
+        0,
+    ));
+
+    try std.testing.expect(try verifyInputAgainstOutput(
+        allocator,
+        fixture.value.second_previous_tx_hex,
+        0,
+        fixture.value.call_tx_hex,
+        1,
     ));
 }

@@ -27,6 +27,12 @@ test "go direct stack rows: safe positive stack-shape subset" {
 
     try runRows(allocator, &[_]GoRow{
         .{
+            .name = "go row 154: ifdup duplicates non-integer byte payloads",
+            .unlocking_hex = "05010000000073",
+            .locking_hex = "74528805010000000087",
+            .expected = .{ .success = true },
+        },
+        .{
             .name = "row 152 ifdup leaves zero unduplicated",
             .unlocking_hex = "0073",
             .locking_hex = "7451880087",
@@ -42,6 +48,24 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .name = "row 155 drop empties stack",
             .unlocking_hex = "0075",
             .locking_hex = "740087",
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 156: dup supports arithmetic without consuming the original zero",
+            .unlocking_hex = "00",
+            .locking_hex = "76519351880087",
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 157: nip matches the exact two-item Go stack shape",
+            .unlocking_hex = "0051",
+            .locking_hex = "77",
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 158: over preserves depth while copying the second item",
+            .unlocking_hex = "5100",
+            .locking_hex = "78745388",
             .expected = .{ .success = true },
         },
         .{
@@ -132,6 +156,12 @@ test "go direct stack rows: safe positive stack-shape subset" {
             .name = "row 441 tuck copies the top item below the second item",
             .unlocking_hex = "0051",
             .locking_hex = "7d",
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "go row 178: swap exposes the original bottom item for equality",
+            .unlocking_hex = "5100",
+            .locking_hex = "7c51880087",
             .expected = .{ .success = true },
         },
         .{

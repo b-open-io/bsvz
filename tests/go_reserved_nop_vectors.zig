@@ -38,6 +38,20 @@ test "reserved and version opcodes fail when executed and do not affect skipped 
             .expected = .{ .success = true },
         },
         .{
+            .name = "verif opcode in skipped branch still fails before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "6365675168",
+            .flags = legacy_flags,
+            .expected = .{ .err = error.UnknownOpcode },
+        },
+        .{
+            .name = "vernotif opcode in skipped branch still fails before genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "6366675168",
+            .flags = legacy_flags,
+            .expected = .{ .err = error.UnknownOpcode },
+        },
+        .{
             .name = "ver opcode in skipped branch does not affect post-genesis success path",
             .unlocking_hex = "00",
             .locking_hex = "6362675168",
@@ -270,6 +284,37 @@ test "discourage_upgradable_nops rejects executed nop soft-fork surface" {
             .locking_hex = "b9",
             .flags = flags,
             .expected = .{ .err = error.DiscourageUpgradableNops },
+        },
+    });
+}
+
+test "discourage_upgradable_nops does not fire for untaken branches" {
+    const allocator = std.testing.allocator;
+
+    var flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+    flags.discourage_upgradable_nops = true;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "skipped nop1 does not trigger discourage_upgradable_nops",
+            .unlocking_hex = "00",
+            .locking_hex = "63b06851",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "skipped cltv alias does not trigger discourage_upgradable_nops",
+            .unlocking_hex = "00",
+            .locking_hex = "63b16851",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .name = "skipped csv alias does not trigger discourage_upgradable_nops",
+            .unlocking_hex = "00",
+            .locking_hex = "63b26851",
+            .flags = flags,
+            .expected = .{ .success = true },
         },
     });
 }

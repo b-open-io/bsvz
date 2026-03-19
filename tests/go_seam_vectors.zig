@@ -69,7 +69,7 @@ test "go direct script-pair rows: op_return seam behavior" {
     });
 
     try harness.runCase(allocator, .{
-        .name = "pre-genesis taken if return endif followed by taken return still errors",
+        .name = "row 113 pre-genesis taken if return endif followed by taken return still errors",
         .unlocking_hex = "51",
         .locking_hex = "63556a68556aba",
         .flags = legacy_flags,
@@ -77,7 +77,7 @@ test "go direct script-pair rows: op_return seam behavior" {
     });
 
     try harness.runCase(allocator, .{
-        .name = "post-genesis taken if return endif followed by taken return is still ok",
+        .name = "row 114 post-genesis taken if return endif followed by taken return is still ok",
         .unlocking_hex = "51",
         .locking_hex = "63556a68556aba",
         .flags = post_genesis_flags,
@@ -101,7 +101,7 @@ test "go direct script-pair rows: op_return seam behavior" {
     });
 
     try harness.runCase(allocator, .{
-        .name = "pre-genesis unlocking op_return is still an op_return error",
+        .name = "row 82 pre-genesis unlocking op_return is still an op_return error",
         .unlocking_hex = "6a",
         .locking_hex = "51",
         .flags = legacy_flags,
@@ -109,7 +109,7 @@ test "go direct script-pair rows: op_return seam behavior" {
     });
 
     try harness.runCase(allocator, .{
-        .name = "post-genesis unlocking op_return can still satisfy a simple lock",
+        .name = "row 83 post-genesis unlocking op_return can still satisfy a simple lock",
         .unlocking_hex = "6a",
         .locking_hex = "51",
         .flags = post_genesis_flags,
@@ -160,7 +160,7 @@ test "go direct script-pair rows: op_return seam behavior" {
     });
 
     try harness.runCase(allocator, .{
-        .name = "pre-genesis return only works if not executed across the script seam",
+        .name = "row 76 pre-genesis return only works if not executed across the script seam",
         .unlocking_hex = "00",
         .locking_hex = "636a6851",
         .flags = legacy_flags,
@@ -168,7 +168,7 @@ test "go direct script-pair rows: op_return seam behavior" {
     });
 
     try harness.runCase(allocator, .{
-        .name = "post-genesis return only works if not executed across the script seam",
+        .name = "row 77 post-genesis return only works if not executed across the script seam",
         .unlocking_hex = "00",
         .locking_hex = "636a6851",
         .flags = post_genesis_flags,
@@ -224,7 +224,7 @@ test "go direct script-pair rows: op_return seam behavior" {
     });
 
     try harness.runCase(allocator, .{
-        .name = "if return without endif stays unbalanced when branch is not taken",
+        .name = "row 89 if return without endif stays unbalanced when branch is not taken",
         .unlocking_hex = "00",
         .locking_hex = "636a",
         .flags = legacy_flags,
@@ -232,7 +232,7 @@ test "go direct script-pair rows: op_return seam behavior" {
     });
 
     try harness.runCase(allocator, .{
-        .name = "if return without endif stays unbalanced after genesis when branch is not taken",
+        .name = "row 90 if return without endif stays unbalanced after genesis when branch is not taken",
         .unlocking_hex = "00",
         .locking_hex = "636a",
         .flags = post_genesis_flags,
