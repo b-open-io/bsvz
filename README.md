@@ -49,7 +49,7 @@ Current construction zones:
 
 - SPV is not yet real beyond placeholders and type stubs
 - broadcast is not yet real beyond namespace scaffolding
-- the script interpreter now exercises 1,164 unique Go reference rows out of the 1,499-row corpus locally, combining dedicated exact-row lanes with a filtered bulk-corpus lane; this is roughly 77.7% corpus coverage, but the full corpus is still not green
+- the script interpreter now combines 600 exact Go row references across the split dedicated lanes with a 980-row filtered bulk-corpus lane and two conservative reference lanes for sigcheck and multisig failure shapes (29 and 18 rows respectively); local corpus coverage remains comfortably past the earlier 75% milestone, but the full corpus is still not green
 - native execution coverage for compiled Runar contracts is broad and growing, including pure conformance contracts like `if-else`, `if-without-else`, `bounded-loop`, and `multi-method`, plus auction lifecycle, escrow, tic-tac-toe terminal flows, fungible-token merge/transfer, NFT, SHA-256/BLAKE3 crypto paths, `P2Blake3PKH`, and negative covenant checks, but not complete
 
 Current interpreter target:
@@ -188,7 +188,7 @@ This is the current interpreter map for `bsvz.script`.
 | CLTV / CSV / upgradable NOP surface | partial but real | `CLTV` and `CSV` now have tx-aware legacy/reference semantics behind explicit flags; the modern BSV profile still treats them as inert unless policy says otherwise |
 | Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding are both enforced where Go applies `MINIMALDATA`, with a dedicated minimaldata vector lane |
 | `CODESEPARATOR` parity | broad coverage | legacy and ForkID scriptCode behavior, chained separator result-shape tests, parser/scanner coverage |
-| Go parity vectors | broad and now past 75% corpus coverage locally | 694 exact Go-row references span the dedicated lanes: control-flow, seam, parser, reserved/NOP, sigcheck, multisig, minimaldata, numeric, boolean/numeric, bitwise, bytes/hash, stack-shape, stack-index, disabled-opcode, and bin2num. A filtered bulk-corpus lane adds 980 more safe Go rows, for 1,164 unique rows out of the 1,499-row corpus, or roughly 77.7% local coverage |
+| Go parity vectors | broad and still comfortably past the 75% local-corpus milestone | 600 exact Go-row references now span the dedicated lanes: control-flow, seam, parser, reserved/NOP, sigcheck, multisig, minimaldata, numeric, boolean/numeric, bitwise, bytes/hash, stack-shape, stack-index, disabled-opcode, and bin2num. A filtered bulk-corpus lane adds 980 more safe Go rows, and conservative sigcheck/multisig reference lanes add 29 and 18 failure-shape rows respectively. The full 1,499-row Go corpus is still not green end-to-end |
 | Runar local acceptance | broad but incomplete | real local acceptance now covers pure conformance contracts like `if-else`, `if-without-else`, `bounded-loop`, and `multi-method`, plus stateless, stateful, covenant, auction, escrow, tic-tac-toe terminal flows, NFT, fungible-token merge/transfer, SHA-256/BLAKE3 crypto paths, and `P2Blake3PKH`, including negative covenant checks, but the full Runar corpus is not yet green |
 | SPV / script-adjacent proof tooling | construction zone | not part of the interpreter core yet |
 

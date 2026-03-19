@@ -173,6 +173,26 @@ test "go numeric rows: exact arithmetic result rows" {
     });
 }
 
+test "go numeric rows: exact unary arithmetic result-shape rows" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    const row525_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{0}, &[_]Opcode{.OP_1ADD});
+    defer allocator.free(row525_unlocking);
+
+    const row526_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{2}, &[_]Opcode{.OP_1SUB});
+    defer allocator.free(row526_unlocking);
+
+    const row527_unlocking = try scriptHexForAsmIntsAndOps(allocator, &[_]i64{-1}, &[_]Opcode{.OP_NEGATE});
+    defer allocator.free(row527_unlocking);
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{ .row = 525, .name = "go row 525: 1add over zero leaves a truthy result", .unlocking_hex = row525_unlocking, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 526, .name = "go row 526: 1sub over two leaves a truthy result", .unlocking_hex = row526_unlocking, .locking_hex = "", .expected = .{ .success = true } },
+        .{ .row = 527, .name = "go row 527: negate over negative one leaves a truthy result", .unlocking_hex = row527_unlocking, .locking_hex = "", .expected = .{ .success = true } },
+    });
+}
+
 test "go numeric rows: exact division result rows" {
     const allocator = std.testing.allocator;
     const flags = bsvz.script.engine.ExecutionFlags.legacyReference();

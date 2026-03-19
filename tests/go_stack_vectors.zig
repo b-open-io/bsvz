@@ -472,10 +472,59 @@ test "go direct stack rows: safe underflow subset" {
             .expected = .{ .err = error.StackUnderflow },
         },
         .{
+            .name = "go row 1174: rot requires three stack items",
+            .unlocking_hex = "5151",
+            .locking_hex = "7b",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 1175: swap requires two stack items",
+            .unlocking_hex = "51",
+            .locking_hex = "7c",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 1176: tuck requires two stack items",
+            .unlocking_hex = "51",
+            .locking_hex = "7d",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
             .name = "go row 1412: over requires two stack items",
             .unlocking_hex = "51",
             .locking_hex = "78",
             .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 770: swap underflows before trailing true push",
+            .unlocking_hex = "51",
+            .locking_hex = "7c51",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 772: tuck underflows on empty stack before trailing true push",
+            .unlocking_hex = "61",
+            .locking_hex = "7d51",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+        .{
+            .name = "go row 773: tuck underflows with one stack item before trailing true push",
+            .unlocking_hex = "51",
+            .locking_hex = "7d51",
+            .expected = .{ .err = error.StackUnderflow },
+        },
+    });
+}
+
+test "go row 774: tuck leaves a false top item after exact cleanup" {
+    const allocator = std.testing.allocator;
+
+    try runRows(allocator, &[_]GoRow{
+        .{
+            .name = "go row 774: tuck leaves a false top item after exact cleanup",
+            .unlocking_hex = "5100",
+            .locking_hex = "7d7453887c6d",
+            .expected = .{ .success = false },
         },
     });
 }

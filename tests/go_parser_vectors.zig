@@ -390,6 +390,137 @@ test "go direct parser rows: codeseparator scanner sanity" {
     });
 }
 
+test "go direct parser rows: compact bad-op precedence after conditionals" {
+    const allocator = std.testing.allocator;
+    const legacy_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const post_genesis_flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
+
+    try runRows(allocator, legacy_flags, &[_]GoRow{
+        .{
+            .row = 123,
+            .name = "row 123 executed if exposes bad opcode before endif",
+            .unlocking_hex = "51",
+            .locking_hex = "63ba6855",
+            .expected = .{ .err = error.UnknownOpcode },
+        },
+        .{
+            .row = 125,
+            .name = "row 125 untaken if hides bad opcode before endif",
+            .unlocking_hex = "00",
+            .locking_hex = "63ba6855",
+            .expected = .{ .success = true },
+        },
+    });
+
+    try runRows(allocator, post_genesis_flags, &[_]GoRow{
+        .{
+            .row = 124,
+            .name = "row 124 executed if exposes bad opcode before endif after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "63ba6855",
+            .expected = .{ .err = error.UnknownOpcode },
+        },
+        .{
+            .row = 126,
+            .name = "row 126 untaken if hides bad opcode before endif after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "63ba6855",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 131,
+            .name = "row 131 untaken if keeps verif inert in else form",
+            .unlocking_hex = "00",
+            .locking_hex = "6365675168",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 133,
+            .name = "row 133 untaken if keeps vernotif inert in else form",
+            .unlocking_hex = "00",
+            .locking_hex = "6366675168",
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 135,
+            .name = "row 135 top-level ver is a bad opcode after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "62",
+            .expected = .{ .err = error.UnknownOpcode },
+        },
+        .{
+            .row = 136,
+            .name = "row 136 top-level reserved is a bad opcode after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "50",
+            .expected = .{ .err = error.UnknownOpcode },
+        },
+        .{
+            .row = 137,
+            .name = "row 137 top-level reserved1 is a bad opcode after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "89",
+            .expected = .{ .err = error.UnknownOpcode },
+        },
+        .{
+            .row = 138,
+            .name = "row 138 top-level reserved2 is a bad opcode after genesis",
+            .unlocking_hex = "51",
+            .locking_hex = "8a",
+            .expected = .{ .err = error.UnknownOpcode },
+        },
+        .{
+            .row = 139,
+            .name = "row 139 untaken if keeps ver inert before trailing five after genesis",
+            .unlocking_hex = "00",
+            .locking_hex = "63626855",
+            .expected = .{ .success = true },
+        },
+    });
+}
+
+test "go direct parser rows: exact pushdata boundary equivalence" {
+    const allocator = std.testing.allocator;
+    const flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+
+    const seventy_five_bytes = try builders.repeatedHexByte(allocator, 75, 0x11);
+    defer allocator.free(seventy_five_bytes);
+    const seventy_five = try builders.encodeLowerAlloc(allocator, seventy_five_bytes);
+    defer allocator.free(seventy_five);
+
+    const two_fifty_five_bytes = try builders.repeatedHexByte(allocator, 255, 0x11);
+    defer allocator.free(two_fifty_five_bytes);
+    const two_fifty_five = try builders.encodeLowerAlloc(allocator, two_fifty_five_bytes);
+    defer allocator.free(two_fifty_five);
+
+    const pushdata1_75 = try std.mem.concat(allocator, u8, &[_][]const u8{ "4c4b", seventy_five });
+    defer allocator.free(pushdata1_75);
+    const direct_75_equal = try std.mem.concat(allocator, u8, &[_][]const u8{ "4b", seventy_five, "87" });
+    defer allocator.free(direct_75_equal);
+
+    const pushdata2_255 = try std.mem.concat(allocator, u8, &[_][]const u8{ "4dff00", two_fifty_five });
+    defer allocator.free(pushdata2_255);
+    const pushdata1_255_equal = try std.mem.concat(allocator, u8, &[_][]const u8{ "4cff", two_fifty_five, "87" });
+    defer allocator.free(pushdata1_255_equal);
+
+    try runRows(allocator, flags, &[_]GoRow{
+        .{
+            .row = 538,
+            .name = "row 538 pushdata1 of 75 bytes equals direct push",
+            .unlocking_hex = pushdata1_75,
+            .locking_hex = direct_75_equal,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 539,
+            .name = "row 539 pushdata2 of 255 bytes equals pushdata1",
+            .unlocking_hex = pushdata2_255,
+            .locking_hex = pushdata1_255_equal,
+            .expected = .{ .success = true },
+        },
+    });
+}
+
 test "go direct parser rows: untaken non-minimal pushes are ignored under minimaldata" {
     const allocator = std.testing.allocator;
     var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
