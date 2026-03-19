@@ -162,6 +162,58 @@ test "exact go sigcheck reference rows execute through bsvz" {
 
     const rows = [_]ExactRow{
         .{
+            .row = 1336,
+            .name = "row 1336 p2pk with too much r padding under dersig",
+            .unlocking_asm = "0x47 0x304402200060558477337b9022e70534f1fea71a318caf836812465a2509931c5e7c4987022078ec32bd50ac9e03a349ba953dfd9fe1c8d2dd8bdb1d38ddca844d3d5c78c11801",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .row = 1337,
+            .name = "row 1337 p2pk with too much s padding but no dersig",
+            .unlocking_asm = "0x48 0x304502202de8c03fc525285c9c535631019a5f2af7c6454fa9eb392a3756a4917c420edd02210046130bf2baf7cfc065067c8b9e33a066d9c15edcea9feb0ca2d233e3597925b401",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1338,
+            .name = "row 1338 p2pk with too much s padding under dersig",
+            .unlocking_asm = "0x48 0x304502202de8c03fc525285c9c535631019a5f2af7c6454fa9eb392a3756a4917c420edd02210046130bf2baf7cfc065067c8b9e33a066d9c15edcea9feb0ca2d233e3597925b401",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .row = 1340,
+            .name = "row 1340 p2pk with too little r padding under dersig",
+            .unlocking_asm = "0x47 0x30440220d7a0417c3f6d1a15094d1cf2a3378ca0503eb8a57630953a9e2987e21ddd0a6502207a6266d686c99090920249991d3d42065b6d43eb70187b219c0db82e4f94d1a201",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .row = 1339,
+            .name = "row 1339 p2pk with too little r padding but no dersig",
+            .unlocking_asm = "0x47 0x30440220d7a0417c3f6d1a15094d1cf2a3378ca0503eb8a57630953a9e2987e21ddd0a6502207a6266d686c99090920249991d3d42065b6d43eb70187b219c0db82e4f94d1a201",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
             .row = 1341,
             .name = "row 1341 p2pk not with bad sig too much r padding but no dersig",
             .unlocking_asm = "0x47 0x30440220005ece1335e7f757a1a1f476a7fb5bd90964e8a022489f890614a04acfb734c002206c12b8294a6513c7710e8c82d3c23d75cdbfe83200eb7efb495701958501a5d601",
@@ -178,12 +230,186 @@ test "exact go sigcheck reference rows execute through bsvz" {
             .expected = .{ .success = false },
         },
         .{
+            .row = 1346,
+            .name = "row 1346 bip66 example 1 with dersig",
+            .unlocking_asm = "0x47 0x30440220d7a0417c3f6d1a15094d1cf2a3378ca0503eb8a57630953a9e2987e21ddd0a6502207a6266d686c99090920249991d3d42065b6d43eb70187b219c0db82e4f94d1a201",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .row = 1347,
+            .name = "row 1347 bip66 example 2 without dersig",
+            .unlocking_asm = "0x47 0x304402208e43c0b91f7c1e5bc58e41c8185f8a6086e111b0090187968a86f2822462d3c902200a58f4076b1133b18ff1dc83ee51676e44c60cc608d9534e0df5ace0424fc0be01",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG NOT",
+            .flags = flags,
+            .expected = .{ .success = false },
+        },
+        .{
+            .row = 1348,
+            .name = "row 1348 bip66 example 2 with dersig",
+            .unlocking_asm = "0x47 0x304402208e43c0b91f7c1e5bc58e41c8185f8a6086e111b0090187968a86f2822462d3c902200a58f4076b1133b18ff1dc83ee51676e44c60cc608d9534e0df5ace0424fc0be01",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG NOT",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .row = 1349,
+            .name = "row 1349 empty signature against checksig without dersig",
+            .unlocking_asm = "0",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG",
+            .flags = flags,
+            .expected = .{ .success = false },
+        },
+        .{
+            .row = 1350,
+            .name = "row 1350 empty signature against checksig with dersig",
+            .unlocking_asm = "0",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .success = false },
+        },
+        .{
+            .row = 1351,
+            .name = "row 1351 empty signature against checksig not without dersig",
+            .unlocking_asm = "0",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG NOT",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1352,
+            .name = "row 1352 empty signature against checksig not with dersig",
+            .unlocking_asm = "0",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG NOT",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1353,
+            .name = "row 1353 nonnull der-compliant signature under checksig not with dersig",
+            .unlocking_asm = "0x09 0x300602010102010101",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG NOT",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1354,
+            .name = "row 1354 empty signature under checksig not with dersig nullfail",
+            .unlocking_asm = "0",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG NOT",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                f.null_fail = true;
+                break :blk f;
+            },
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1355,
+            .name = "row 1355 bip66 example 4 with dersig and nullfail",
+            .unlocking_asm = "0x09 0x300602010102010101",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG NOT",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                f.null_fail = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.NullFail },
+        },
+        .{
+            .row = 1357,
+            .name = "row 1357 bip66 example 5 with dersig",
+            .unlocking_asm = "1",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .row = 1356,
+            .name = "row 1356 bip66 example 5 without dersig",
+            .unlocking_asm = "1",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG",
+            .flags = flags,
+            .expected = .{ .success = false },
+        },
+        .{
+            .row = 1359,
+            .name = "row 1359 bip66 example 6 with dersig",
+            .unlocking_asm = "1",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG NOT",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .row = 1358,
+            .name = "row 1358 bip66 example 6 without dersig",
+            .unlocking_asm = "1",
+            .locking_asm = "0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 CHECKSIG NOT",
+            .flags = flags,
+            .expected = .{ .success = true },
+        },
+        .{
             .row = 1374,
             .name = "row 1374 p2pk with high s but no low_s",
             .unlocking_asm = "0x48 0x304502203e4516da7253cf068effec6b95c41221c0cf3a8e6ccb8cbf1725b562e9afde2c022100ab1e3da73d67e32045a20e0b999e049978ea8d6ee5480d485fcf2ce0d03b2ef001",
             .locking_asm = "0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 CHECKSIG",
             .flags = flags,
             .expected = .{ .success = true },
+        },
+        .{
+            .row = 1373,
+            .name = "row 1373 p2pk with multibyte hashtype under dersig",
+            .unlocking_asm = "0x48 0x304402203e4516da7253cf068effec6b95c41221c0cf3a8e6ccb8cbf1725b562e9afde2c022054e1c258c2981cdfba5df1f46661fb6541c44f77ca0092f3600331abfffb12510101",
+            .locking_asm = "0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 CHECKSIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .row = 1375,
+            .name = "row 1375 p2pk with high s under low_s",
+            .unlocking_asm = "0x48 0x304502203e4516da7253cf068effec6b95c41221c0cf3a8e6ccb8cbf1725b562e9afde2c022100ab1e3da73d67e32045a20e0b999e049978ea8d6ee5480d485fcf2ce0d03b2ef001",
+            .locking_asm = "0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 CHECKSIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.low_s = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.HighS },
         },
         .{
             .row = 1376,

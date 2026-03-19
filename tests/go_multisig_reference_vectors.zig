@@ -175,12 +175,60 @@ test "exact go multisig reference rows execute through bsvz" {
 
     const rows = [_]ExactRow{
         .{
+            .row = 1307,
+            .name = "row 1307 strict multisig not with first pubkey invalid",
+            .unlocking_asm = "0 0x47 0x3044022044dc17b0887c161bb67ba9635bf758735bdde503e4b0a0987f587f14a4e1143d022009a215772d49a85dae40d8ca03955af26ad3978a0ff965faa12915e9586249a501 0x47 0x3044022044dc17b0887c161bb67ba9635bf758735bdde503e4b0a0987f587f14a4e1143d022009a215772d49a85dae40d8ca03955af26ad3978a0ff965faa12915e9586249a501",
+            .locking_asm = "2 0x21 0x02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0 0 2 CHECKMULTISIG NOT",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.strict_encoding = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidPublicKeyEncoding },
+        },
+        .{
+            .row = 1308,
+            .name = "row 1308 strict multisig not with first signature invalid",
+            .unlocking_asm = "0 0x47 0x3044022044dc17b0887c161bb67ba9635bf758735bdde503e4b0a0987f587f14a4e1143d022009a215772d49a85dae40d8ca03955af26ad3978a0ff965faa12915e9586249a501 1",
+            .locking_asm = "2 0x21 0x02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0 0x21 0x02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0 2 CHECKMULTISIG NOT",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.strict_encoding = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .row = 1309,
+            .name = "row 1309 strict 2-of-3 multisig with parse-error signature",
+            .unlocking_asm = "0 0x47 0x304402205451ce65ad844dbb978b8bdedf5082e33b43cae8279c30f2c74d9e9ee49a94f802203fe95a7ccf74da7a232ee523ef4a53cb4d14bdd16289680cdb97a63819b8f42f01 0x46 0x304402205451ce65ad844dbb978b8bdedf5082e33b43cae8279c30f2c74d9e9ee49a94f802203fe95a7ccf74da7a232ee523ef4a53cb4d14bdd16289680cdb97a63819b8f42f",
+            .locking_asm = "2 0x21 0x02a673638cb9587cb68ea08dbef685c6f2d2a751a8b3c6f2a7e9a4999e6e4bfaf5 0x21 0x02a673638cb9587cb68ea08dbef685c6f2d2a751a8b3c6f2a7e9a4999e6e4bfaf5 0x21 0x02a673638cb9587cb68ea08dbef685c6f2d2a751a8b3c6f2a7e9a4999e6e4bfaf5 3 CHECKMULTISIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.strict_encoding = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
             .row = 1360,
             .name = "row 1360 bip66 example 7 without dersig",
             .unlocking_asm = "0 0x47 0x30440220cae00b1444babfbf6071b0ba8707f6bd373da3df494d6e74119b0430c5db810502205d5231b8c5939c8ff0c82242656d6e06edb073d42af336c99fe8837c36ea39d501 0x47 0x3044022027c2714269ca5aeecc4d70edc88ba5ee0e3da4986e9216028f489ab4f1b8efce022022bd545b4951215267e4c5ceabd4c5350331b2e4a0b6494c56f361fa5a57a1a201",
             .locking_asm = "2 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 2 CHECKMULTISIG",
             .flags = relaxed,
             .expected = .{ .success = true },
+        },
+        .{
+            .row = 1361,
+            .name = "row 1361 bip66 example 7 with dersig",
+            .unlocking_asm = "0 0x47 0x30440220cae00b1444babfbf6071b0ba8707f6bd373da3df494d6e74119b0430c5db810502205d5231b8c5939c8ff0c82242656d6e06edb073d42af336c99fe8837c36ea39d501 0x47 0x3044022027c2714269ca5aeecc4d70edc88ba5ee0e3da4986e9216028f489ab4f1b8efce022022bd545b4951215267e4c5ceabd4c5350331b2e4a0b6494c56f361fa5a57a1a201",
+            .locking_asm = "2 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 2 CHECKMULTISIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
         },
         .{
             .row = 1362,
@@ -191,6 +239,18 @@ test "exact go multisig reference rows execute through bsvz" {
             .expected = .{ .success = false },
         },
         .{
+            .row = 1363,
+            .name = "row 1363 bip66 example 8 with dersig",
+            .unlocking_asm = "0 0x47 0x30440220b119d67d389315308d1745f734a51ff3ec72e06081e84e236fdf9dc2f5d2a64802204b04e3bc38674c4422ea317231d642b56dc09d214a1ecbbf16ecca01ed996e2201 0x47 0x3044022079ea80afd538d9ada421b5101febeb6bc874e01dde5bca108c1d0479aec339a4022004576db8f66130d1df686ccf00935703689d69cf539438da1edab208b0d63c4801",
+            .locking_asm = "2 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 2 CHECKMULTISIG NOT",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
             .row = 1364,
             .name = "row 1364 bip66 example 9 without dersig",
             .unlocking_asm = "0 0 0x47 0x3044022081aa9d436f2154e8b6d600516db03d78de71df685b585a9807ead4210bd883490220534bb6bdf318a419ac0749660b60e78d17d515558ef369bf872eff405b676b2e01",
@@ -199,11 +259,87 @@ test "exact go multisig reference rows execute through bsvz" {
             .expected = .{ .success = false },
         },
         .{
+            .row = 1365,
+            .name = "row 1365 bip66 example 9 with dersig",
+            .unlocking_asm = "0 0 0x47 0x3044022081aa9d436f2154e8b6d600516db03d78de71df685b585a9807ead4210bd883490220534bb6bdf318a419ac0749660b60e78d17d515558ef369bf872eff405b676b2e01",
+            .locking_asm = "2 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 2 CHECKMULTISIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
             .row = 1366,
             .name = "row 1366 bip66 example 10 without dersig",
             .unlocking_asm = "0 0 0x47 0x30440220da6f441dc3b4b2c84cfa8db0cd5b34ed92c9e01686de5a800d40498b70c0dcac02207c2cf91b0c32b860c4cd4994be36cfb84caf8bb7c3a8e4d96a31b2022c5299c501",
             .locking_asm = "2 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 2 CHECKMULTISIG NOT",
             .flags = relaxed,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1367,
+            .name = "row 1367 bip66 example 10 with dersig",
+            .unlocking_asm = "0 0 0x47 0x30440220da6f441dc3b4b2c84cfa8db0cd5b34ed92c9e01686de5a800d40498b70c0dcac02207c2cf91b0c32b860c4cd4994be36cfb84caf8bb7c3a8e4d96a31b2022c5299c501",
+            .locking_asm = "2 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 2 CHECKMULTISIG NOT",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.der_signatures = true;
+                break :blk f;
+            },
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .row = 1368,
+            .name = "row 1368 bip66 example 11 without dersig",
+            .unlocking_asm = "0 0x47 0x30440220cae00b1444babfbf6071b0ba8707f6bd373da3df494d6e74119b0430c5db810502205d5231b8c5939c8ff0c82242656d6e06edb073d42af336c99fe8837c36ea39d501 0",
+            .locking_asm = "2 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 2 CHECKMULTISIG",
+            .flags = relaxed,
+            .expected = .{ .success = false },
+        },
+        .{
+            .row = 1369,
+            .name = "row 1369 bip66 example 11 with dersig",
+            .unlocking_asm = "0 0x47 0x30440220cae00b1444babfbf6071b0ba8707f6bd373da3df494d6e74119b0430c5db810502205d5231b8c5939c8ff0c82242656d6e06edb073d42af336c99fe8837c36ea39d501 0",
+            .locking_asm = "2 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 2 CHECKMULTISIG",
+            .flags = dersig,
+            .expected = .{ .success = false },
+        },
+        .{
+            .row = 1370,
+            .name = "row 1370 bip66 example 12 without dersig",
+            .unlocking_asm = "0 0x47 0x30440220b119d67d389315308d1745f734a51ff3ec72e06081e84e236fdf9dc2f5d2a64802204b04e3bc38674c4422ea317231d642b56dc09d214a1ecbbf16ecca01ed996e2201 0",
+            .locking_asm = "2 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 2 CHECKMULTISIG NOT",
+            .flags = relaxed,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1371,
+            .name = "row 1371 bip66 example 12 with dersig",
+            .unlocking_asm = "0 0x47 0x30440220b119d67d389315308d1745f734a51ff3ec72e06081e84e236fdf9dc2f5d2a64802204b04e3bc38674c4422ea317231d642b56dc09d214a1ecbbf16ecca01ed996e2201 0",
+            .locking_asm = "2 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 0x21 0x03363d90d447b00c9c99ceac05b6262ee053441c7e55552ffe526bad8f83ff4640 2 CHECKMULTISIG NOT",
+            .flags = dersig,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1382,
+            .name = "row 1382 1-of-2 multisig with unchecked hybrid pubkey and no strictenc",
+            .unlocking_asm = "0 0x47 0x304402202e79441ad1baf5a07fb86bae3753184f6717d9692680947ea8b6e8b777c69af1022079a262e13d868bb5a0964fefe3ba26942e1b0669af1afb55ef3344bc9d4fc4c401",
+            .locking_asm = "1 0x41 0x0679be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 2 CHECKMULTISIG",
+            .flags = relaxed,
+            .expected = .{ .success = true },
+        },
+        .{
+            .row = 1383,
+            .name = "row 1383 1-of-2 multisig with unchecked hybrid pubkey under strictenc",
+            .unlocking_asm = "0 0x47 0x304402202e79441ad1baf5a07fb86bae3753184f6717d9692680947ea8b6e8b777c69af1022079a262e13d868bb5a0964fefe3ba26942e1b0669af1afb55ef3344bc9d4fc4c401",
+            .locking_asm = "1 0x41 0x0679be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8 0x21 0x038282263212c609d9ea2a6e3e172de238d8c39cabd5ac1ca10646e23fd5f51508 2 CHECKMULTISIG",
+            .flags = blk: {
+                var f = bsvz.script.engine.ExecutionFlags.legacyReference();
+                f.strict_encoding = true;
+                break :blk f;
+            },
             .expected = .{ .success = true },
         },
         .{
