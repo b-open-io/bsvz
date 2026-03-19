@@ -157,6 +157,59 @@ test "go multisig rows: strict evaluation order" {
     });
 }
 
+test "go multisig rows: exact strict oracle rows" {
+    const allocator = std.testing.allocator;
+
+    var strict_flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    strict_flags.strict_encoding = true;
+
+    try runRows(allocator, strict_flags, &[_]GoRow{
+        .{
+            .name = "row 1602 2-of-2 checksig not first pubkey invalid with both signatures well-formed",
+            .unlocking_hex =
+                "00"
+                ++ "47" ++ "3044022044dc17b0887c161bb67ba9635bf758735bdde503e4b0a0987f587f14a4e1143d022009a215772d49a85dae40d8ca03955af26ad3978a0ff965faa12915e9586249a501"
+                ++ "47" ++ "3044022044dc17b0887c161bb67ba9635bf758735bdde503e4b0a0987f587f14a4e1143d022009a215772d49a85dae40d8ca03955af26ad3978a0ff965faa12915e9586249a501",
+            .locking_hex =
+                "52"
+                ++ "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
+                ++ "00"
+                ++ "52"
+                ++ "ae91",
+            .expected = .{ .err = error.InvalidPublicKeyEncoding },
+        },
+        .{
+            .name = "row 1610 2-of-2 checksig not first malformed signature with valid pubkeys",
+            .unlocking_hex =
+                "00"
+                ++ "47" ++ "3044022044dc17b0887c161bb67ba9635bf758735bdde503e4b0a0987f587f14a4e1143d022009a215772d49a85dae40d8ca03955af26ad3978a0ff965faa12915e9586249a501"
+                ++ "51",
+            .locking_hex =
+                "52"
+                ++ "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
+                ++ "21" ++ "02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0"
+                ++ "52"
+                ++ "ae91",
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+        .{
+            .name = "row 1616 2-of-3 checkmultisig one valid and one malformed signature",
+            .unlocking_hex =
+                "00"
+                ++ "47" ++ "304402205451ce65ad844dbb978b8bdedf5082e33b43cae8279c30f2c74d9e9ee49a94f802203fe95a7ccf74da7a232ee523ef4a53cb4d14bdd16289680cdb97a63819b8f42f01"
+                ++ "46" ++ "304402205451ce65ad844dbb978b8bdedf5082e33b43cae8279c30f2c74d9e9ee49a94f802203fe95a7ccf74da7a232ee523ef4a53cb4d14bdd16289680cdb97a63819b8f42f",
+            .locking_hex =
+                "52"
+                ++ "21" ++ "02a673638cb9587cb68ea08dbef685c6f2d2a751a8b3c6f2a7e9a4999e6e4bfaf5"
+                ++ "21" ++ "02a673638cb9587cb68ea08dbef685c6f2d2a751a8b3c6f2a7e9a4999e6e4bfaf5"
+                ++ "21" ++ "02a673638cb9587cb68ea08dbef685c6f2d2a751a8b3c6f2a7e9a4999e6e4bfaf5"
+                ++ "53"
+                ++ "ae",
+            .expected = .{ .err = error.InvalidSignatureEncoding },
+        },
+    });
+}
+
 test "go multisig rows: zero-count parity" {
     const allocator = std.testing.allocator;
     const flags = bsvz.script.engine.ExecutionFlags.legacyReference();

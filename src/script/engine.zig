@@ -920,13 +920,13 @@ fn verifyChecksigWithScriptCode(
     const check_signature_encoding = shouldCheckSignatureEncoding(ctx);
     const check_pubkey_encoding = shouldCheckPubKeyEncoding(ctx);
 
-    try checkHashTypeEncoding(ctx, hash_type);
     if (check_signature_encoding) {
         try checkSignatureEncoding(ctx, der_bytes);
     }
     if (check_pubkey_encoding) {
         try checkPubKeyEncoding(pubkey_bytes);
     }
+    try checkHashTypeEncoding(ctx, hash_type);
 
     const tx_signature = crypto.TxSignature.fromChecksigFormat(sig_bytes) catch |err| switch (err) {
         error.InvalidEncoding => {
