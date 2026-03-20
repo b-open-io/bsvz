@@ -1,3 +1,4 @@
+//! `encode` = minimal `OP_RETURN` + direct push. For [ts-templates OpReturn](https://github.com/bsv-blockchain/ts-templates/blob/master/src/OpReturn.ts) use `encodeWithFalsePrelude` (`OP_0` + `OP_RETURN` + push).
 const std = @import("std");
 const opcode = @import("../opcode.zig").Opcode;
 
@@ -8,6 +9,18 @@ pub fn encode(allocator: std.mem.Allocator, data: []const u8) ![]u8 {
     out[0] = @intFromEnum(opcode.OP_RETURN);
     out[1] = @intCast(data.len);
     @memcpy(out[2..], data);
+    return out;
+}
+
+/// Matches ts-templates / `@bsv/sdk` style: `OP_0` (`OP_FALSE`) then `OP_RETURN` then push.
+pub fn encodeWithFalsePrelude(allocator: std.mem.Allocator, data: []const u8) ![]u8 {
+    if (data.len > 75) return error.UnsupportedDataPush;
+
+    var out = try allocator.alloc(u8, 3 + data.len);
+    out[0] = @intFromEnum(opcode.OP_0);
+    out[1] = @intFromEnum(opcode.OP_RETURN);
+    out[2] = @intCast(data.len);
+    @memcpy(out[3..], data);
     return out;
 }
 
@@ -22,6 +35,13 @@ test "op_return encode emits a direct push" {
 
     try std.testing.expect(matches(encoded));
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0x6a, 0x04, 'b', 's', 'v', 'z' }, encoded);
+}
+
+test "op_return encodeWithFalsePrelude matches ts-templates prologue" {
+    const a = std.testing.allocator;
+    const encoded = try encodeWithFalsePrelude(a, "bsvz");
+    defer a.free(encoded);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0x00, 0x6a, 0x04, 'b', 's', 'v', 'z' }, encoded);
 }
 
 test "op_return encode handles zero-length and max direct pushes" {

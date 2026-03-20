@@ -2,11 +2,8 @@ const std = @import("std");
 
 const corpus_path = "../go-sdk/script/interpreter/data/script_tests.json";
 
-fn accessOrSkip(rel_path: []const u8) !void {
-    std.fs.cwd().access(rel_path, .{}) catch |err| switch (err) {
-        error.FileNotFound => return error.SkipZigTest,
-        else => return err,
-    };
+fn accessOrRequire(rel_path: []const u8) !void {
+    try std.fs.cwd().access(rel_path, .{});
 }
 
 const RowAccounting = struct {
@@ -37,7 +34,13 @@ fn collectAccountedRowRefs(allocator: std.mem.Allocator) !RowAccounting {
 
         var cursor: usize = 0;
         while (std.mem.indexOfPos(u8, source, cursor, ".row")) |row_pos| {
-            const eq_pos = std.mem.indexOfPos(u8, source, row_pos, "=") orelse break;
+            var eq_pos = row_pos + ".row".len;
+            while (eq_pos < source.len and std.ascii.isWhitespace(source[eq_pos])) : (eq_pos += 1) {}
+            if (eq_pos >= source.len or source[eq_pos] != '=') {
+                cursor = row_pos + ".row".len;
+                continue;
+            }
+
             var digits_start = eq_pos + 1;
             while (digits_start < source.len and std.ascii.isWhitespace(source[digits_start])) : (digits_start += 1) {}
 
@@ -52,7 +55,7 @@ fn collectAccountedRowRefs(allocator: std.mem.Allocator) !RowAccounting {
                     count_entry.value_ptr.* = 1;
                 }
             }
-            cursor = digits_end;
+            cursor = if (digits_end > row_pos + ".row".len) digits_end else row_pos + ".row".len;
         }
     }
 
@@ -75,7 +78,7 @@ fn collectAccountedRowRefs(allocator: std.mem.Allocator) !RowAccounting {
 
 test "all go corpus rows are explicitly accounted for" {
     const allocator = std.testing.allocator;
-    try accessOrSkip(corpus_path);
+    try accessOrRequire(corpus_path);
 
     var accounting = try collectAccountedRowRefs(allocator);
     defer accounting.deinit();

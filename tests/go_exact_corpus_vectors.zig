@@ -17,11 +17,8 @@ const DynamicRow = struct {
     expected_text: []const u8,
 };
 
-fn accessOrSkip(rel_path: []const u8) !void {
-    std.fs.cwd().access(rel_path, .{}) catch |err| switch (err) {
-        error.FileNotFound => return error.SkipZigTest,
-        else => return err,
-    };
+fn accessOrRequire(rel_path: []const u8) !void {
+    try std.fs.cwd().access(rel_path, .{});
 }
 
 fn containsToken(script_asm: []const u8, needle: []const u8) bool {
@@ -207,7 +204,7 @@ fn runDynamicRow(allocator: std.mem.Allocator, row: DynamicRow) !void {
 
 test "exact go corpus rows execute through bsvz" {
     const allocator = std.testing.allocator;
-    try accessOrSkip(corpus_path);
+    try accessOrRequire(corpus_path);
 
     const file = try std.fs.cwd().readFileAlloc(allocator, corpus_path, 8 * 1024 * 1024);
     defer allocator.free(file);

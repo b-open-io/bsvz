@@ -13,11 +13,20 @@ const DynamicRow = struct {
     expected_text: []const u8,
 };
 
-fn accessOrSkip(rel_path: []const u8) !void {
-    std.fs.cwd().access(rel_path, .{}) catch |err| switch (err) {
-        error.FileNotFound => return error.SkipZigTest,
-        else => return err,
-    };
+const QualifiedRow = struct {
+    dynamic: DynamicRow,
+    flags: bsvz.script.engine.ExecutionFlags,
+    expected: harness.Expectation,
+};
+
+const SkipReason = enum {
+    meta_or_nonstandard_row,
+    non_sigcheck_row,
+    unsupported_flags_or_expectation_gap,
+};
+
+fn accessOrRequire(rel_path: []const u8) !void {
+    try std.fs.cwd().access(rel_path, .{});
 }
 
 fn containsToken(script_asm: []const u8, needle: []const u8) bool {
@@ -36,13 +45,18 @@ fn rowHasSigcheck(row: DynamicRow) bool {
 }
 
 fn parseFlags(text: []const u8) ?bsvz.script.engine.ExecutionFlags {
-    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const has_post_genesis = std.mem.indexOf(u8, text, "UTXO_AFTER_GENESIS") != null;
+    var flags = if (has_post_genesis)
+        bsvz.script.engine.ExecutionFlags.postGenesisBsv()
+    else
+        bsvz.script.engine.ExecutionFlags.legacyReference();
 
     var parts = std.mem.splitScalar(u8, text, ',');
     while (parts.next()) |raw_part| {
         const part = std.mem.trim(u8, raw_part, " \t\r\n");
         if (part.len == 0) continue;
         if (std.mem.eql(u8, part, "P2SH")) continue;
+        if (std.mem.eql(u8, part, "UTXO_AFTER_GENESIS")) continue;
         if (std.mem.eql(u8, part, "STRICTENC")) {
             flags.strict_encoding = true;
             continue;
@@ -94,22 +108,27 @@ fn parseExpected(text: []const u8) ?harness.Expectation {
     return null;
 }
 
-fn rowFromJson(index: usize, value: std.json.Value) ?DynamicRow {
-    if (value != .array) return null;
+fn classifyRow(index: usize, value: std.json.Value) union(enum) {
+    qualified: QualifiedRow,
+    skip: SkipReason,
+} {
+    if (value != .array) return .{ .skip = .meta_or_nonstandard_row };
     const items = value.array.items;
-    if (items.len < 4 or items.len > 6) return null;
+    if (items.len < 4 or items.len > 6) return .{ .skip = .meta_or_nonstandard_row };
 
     var item_offset: usize = 0;
     var input_amount: i64 = 0;
     if (items[0] == .array) {
         const amount_items = items[0].array.items;
-        if (amount_items.len == 0 or amount_items[0] != .float) return null;
+        if (amount_items.len == 0 or amount_items[0] != .float) return .{ .skip = .meta_or_nonstandard_row };
         input_amount = @intFromFloat(amount_items[0].float * 100_000_000.0);
         item_offset = 1;
     }
 
-    if (items.len < item_offset + 4 or items.len > item_offset + 5) return null;
-    if (items[item_offset] != .string or items[item_offset + 1] != .string or items[item_offset + 2] != .string or items[item_offset + 3] != .string) return null;
+    if (items.len < item_offset + 4 or items.len > item_offset + 5) return .{ .skip = .meta_or_nonstandard_row };
+    if (items[item_offset] != .string or items[item_offset + 1] != .string or items[item_offset + 2] != .string or items[item_offset + 3] != .string) {
+        return .{ .skip = .meta_or_nonstandard_row };
+    }
 
     const row = DynamicRow{
         .index = index,
@@ -119,26 +138,30 @@ fn rowFromJson(index: usize, value: std.json.Value) ?DynamicRow {
         .flags_text = items[item_offset + 2].string,
         .expected_text = items[item_offset + 3].string,
     };
-    if (!rowHasSigcheck(row)) return null;
-    _ = parseFlags(row.flags_text) orelse return null;
-    _ = parseExpected(row.expected_text) orelse return null;
-    return row;
+    if (!rowHasSigcheck(row)) return .{ .skip = .non_sigcheck_row };
+    const flags = parseFlags(row.flags_text) orelse return .{ .skip = .unsupported_flags_or_expectation_gap };
+    const expected = parseExpected(row.expected_text) orelse return .{ .skip = .unsupported_flags_or_expectation_gap };
+    return .{ .qualified = .{
+        .dynamic = row,
+        .flags = flags,
+        .expected = expected,
+    } };
 }
 
-fn runDynamicRow(allocator: std.mem.Allocator, row: DynamicRow) !void {
+fn runDynamicRow(allocator: std.mem.Allocator, qualified: QualifiedRow) !void {
     try harness.runCase(allocator, .{
         .name = "go sigcheck reference row",
-        .unlocking_asm = row.unlocking_asm,
-        .locking_asm = row.locking_asm,
-        .flags = parseFlags(row.flags_text).?,
-        .expected = parseExpected(row.expected_text).?,
-        .output_value = row.input_amount,
+        .unlocking_asm = qualified.dynamic.unlocking_asm,
+        .locking_asm = qualified.dynamic.locking_asm,
+        .flags = qualified.flags,
+        .expected = qualified.expected,
+        .output_value = qualified.dynamic.input_amount,
     });
 }
 
 test "filtered go sigcheck reference rows execute through bsvz" {
     const allocator = std.testing.allocator;
-    try accessOrSkip(corpus_path);
+    try accessOrRequire(corpus_path);
 
     const file = try std.fs.cwd().readFileAlloc(allocator, corpus_path, 8 * 1024 * 1024);
     defer allocator.free(file);
@@ -150,34 +173,55 @@ test "filtered go sigcheck reference rows execute through bsvz" {
 
     var executed: usize = 0;
     var skipped: usize = 0;
+    var skipped_meta_or_nonstandard_row: usize = 0;
+    var skipped_non_sigcheck_row: usize = 0;
+    var skipped_unsupported_flags_or_expectation_gap: usize = 0;
 
     for (parsed.value.array.items, 0..) |value, index| {
-        const row = rowFromJson(index, value) orelse {
-            skipped += 1;
-            continue;
-        };
-        runDynamicRow(allocator, row) catch |err| {
-            std.debug.print(
-                "filtered go sigcheck row {} failed\n  unlocking: {s}\n  locking: {s}\n  flags: {s}\n  expected: {s}\n",
-                .{ row.index, row.unlocking_asm, row.locking_asm, row.flags_text, row.expected_text },
-            );
-            return err;
-        };
+        switch (classifyRow(index, value)) {
+            .skip => |reason| {
+                skipped += 1;
+                switch (reason) {
+                    .meta_or_nonstandard_row => skipped_meta_or_nonstandard_row += 1,
+                    .non_sigcheck_row => skipped_non_sigcheck_row += 1,
+                    .unsupported_flags_or_expectation_gap => skipped_unsupported_flags_or_expectation_gap += 1,
+                }
+                continue;
+            },
+            .qualified => |qualified| runDynamicRow(allocator, qualified) catch |err| {
+                const row = qualified.dynamic;
+                std.debug.print(
+                    "filtered go sigcheck row {} failed\n  unlocking: {s}\n  locking: {s}\n  flags: {s}\n  expected: {s}\n",
+                    .{ row.index, row.unlocking_asm, row.locking_asm, row.flags_text, row.expected_text },
+                );
+                return err;
+            },
+        }
         executed += 1;
     }
 
     std.debug.print("filtered go sigcheck rows executed={}, skipped={}\n", .{ executed, skipped });
     std.debug.print(
-        "filtered go sigcheck skip reasons: only the legacy sigcheck subset with mapped flags/expectations is exercised here\n",
-        .{},
+        "filtered go sigcheck skip reasons: meta/nonstandard={}, non-sigcheck-row={}, unsupported-flags-or-expectation-gap={}\n",
+        .{
+            skipped_meta_or_nonstandard_row,
+            skipped_non_sigcheck_row,
+            skipped_unsupported_flags_or_expectation_gap,
+        },
     );
     try std.testing.expectEqual(@as(usize, 80), executed);
     try std.testing.expectEqual(@as(usize, 1419), skipped);
+    try std.testing.expectEqual(
+        skipped,
+        skipped_meta_or_nonstandard_row +
+            skipped_non_sigcheck_row +
+            skipped_unsupported_flags_or_expectation_gap,
+    );
 }
 
 test "exact go sigcheck dynamic reference rows execute through bsvz" {
     const allocator = std.testing.allocator;
-    try accessOrSkip(corpus_path);
+    try accessOrRequire(corpus_path);
 
     const file = try std.fs.cwd().readFileAlloc(allocator, corpus_path, 8 * 1024 * 1024);
     defer allocator.free(file);
@@ -218,11 +262,15 @@ test "exact go sigcheck dynamic reference rows execute through bsvz" {
     };
 
     for (rows) |row_ref| {
-        const row = rowFromJson(row_ref.row, parsed.value.array.items[row_ref.row]) orelse {
-            std.debug.print("go exact sigcheck row {} no longer qualifies for direct import\n", .{row_ref.row});
-            return error.InvalidEncoding;
+        const qualified = switch (classifyRow(row_ref.row, parsed.value.array.items[row_ref.row])) {
+            .qualified => |qualified| qualified,
+            .skip => {
+                std.debug.print("go exact sigcheck row {} no longer qualifies for direct import\n", .{row_ref.row});
+                return error.InvalidEncoding;
+            },
         };
-        runDynamicRow(allocator, row) catch |err| {
+        const row = qualified.dynamic;
+        runDynamicRow(allocator, qualified) catch |err| {
             std.debug.print(
                 "go exact sigcheck row {} failed\n  unlocking: {s}\n  locking: {s}\n  flags: {s}\n  expected: {s}\n",
                 .{ row.index, row.unlocking_asm, row.locking_asm, row.flags_text, row.expected_text },

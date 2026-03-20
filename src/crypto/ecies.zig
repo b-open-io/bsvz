@@ -252,6 +252,12 @@ test "bitcore self roundtrip (fixed sender key)" {
 
     const enc_pk = try bitcoreEncryptAlloc(allocator, "hello world", pk_pub, pk, null);
     defer allocator.free(enc_pk);
+    const expected_b64_1 = "A7vOlf8ZLhem2ELLr+FPfxkqwEZufwkowYc5jmJ+ZqhPAAAAAAAAAAAAAAAAAAAAAB27kUY/HpNbiwhYSpEoEZZDW+wEjMmPNcAAxnc0kiuQ73FpFzf6p6afe4wwVtKAAg==";
+    const expected_len_1 = try std.base64.standard.Decoder.calcSizeForSlice(expected_b64_1);
+    const expected_1 = try allocator.alloc(u8, expected_len_1);
+    defer allocator.free(expected_1);
+    try std.base64.standard.Decoder.decode(expected_1, expected_b64_1);
+    try std.testing.expectEqualSlices(u8, expected_1, enc_pk);
     const p1 = try bitcoreDecryptAlloc(allocator, enc_pk, pk);
     defer allocator.free(p1);
     try std.testing.expectEqualSlices(u8, "hello world", p1);
@@ -261,6 +267,12 @@ test "bitcore self roundtrip (fixed sender key)" {
     const pub2 = try pk2.publicKey();
     const enc2 = try bitcoreEncryptAlloc(allocator, "hello world", pub2, pk1, null);
     defer allocator.free(enc2);
+    const expected_b64_2 = "A7vOlf8ZLhem2ELLr+FPfxkqwEZufwkowYc5jmJ+ZqhPAAAAAAAAAAAAAAAAAAAAAAmFslNpNc4TrjaMPmPLdooZwoP6/fE7GN3AeyLpFf2f+QGYRKIke8zbhxu8FcLOsA==";
+    const expected_len_2 = try std.base64.standard.Decoder.calcSizeForSlice(expected_b64_2);
+    const expected_2 = try allocator.alloc(u8, expected_len_2);
+    defer allocator.free(expected_2);
+    try std.base64.standard.Decoder.decode(expected_2, expected_b64_2);
+    try std.testing.expectEqualSlices(u8, expected_2, enc2);
     const p2 = try bitcoreDecryptAlloc(allocator, enc2, pk2);
     defer allocator.free(p2);
     try std.testing.expectEqualSlices(u8, "hello world", p2);

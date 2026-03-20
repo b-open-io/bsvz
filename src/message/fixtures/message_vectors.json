@@ -1,0 +1,42 @@
+{
+  "brc77": [
+    {
+      "case": "with_recipient",
+      "message_hex": "010204081020",
+      "sender_priv_hex": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "recipient_priv_hex": "1515151515151515151515151515151515151515151515151515151515151515",
+      "anyone": false,
+      "key_id_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "signature_hex": "42423301021a7a569e91dbf60581509c7fc946d1003b60c7dee85299538db6353538d5957403d793631af7aa0e709439dd47fc001acd0b0727670b6670ea528ac83cb0127f4a000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f304402200426a4168b9c545b6d3e17aea8537bdf47cf32c61a0fb4da07945616dc4e646d02205c354c23c054de5575b23422fe7912ad0732b414b0173fe40b4db30733108eb3",
+      "expected_invoice_suffix_b64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+    },
+    {
+      "case": "anyone",
+      "message_hex": "010204081020",
+      "sender_priv_hex": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "anyone": true,
+      "key_id_hex": "101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+      "signature_hex": "42423301021a7a569e91dbf60581509c7fc946d1003b60c7dee85299538db6353538d5957400101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f30440220642aa1225fe4307ef6ce5079751655e020b5ba89812f57daf7b12cb6d604d5cc0220586477674b555bf6de757d3695e5b3b4165434a12071759a1d053a5dd039d70c",
+      "expected_invoice_suffix_b64": "EBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8="
+    }
+  ],
+  "brc78": [
+    {
+      "case": "text_plain",
+      "plaintext_hex": "68656c6c6f206272632d373820766563746f72732066726f6d20676f2d73646b",
+      "sender_priv_hex": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "recipient_priv_hex": "1515151515151515151515151515151515151515151515151515151515151515",
+      "key_id_hex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+      "ciphertext_hex": "42421033021a7a569e91dbf60581509c7fc946d1003b60c7dee85299538db6353538d5957403d793631af7aa0e709439dd47fc001acd0b0727670b6670ea528ac83cb0127f4aa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfe179966fb15263615d22499259dab1c707b6843bb2bbeaec58910f249d7204910084b974938b37d66884684deaaac0ee38d77a57eb738d178379ea9d1306e74a9592bf45fe1b3e871233efae393a051e"
+    },
+    {
+      "case": "empty_plaintext",
+      "plaintext_hex": "",
+      "sender_priv_hex": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "recipient_priv_hex": "1515151515151515151515151515151515151515151515151515151515151515",
+      "key_id_hex": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+      "ciphertext_hex": "42421033021a7a569e91dbf60581509c7fc946d1003b60c7dee85299538db6353538d5957403d793631af7aa0e709439dd47fc001acd0b0727670b6670ea528ac83cb0127f4ac0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf2beed2b9833dddb9d8eff4fb4e51559bfa8d2621b734d3a9b008ecc59a473b25c09a6566dc9c8f4c08aaee19d2e963d4"
+    }
+  ],
+  "_generated_note": "Regenerate with scripts/gen_message_vectors/main.go from go-sdk module root. BRC-78 blobs include random AES-GCM IVs from a single Go run."
+}

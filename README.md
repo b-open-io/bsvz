@@ -81,8 +81,9 @@ zig build test
 | `bsvz.primitives.aesgcm` | AES-GCM encrypt/decrypt with authentication tags (128/256-bit keys) |
 | `bsvz.primitives.symmetric` | Symmetric key wrapper with encrypt/decrypt |
 | `bsvz.primitives.drbg` | HMAC-DRBG deterministic random bit generator |
-| `bsvz.primitives.bip32` | HD key derivation: ExtendedKey, xpriv/xpub, child paths, mainnet/testnet |
+| `bsvz.primitives.bip32` | HD key derivation: ExtendedKey, xpriv/xpub, child paths, mainnet/testnet, `masterFromMnemonic` |
 | `bsvz.primitives.bip39` | Mnemonic generation, English wordlist, entropy, PBKDF2 seed derivation |
+| `bsvz.primitives.brc43` | BRC-43 protocol ID normalization and `<level>-<protocol>-<key>` invoice strings |
 | `bsvz.crypto` | SHA256, SHA512, RIPEMD160, HASH160, HASH256, HMAC-SHA256, HMAC-SHA512, secp256k1 keys and point API, DER and compact signatures, ECIES |
 | `bsvz.script` | Script parser, opcode set, execution engine, policy flags, ASM encode/decode, script builder, type detection |
 | `bsvz.transaction` | Parse, serialize (standard + extended format), sighash, P2PKH spend helpers |
@@ -90,6 +91,7 @@ zig build test
 | `bsvz.transaction.beef` | BEEF V1/V2/Atomic parse, serialize, and transaction extraction |
 | `bsvz.transaction.fees` | Fee calculation, change distribution, total input/output satoshis |
 | `bsvz.transaction.fee_model` | Pluggable fee models (satoshis-per-kilobyte) |
+| `bsvz.message` | BRC-77 portable signed messages (`signed`); BRC-78 portable encrypted messages (`encrypted`) |
 | `bsvz.compat` | P2PKH address, WIF encode/decode, Bitcoin Signed Message, ECIES |
 | `bsvz.spv` | MerklePath, MerkleTreeParent, BlockHeader, SPV and BEEF verification |
 | `bsvz.broadcast` | WhatsOnChain, TAAL, Arc HTTP broadcast clients |
@@ -114,7 +116,7 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | BRC&#8209;32 | [BIP32 Key Derivation](https://bsv.brc.dev/key-derivation/0032) | `primitives.bip32` |
 | BRC&#8209;36 | [Format for Bitcoin Outpoints](https://bsv.brc.dev/outpoints/0036) | `transaction.OutPoint` |
 | BRC&#8209;42 | [BSV Key Derivation Scheme (Type&#8209;42)](https://bsv.brc.dev/key-derivation/0042) | `primitives.ec` (`deriveChild`, `deriveSharedSecret`) |
-| BRC&#8209;43 | [Security Levels, Protocol IDs, Key IDs](https://bsv.brc.dev/key-derivation/0043) | `primitives.ec` (invoice-based derivation) |
+| BRC&#8209;43 | [Security Levels, Protocol IDs, Key IDs](https://bsv.brc.dev/key-derivation/0043) | `primitives.brc43` (parity with go-sdk `wallet/key_deriver.go` / ts-sdk `KeyDeriver`), `primitives.ec` (`deriveChild`) |
 | BRC&#8209;47 | [Bare Multi-Signature](https://bsv.brc.dev/scripts/0047) | `script` |
 | BRC&#8209;48 | [Pay to Push Drop](https://bsv.brc.dev/scripts/0048) | `script.templates.pushdrop` |
 | BRC&#8209;61 | [Compound Merkle Path Format](https://bsv.brc.dev/transactions/0061) | `spv.MerklePath` |
@@ -122,8 +124,8 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | BRC&#8209;67 | [Simplified Payment Verification](https://bsv.brc.dev/transactions/0067) | `spv` |
 | BRC&#8209;74 | [BSV Unified Merkle Path (BUMP)](https://bsv.brc.dev/transactions/0074) | `spv.MerklePath` |
 | BRC&#8209;75 | [Mnemonic for Master Private Key](https://bsv.brc.dev/key-derivation/0075) | `primitives.bip39` |
-| BRC&#8209;77 | [Message Signature Creation and Verification](https://bsv.brc.dev/peer-to-peer/0077) | `compat.bsm`, `crypto.compact` |
-| BRC&#8209;78 | [Portable Encrypted Messages](https://bsv.brc.dev/peer-to-peer/0078) | `crypto.ecies`, `compat.ecies` |
+| BRC&#8209;77 | [Message Signature Creation and Verification](https://bsv.brc.dev/peer-to-peer/0077) | `message.signed` (portable wire); legacy BSM: `compat.bsm`, `crypto.compact` |
+| BRC&#8209;78 | [Portable Encrypted Messages](https://bsv.brc.dev/peer-to-peer/0078) | `message.encrypted` (BRC-78 wire); Electrum/Bitcore ECIES: `crypto.ecies`, `compat.ecies` |
 | BRC&#8209;94 | [Schnorr Shared Secret Revelation](https://bsv.brc.dev/key-derivation/0094) | `primitives.schnorr` |
 | BRC&#8209;95 | [Atomic BEEF Transactions](https://bsv.brc.dev/transactions/0095) | `transaction.beef` |
 | BRC&#8209;96 | [BEEF V2 Txid Only Extension](https://bsv.brc.dev/transactions/0096) | `transaction.beef` |

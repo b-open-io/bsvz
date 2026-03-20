@@ -9,6 +9,7 @@ pub const transaction = @import("transaction/lib.zig");
 pub const spv = @import("spv/lib.zig");
 pub const broadcast = @import("broadcast/lib.zig");
 pub const compat = @import("compat/lib.zig");
+pub const message = @import("message/lib.zig");
 
 test {
     @import("std").testing.refAllDeclsRecursive(@This());

@@ -276,6 +276,7 @@ pub const PublicKey = struct {
     pub fn verifyDigest256Relaxed(self: PublicKey, digest: [32]u8, der_bytes: []const u8) !bool {
         return verifyDigest256RelaxedSec1(&self.bytes, digest, der_bytes);
     }
+
 };
 
 pub fn verifyDigest256Sec1(sec1: []const u8, digest: [32]u8, sig: signature.DerSignature) !bool {
@@ -294,7 +295,7 @@ fn verifyDigest256WithParsedKey(
     sig: signature.DerSignature,
 ) !bool {
     const parsed_sig = sig.toStdSignature(EcdsaSha256d) catch return error.InvalidEncoding;
-    return verifyDigest256WithDoubleBase(public_key, digest, parsed_sig);
+    return verifyDigest256WithStdlib(public_key, digest, parsed_sig);
 }
 
 fn verifyDigest256RelaxedWithParsedKey(
@@ -303,7 +304,19 @@ fn verifyDigest256RelaxedWithParsedKey(
     der_bytes: []const u8,
 ) !bool {
     const parsed_sig = parseLaxDerSignature(der_bytes) catch return error.InvalidEncoding;
-    return verifyDigest256WithDoubleBase(public_key, digest, parsed_sig);
+    return verifyDigest256WithStdlib(public_key, digest, parsed_sig);
+}
+
+fn verifyDigest256WithStdlib(
+    public_key: EcdsaSha256d.PublicKey,
+    digest: [32]u8,
+    parsed_sig: EcdsaSha256d.Signature,
+) !bool {
+    parsed_sig.verifyPrehashed(digest, public_key) catch |err| switch (err) {
+        error.SignatureVerificationFailed => return false,
+        else => return error.InvalidEncoding,
+    };
+    return true;
 }
 
 fn parseStdPublicKeyRelaxed(sec1: []const u8) !EcdsaSha256d.PublicKey {
@@ -318,45 +331,6 @@ fn parseStdPublicKeyRelaxed(sec1: []const u8) !EcdsaSha256d.PublicKey {
         return EcdsaSha256d.PublicKey.fromSec1(&uncompressed) catch error.InvalidEncoding;
     }
     return EcdsaSha256d.PublicKey.fromSec1(sec1) catch error.InvalidEncoding;
-}
-
-fn verifyDigest256WithDoubleBase(
-    public_key: EcdsaSha256d.PublicKey,
-    digest: [32]u8,
-    parsed_sig: EcdsaSha256d.Signature,
-) !bool {
-    const r = StdPoint.scalar.Scalar.fromBytes(parsed_sig.r, .big) catch return error.InvalidEncoding;
-    const s = StdPoint.scalar.Scalar.fromBytes(parsed_sig.s, .big) catch return error.InvalidEncoding;
-    if (r.isZero() or s.isZero()) return error.InvalidEncoding;
-
-    const z = reduceDigestToScalar(digest);
-
-    const s_inv = s.invert();
-    const v1 = z.mul(s_inv).toBytes(.little);
-    const v2 = r.mul(s_inv).toBytes(.little);
-    const sum = StdPoint.mulDoubleBasePublic(
-        StdPoint.basePoint,
-        v1,
-        public_key.p,
-        v2,
-        .little,
-    ) catch |err| switch (err) {
-        error.IdentityElement => return false,
-    };
-    const vr = reduceFieldElementToScalar(sum.affineCoordinates().x.toBytes(.big));
-    return r.equivalent(vr);
-}
-
-fn reduceDigestToScalar(digest: [32]u8) StdPoint.scalar.Scalar {
-    var reduced = [_]u8{0} ** 48;
-    @memcpy(reduced[reduced.len - digest.len ..], &digest);
-    return StdPoint.scalar.Scalar.fromBytes48(reduced, .big);
-}
-
-fn reduceFieldElementToScalar(value: [32]u8) StdPoint.scalar.Scalar {
-    var reduced = [_]u8{0} ** 48;
-    @memcpy(reduced[reduced.len - value.len ..], &value);
-    return StdPoint.scalar.Scalar.fromBytes48(reduced, .big);
 }
 
 fn parseLaxDerSignature(der_bytes: []const u8) Error!EcdsaSha256d.Signature {

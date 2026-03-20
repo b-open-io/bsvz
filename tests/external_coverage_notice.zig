@@ -50,9 +50,10 @@ test "external corpus availability is visible in default test runs" {
                     );
                 } else {
                     std.debug.print(
-                        "warning: missing optional external input '{s}' at {s}; related coverage will be skipped ({s})\n",
+                        "error: missing required external input '{s}' at {s}; default coverage is incomplete without it ({s})\n",
                         .{ input.name, input.path, input.purpose },
                     );
+                    return error.MissingExternalCoverageInputs;
                 }
                 continue;
             },
@@ -63,7 +64,7 @@ test "external corpus availability is visible in default test runs" {
     }
 
     std.debug.print(
-        "coverage note: filtered Go corpus lanes intentionally skip unsupported rows; see executed/skipped counts in test stderr\n",
+        "coverage note: filtered Go corpus lanes now execute dynamic rows and report any remaining meta-row skips in test stderr\n",
         .{},
     );
 

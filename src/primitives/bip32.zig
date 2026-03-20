@@ -5,6 +5,7 @@ const std = @import("std");
 const hash = @import("../crypto/hash.zig");
 const secp = @import("../crypto/secp256k1.zig");
 const base58 = @import("base58.zig");
+const bip39 = @import("bip39.zig");
 const StdScalar = std.crypto.ecc.Secp256k1.scalar;
 
 pub const HardenedKeyStart: u32 = 0x80000000;
@@ -37,7 +38,7 @@ pub const Error = error{
     UnknownHdVersion,
     InvalidPath,
     NotPrivExtKey,
-} || secp.Error || std.mem.Allocator.Error || std.fmt.ParseIntError || base58.Error;
+} || bip39.Error || secp.Error || std.mem.Allocator.Error || std.fmt.ParseIntError || base58.Error;
 
 const master_key_label = "Bitcoin seed";
 
@@ -201,6 +202,17 @@ fn mapPrivToPubVersion(priv_ver: [4]u8) ?[4]u8 {
     return null;
 }
 
+/// BIP32 master from BIP39 mnemonic + passphrase (PBKDF2 seed), then `newMaster`.
+pub fn masterFromMnemonic(
+    allocator: std.mem.Allocator,
+    mnemonic: []const u8,
+    passphrase: []const u8,
+    net: Versions,
+) Error!ExtendedKey {
+    const seed = try bip39.newSeedChecked(allocator, mnemonic, passphrase);
+    return try newMaster(&seed, net);
+}
+
 pub fn newMaster(seed: []const u8, net: Versions) Error!ExtendedKey {
     if (seed.len < min_seed_len or seed.len > max_seed_len) return error.InvalidSeedLen;
 
@@ -274,6 +286,19 @@ pub fn parsePathSegment(seg: []const u8) Error!u32 {
     if (v >= HardenedKeyStart) return error.InvalidPath;
     if (hard) return v + HardenedKeyStart;
     return v;
+}
+
+test "bip32 master from mnemonic matches newMaster from bip39 seed" {
+    const a = std.testing.allocator;
+    const mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const seed = try bip39.newSeedChecked(a, mnemonic, "");
+    const m_seed = try newMaster(&seed, Versions.mainnet);
+    const m_phrase = try masterFromMnemonic(a, mnemonic, "", Versions.mainnet);
+    const s1 = try m_seed.toStringAlloc(a);
+    defer a.free(s1);
+    const s2 = try m_phrase.toStringAlloc(a);
+    defer a.free(s2);
+    try std.testing.expectEqualStrings(s1, s2);
 }
 
 test "bip32 master from spec seed matches xprv" {

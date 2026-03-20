@@ -1242,7 +1242,7 @@ test "BEEF clone preserves hydrated ancestry after original deinit" {
 
     const serialized = try cloned_child.serialize(allocator);
     defer allocator.free(serialized);
-    try std.testing.expect(serialized.len > 0);
+    try std.testing.expectEqualSlices(u8, child_bytes, serialized);
 }
 
 test "BEEF verify checks chain tracker roots" {

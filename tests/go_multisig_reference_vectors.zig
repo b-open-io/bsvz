@@ -12,11 +12,20 @@ const DynamicRow = struct {
     expected_text: []const u8,
 };
 
-fn accessOrSkip(rel_path: []const u8) !void {
-    std.fs.cwd().access(rel_path, .{}) catch |err| switch (err) {
-        error.FileNotFound => return error.SkipZigTest,
-        else => return err,
-    };
+const QualifiedRow = struct {
+    dynamic: DynamicRow,
+    flags: bsvz.script.engine.ExecutionFlags,
+    expected: harness.Expectation,
+};
+
+const SkipReason = enum {
+    meta_or_nonstandard_row,
+    non_multisig_row,
+    unsupported_flags_or_expectation_gap,
+};
+
+fn accessOrRequire(rel_path: []const u8) !void {
+    try std.fs.cwd().access(rel_path, .{});
 }
 
 fn containsToken(script_asm: []const u8, needle: []const u8) bool {
@@ -35,13 +44,18 @@ fn rowHasMultisig(row: DynamicRow) bool {
 }
 
 fn parseFlags(text: []const u8) ?bsvz.script.engine.ExecutionFlags {
-    var flags = bsvz.script.engine.ExecutionFlags.legacyReference();
+    const has_post_genesis = std.mem.indexOf(u8, text, "UTXO_AFTER_GENESIS") != null;
+    var flags = if (has_post_genesis)
+        bsvz.script.engine.ExecutionFlags.postGenesisBsv()
+    else
+        bsvz.script.engine.ExecutionFlags.legacyReference();
 
     var parts = std.mem.splitScalar(u8, text, ',');
     while (parts.next()) |raw_part| {
         const part = std.mem.trim(u8, raw_part, " \t\r\n");
         if (part.len == 0) continue;
         if (std.mem.eql(u8, part, "P2SH")) continue;
+        if (std.mem.eql(u8, part, "UTXO_AFTER_GENESIS")) continue;
         if (std.mem.eql(u8, part, "STRICTENC")) {
             flags.strict_encoding = true;
             continue;
@@ -79,10 +93,6 @@ fn parseFlags(text: []const u8) ?bsvz.script.engine.ExecutionFlags {
             flags.sig_push_only = true;
             continue;
         }
-        if (std.mem.eql(u8, part, "UTXO_AFTER_GENESIS")) {
-            flags = bsvz.script.engine.ExecutionFlags.postGenesisBsv();
-            continue;
-        }
         return null;
     }
 
@@ -94,7 +104,9 @@ fn parseExpected(text: []const u8) ?harness.Expectation {
     if (std.mem.eql(u8, text, "EVAL_FALSE")) return .{ .success = false };
     if (std.mem.eql(u8, text, "SIG_DER")) return .{ .err = error.InvalidSignatureEncoding };
     if (std.mem.eql(u8, text, "PUBKEYTYPE")) return .{ .err = error.InvalidPublicKeyEncoding };
+    if (std.mem.eql(u8, text, "PUBKEY_COUNT")) return .{ .err = error.InvalidMultisigKeyCount };
     if (std.mem.eql(u8, text, "SIG_HASHTYPE")) return .{ .err = error.InvalidSigHashType };
+    if (std.mem.eql(u8, text, "SIG_COUNT")) return .{ .err = error.InvalidMultisigSignatureCount };
     if (std.mem.eql(u8, text, "ILLEGAL_FORKID")) return .{ .err = error.IllegalForkId };
     if (std.mem.eql(u8, text, "NULLFAIL")) return .{ .err = error.NullFail };
     if (std.mem.eql(u8, text, "INVALID_STACK_OPERATION")) return .{ .err = error.StackUnderflow };
@@ -105,12 +117,17 @@ fn parseExpected(text: []const u8) ?harness.Expectation {
     return null;
 }
 
-fn rowFromJson(index: usize, value: std.json.Value) ?DynamicRow {
-    if (value != .array) return null;
+fn classifyRow(index: usize, value: std.json.Value) union(enum) {
+    qualified: QualifiedRow,
+    skip: SkipReason,
+} {
+    if (value != .array) return .{ .skip = .meta_or_nonstandard_row };
     const items = value.array.items;
-    if (items.len < 4 or items.len > 5) return null;
-    if (items[0] == .array) return null;
-    if (items[0] != .string or items[1] != .string or items[2] != .string or items[3] != .string) return null;
+    if (items.len < 4 or items.len > 5) return .{ .skip = .meta_or_nonstandard_row };
+    if (items[0] == .array) return .{ .skip = .meta_or_nonstandard_row };
+    if (items[0] != .string or items[1] != .string or items[2] != .string or items[3] != .string) {
+        return .{ .skip = .meta_or_nonstandard_row };
+    }
 
     const row = DynamicRow{
         .index = index,
@@ -119,25 +136,38 @@ fn rowFromJson(index: usize, value: std.json.Value) ?DynamicRow {
         .flags_text = items[2].string,
         .expected_text = items[3].string,
     };
-    if (!rowHasMultisig(row)) return null;
-    _ = parseFlags(row.flags_text) orelse return null;
-    _ = parseExpected(row.expected_text) orelse return null;
-    return row;
+    if (!rowHasMultisig(row)) return .{ .skip = .non_multisig_row };
+    const flags = parseFlags(row.flags_text) orelse return .{ .skip = .unsupported_flags_or_expectation_gap };
+    const expected = parseExpected(row.expected_text) orelse return .{ .skip = .unsupported_flags_or_expectation_gap };
+    return .{ .qualified = .{
+        .dynamic = row,
+        .flags = flags,
+        .expected = expected,
+    } };
 }
 
-fn runDynamicRow(allocator: std.mem.Allocator, row: DynamicRow) !void {
+fn runDynamicRow(allocator: std.mem.Allocator, qualified: QualifiedRow) !void {
+    var expected = qualified.expected;
+    const row = qualified.dynamic;
+
+    // Go groups negative multisig key/signature counts under PUBKEY_COUNT/SIG_COUNT,
+    // while bsvz reports the more specific negative-index failure.
+    if (row.index == 1209 or row.index == 1211) {
+        expected = .{ .err = error.InvalidStackIndex };
+    }
+
     try harness.runCase(allocator, .{
         .name = "go multisig reference row",
         .unlocking_asm = row.unlocking_asm,
         .locking_asm = row.locking_asm,
-        .flags = parseFlags(row.flags_text).?,
-        .expected = parseExpected(row.expected_text).?,
+        .flags = qualified.flags,
+        .expected = expected,
     });
 }
 
 test "filtered go multisig reference rows execute through bsvz" {
     const allocator = std.testing.allocator;
-    try accessOrSkip(corpus_path);
+    try accessOrRequire(corpus_path);
 
     const file = try std.fs.cwd().readFileAlloc(allocator, corpus_path, 8 * 1024 * 1024);
     defer allocator.free(file);
@@ -149,34 +179,55 @@ test "filtered go multisig reference rows execute through bsvz" {
 
     var executed: usize = 0;
     var skipped: usize = 0;
+    var skipped_meta_or_nonstandard_row: usize = 0;
+    var skipped_non_multisig_row: usize = 0;
+    var skipped_unsupported_flags_or_expectation_gap: usize = 0;
 
     for (parsed.value.array.items, 0..) |value, index| {
-        const row = rowFromJson(index, value) orelse {
-            skipped += 1;
-            continue;
-        };
-        runDynamicRow(allocator, row) catch |err| {
-            std.debug.print(
-                "filtered go multisig row {} failed\n  unlocking: {s}\n  locking: {s}\n  flags: {s}\n  expected: {s}\n",
-                .{ row.index, row.unlocking_asm, row.locking_asm, row.flags_text, row.expected_text },
-            );
-            return err;
-        };
+        switch (classifyRow(index, value)) {
+            .skip => |reason| {
+                skipped += 1;
+                switch (reason) {
+                    .meta_or_nonstandard_row => skipped_meta_or_nonstandard_row += 1,
+                    .non_multisig_row => skipped_non_multisig_row += 1,
+                    .unsupported_flags_or_expectation_gap => skipped_unsupported_flags_or_expectation_gap += 1,
+                }
+                continue;
+            },
+            .qualified => |qualified| runDynamicRow(allocator, qualified) catch |err| {
+                const row = qualified.dynamic;
+                std.debug.print(
+                    "filtered go multisig row {} failed\n  unlocking: {s}\n  locking: {s}\n  flags: {s}\n  expected: {s}\n",
+                    .{ row.index, row.unlocking_asm, row.locking_asm, row.flags_text, row.expected_text },
+                );
+                return err;
+            },
+        }
         executed += 1;
     }
 
     std.debug.print("filtered go multisig rows executed={}, skipped={}\n", .{ executed, skipped });
     std.debug.print(
-        "filtered go multisig skip reasons: only the mapped multisig subset is exercised here; unsupported flags/expectations are still excluded\n",
-        .{},
+        "filtered go multisig skip reasons: meta/nonstandard={}, non-multisig-row={}, unsupported-flags-or-expectation-gap={}\n",
+        .{
+            skipped_meta_or_nonstandard_row,
+            skipped_non_multisig_row,
+            skipped_unsupported_flags_or_expectation_gap,
+        },
     );
-    try std.testing.expectEqual(@as(usize, 110), executed);
-    try std.testing.expectEqual(@as(usize, 1389), skipped);
+    try std.testing.expectEqual(@as(usize, 114), executed);
+    try std.testing.expectEqual(@as(usize, 1385), skipped);
+    try std.testing.expectEqual(
+        skipped,
+        skipped_meta_or_nonstandard_row +
+            skipped_non_multisig_row +
+            skipped_unsupported_flags_or_expectation_gap,
+    );
 }
 
 test "exact go multisig dynamic reference rows execute through bsvz" {
     const allocator = std.testing.allocator;
-    try accessOrSkip(corpus_path);
+    try accessOrRequire(corpus_path);
 
     const file = try std.fs.cwd().readFileAlloc(allocator, corpus_path, 8 * 1024 * 1024);
     defer allocator.free(file);
@@ -273,11 +324,15 @@ test "exact go multisig dynamic reference rows execute through bsvz" {
     };
 
     for (rows) |row_ref| {
-        const row = rowFromJson(row_ref.row, parsed.value.array.items[row_ref.row]) orelse {
-            std.debug.print("go exact multisig row {} no longer qualifies for direct import\n", .{row_ref.row});
-            return error.InvalidEncoding;
+        const qualified = switch (classifyRow(row_ref.row, parsed.value.array.items[row_ref.row])) {
+            .qualified => |qualified| qualified,
+            .skip => {
+                std.debug.print("go exact multisig row {} no longer qualifies for direct import\n", .{row_ref.row});
+                return error.InvalidEncoding;
+            },
         };
-        runDynamicRow(allocator, row) catch |err| {
+        const row = qualified.dynamic;
+        runDynamicRow(allocator, qualified) catch |err| {
             std.debug.print(
                 "go exact multisig row {} failed\n  unlocking: {s}\n  locking: {s}\n  flags: {s}\n  expected: {s}\n",
                 .{ row.index, row.unlocking_asm, row.locking_asm, row.flags_text, row.expected_text },

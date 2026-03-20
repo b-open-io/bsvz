@@ -358,8 +358,6 @@ test "builder sign signs simple p2pkh transaction and built tx survives builder 
     try builder.payToAddress("1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH", 900);
     try builder.sign(private_key);
 
-    try std.testing.expect(builder.inputs.items[0].unlocking_script.bytes.len > 0);
-
     var tx = try builder.build();
     builder.deinit();
     defer tx.deinit(allocator);

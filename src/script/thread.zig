@@ -350,6 +350,16 @@ pub fn verifyScriptsWithLegacyP2SH(
     return result.toLegacy();
 }
 
+pub fn verifyScriptsWithLegacyP2SHOutcome(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    locking_script: Script,
+    enable_legacy_p2sh: bool,
+) VerificationOutcome {
+    var result = verifyScriptsWithLegacyP2SHDetailed(ctx, unlocking_script, locking_script, enable_legacy_p2sh);
+    return result.deinitToOutcome(ctx.allocator);
+}
+
 pub fn verifyScriptsOutcome(
     ctx: ExecutionContext,
     unlocking_script: Script,
@@ -405,12 +415,33 @@ pub fn verifyExecutableScripts(
     return result.toLegacy();
 }
 
+pub fn verifyExecutableScriptsWithLegacyP2SH(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    full_locking_script: Script,
+    enable_legacy_p2sh: bool,
+) Error!bool {
+    var result = verifyExecutableScriptsWithLegacyP2SHDetailed(ctx, unlocking_script, full_locking_script, enable_legacy_p2sh);
+    defer result.deinit(ctx.allocator);
+    return result.toLegacy();
+}
+
 pub fn verifyExecutableScriptsOutcome(
     ctx: ExecutionContext,
     unlocking_script: Script,
     full_locking_script: Script,
 ) VerificationOutcome {
     var result = verifyExecutableScriptsDetailed(ctx, unlocking_script, full_locking_script);
+    return result.deinitToOutcome(ctx.allocator);
+}
+
+pub fn verifyExecutableScriptsWithLegacyP2SHOutcome(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    full_locking_script: Script,
+    enable_legacy_p2sh: bool,
+) VerificationOutcome {
+    var result = verifyExecutableScriptsWithLegacyP2SHDetailed(ctx, unlocking_script, full_locking_script, enable_legacy_p2sh);
     return result.deinitToOutcome(ctx.allocator);
 }
 
@@ -426,6 +457,21 @@ pub fn verifyExecutableScriptsDetailed(
         return thread.finishVerification(.script_error, .locking, err);
     };
     return thread.verifyPairDetailed(unlocking_script, executable_locking_script);
+}
+
+pub fn verifyExecutableScriptsWithLegacyP2SHDetailed(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    full_locking_script: Script,
+    enable_legacy_p2sh: bool,
+) VerificationResult {
+    var thread = ScriptThread.init(executableContext(ctx, full_locking_script));
+    defer thread.deinit();
+
+    const executable_locking_script = bytes.executableCodePart(full_locking_script) catch |err| {
+        return thread.finishVerification(.script_error, .locking, err);
+    };
+    return thread.verifyPairWithLegacyP2SHDetailed(unlocking_script, executable_locking_script, enable_legacy_p2sh);
 }
 
 pub fn verifyExecutableScriptsTraced(
@@ -445,6 +491,28 @@ pub fn verifyExecutableScriptsTraced(
     };
     return .{
         .result = thread.verifyPairImpl(unlocking_script, executable_locking_script, false, &trace),
+        .trace = trace,
+    };
+}
+
+pub fn verifyExecutableScriptsWithLegacyP2SHTraced(
+    ctx: ExecutionContext,
+    unlocking_script: Script,
+    full_locking_script: Script,
+    enable_legacy_p2sh: bool,
+) TracedVerificationResult {
+    var thread = ScriptThread.init(executableContext(ctx, full_locking_script));
+    defer thread.deinit();
+
+    var trace: ExecutionTrace = .{};
+    const executable_locking_script = bytes.executableCodePart(full_locking_script) catch |err| {
+        return .{
+            .result = thread.finishVerification(.script_error, .locking, err),
+            .trace = trace,
+        };
+    };
+    return .{
+        .result = thread.verifyPairImpl(unlocking_script, executable_locking_script, enable_legacy_p2sh, &trace),
         .trace = trace,
     };
 }
@@ -497,6 +565,22 @@ pub fn verifyPrevoutSpend(
     );
 }
 
+pub fn verifyPrevoutSpendWithLegacyP2SH(
+    allocator: std.mem.Allocator,
+    tx: *const Transaction,
+    input_index: usize,
+    previous_output: Output,
+    unlocking_script: Script,
+    enable_legacy_p2sh: bool,
+) Error!bool {
+    return verifyExecutableScriptsWithLegacyP2SH(
+        ExecutionContext.forPrevoutSpend(allocator, tx, input_index, previous_output),
+        unlocking_script,
+        previous_output.locking_script,
+        enable_legacy_p2sh,
+    );
+}
+
 pub fn verifyPrevoutSpendOutcome(
     allocator: std.mem.Allocator,
     tx: *const Transaction,
@@ -508,6 +592,22 @@ pub fn verifyPrevoutSpendOutcome(
         ExecutionContext.forPrevoutSpend(allocator, tx, input_index, previous_output),
         unlocking_script,
         previous_output.locking_script,
+    );
+}
+
+pub fn verifyPrevoutSpendWithLegacyP2SHOutcome(
+    allocator: std.mem.Allocator,
+    tx: *const Transaction,
+    input_index: usize,
+    previous_output: Output,
+    unlocking_script: Script,
+    enable_legacy_p2sh: bool,
+) VerificationOutcome {
+    return verifyExecutableScriptsWithLegacyP2SHOutcome(
+        ExecutionContext.forPrevoutSpend(allocator, tx, input_index, previous_output),
+        unlocking_script,
+        previous_output.locking_script,
+        enable_legacy_p2sh,
     );
 }
 
@@ -525,6 +625,22 @@ pub fn verifyPrevoutSpendDetailed(
     );
 }
 
+pub fn verifyPrevoutSpendWithLegacyP2SHDetailed(
+    allocator: std.mem.Allocator,
+    tx: *const Transaction,
+    input_index: usize,
+    previous_output: Output,
+    unlocking_script: Script,
+    enable_legacy_p2sh: bool,
+) VerificationResult {
+    return verifyExecutableScriptsWithLegacyP2SHDetailed(
+        ExecutionContext.forPrevoutSpend(allocator, tx, input_index, previous_output),
+        unlocking_script,
+        previous_output.locking_script,
+        enable_legacy_p2sh,
+    );
+}
+
 pub fn verifyPrevoutSpendTraced(
     allocator: std.mem.Allocator,
     tx: *const Transaction,
@@ -536,6 +652,22 @@ pub fn verifyPrevoutSpendTraced(
         ExecutionContext.forPrevoutSpend(allocator, tx, input_index, previous_output),
         unlocking_script,
         previous_output.locking_script,
+    );
+}
+
+pub fn verifyPrevoutSpendWithLegacyP2SHTraced(
+    allocator: std.mem.Allocator,
+    tx: *const Transaction,
+    input_index: usize,
+    previous_output: Output,
+    unlocking_script: Script,
+    enable_legacy_p2sh: bool,
+) TracedVerificationResult {
+    return verifyExecutableScriptsWithLegacyP2SHTraced(
+        ExecutionContext.forPrevoutSpend(allocator, tx, input_index, previous_output),
+        unlocking_script,
+        previous_output.locking_script,
+        enable_legacy_p2sh,
     );
 }
 

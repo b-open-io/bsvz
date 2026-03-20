@@ -10,4 +10,9 @@ test "module surface resolves" {
     _ = bsvz.transaction.extractOutpointBytes;
     _ = bsvz.transaction.Output.parse;
     _ = bsvz.transaction.Output.hashAll;
+    _ = bsvz.primitives.brc43.formatInvoice;
+    _ = bsvz.primitives.brc43.formatInvoiceProtocol;
+    _ = bsvz.spv.verify;
+    _ = bsvz.spv.verifyBeef;
+    _ = bsvz.crypto.ecies.electrumEncryptAlloc;
 }

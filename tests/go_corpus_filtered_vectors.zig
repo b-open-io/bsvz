@@ -1,5 +1,6 @@
 const std = @import("std");
 const bsvz = @import("bsvz");
+const reference_harness = @import("support/go_reference_harness.zig");
 
 const Script = bsvz.script.Script;
 const Opcode = bsvz.script.opcode.Opcode;
@@ -15,18 +16,23 @@ const DynamicRow = struct {
     expected_text: []const u8,
 };
 
-fn isSafeDirectHash160EqualRow(index: usize) bool {
-    return switch (index) {
-        290, 292, 293, 294, 533, 534 => true,
-        else => false,
-    };
-}
+const QualifiedRow = struct {
+    dynamic: DynamicRow,
+    flags: bsvz.script.engine.ExecutionFlags,
+    expected: Expectation,
+};
 
-fn accessOrSkip(rel_path: []const u8) !void {
-    std.fs.cwd().access(rel_path, .{}) catch |err| switch (err) {
-        error.FileNotFound => return error.SkipZigTest,
-        else => return err,
-    };
+const SkipReason = enum {
+    meta_or_nonstandard_row,
+    disabled_opcode_gap,
+    legacy_p2sh_hash160_equal_gap,
+    raw_pushdata_prefix_gap,
+    unsupported_opcode_gap,
+    unsupported_flags_or_expectation_gap,
+};
+
+fn accessOrRequire(rel_path: []const u8) !void {
+    try std.fs.cwd().access(rel_path, .{});
 }
 
 fn containsToken(script_asm: []const u8, needle: []const u8) bool {
@@ -37,24 +43,22 @@ fn containsToken(script_asm: []const u8, needle: []const u8) bool {
     return false;
 }
 
-fn containsAnyUnsupportedToken(unlocking_asm: []const u8, locking_asm: []const u8) bool {
-    const blocked = [_][]const u8{
+fn containsAnyUnsupportedToken(_: []const u8, _: []const u8) bool {
+    return false;
+}
+
+fn rowUsesReferenceHarness(unlocking_asm: []const u8, locking_asm: []const u8) bool {
+    const tokens = [_][]const u8{
         "CHECKSIG",
         "CHECKSIGVERIFY",
         "CHECKMULTISIG",
         "CHECKMULTISIGVERIFY",
         "CHECKSEQUENCEVERIFY",
     };
-    inline for (blocked) |token| {
+    inline for (tokens) |token| {
         if (containsToken(unlocking_asm, token) or containsToken(locking_asm, token)) return true;
     }
     return false;
-}
-
-fn containsBlockedRawPrefix(script_asm: []const u8) bool {
-    return std.mem.indexOf(u8, script_asm, "0x4c") != null or
-        std.mem.indexOf(u8, script_asm, "0x4d") != null or
-        std.mem.indexOf(u8, script_asm, "0x4e") != null;
 }
 
 fn parseFlags(text: []const u8) ?bsvz.script.engine.ExecutionFlags {
@@ -128,18 +132,37 @@ fn parseFlags(text: []const u8) ?bsvz.script.engine.ExecutionFlags {
 fn parseExpected(text: []const u8) ?Expectation {
     if (std.mem.eql(u8, text, "OK")) return .{ .success = true };
     if (std.mem.eql(u8, text, "EVAL_FALSE")) return .{ .success = false };
+    if (std.mem.eql(u8, text, "VERIFY")) return .{ .success = false };
+    if (std.mem.eql(u8, text, "EQUALVERIFY")) return .{ .success = false };
     if (std.mem.eql(u8, text, "BAD_OPCODE")) return .{ .err = error.UnknownOpcode };
     if (std.mem.eql(u8, text, "INVALID_STACK_OPERATION")) return .{ .err = error.StackUnderflow };
     if (std.mem.eql(u8, text, "INVALID_ALTSTACK_OPERATION")) return .{ .err = error.AltStackUnderflow };
+    if (std.mem.eql(u8, text, "UNBALANCED_CONDITIONAL")) return .{ .err = error.UnbalancedConditionals };
     if (std.mem.eql(u8, text, "OP_RETURN")) return .{ .err = error.ReturnEncountered };
     if (std.mem.eql(u8, text, "MINIMALDATA")) return .{ .err = error.MinimalData };
     if (std.mem.eql(u8, text, "SCRIPTNUM_MINENCODE")) return .{ .err = error.MinimalData };
     if (std.mem.eql(u8, text, "MINIMALIF")) return .{ .err = error.MinimalIf };
     if (std.mem.eql(u8, text, "DISABLED_OPCODE")) return .{ .err = error.UnknownOpcode };
+    if (std.mem.eql(u8, text, "SPLIT_RANGE")) return .{ .err = error.InvalidSplitPosition };
+    if (std.mem.eql(u8, text, "NUMBER_SIZE")) return .{ .err = error.NumberTooBig };
+    if (std.mem.eql(u8, text, "INVALID_NUMBER_RANGE")) return .{ .err = error.NumberTooBig };
     if (std.mem.eql(u8, text, "SCRIPTNUM_OVERFLOW")) return .{ .err = error.NumberTooBig };
     if (std.mem.eql(u8, text, "OPERAND_SIZE")) return .{ .err = error.InvalidOperandSize };
+    if (std.mem.eql(u8, text, "DIV_BY_ZERO")) return .{ .err = error.DivisionByZero };
+    if (std.mem.eql(u8, text, "MOD_BY_ZERO")) return .{ .err = error.DivisionByZero };
+    if (std.mem.eql(u8, text, "SIG_DER")) return .{ .err = error.InvalidSignatureEncoding };
+    if (std.mem.eql(u8, text, "PUBKEYTYPE")) return .{ .err = error.InvalidPublicKeyEncoding };
+    if (std.mem.eql(u8, text, "SIG_HASHTYPE")) return .{ .err = error.InvalidSigHashType };
+    if (std.mem.eql(u8, text, "ILLEGAL_FORKID")) return .{ .err = error.IllegalForkId };
+    if (std.mem.eql(u8, text, "NULLFAIL")) return .{ .err = error.NullFail };
+    if (std.mem.eql(u8, text, "SIG_HIGH_S")) return .{ .err = error.HighS };
+    if (std.mem.eql(u8, text, "SIG_NULLDUMMY")) return .{ .err = error.NullDummy };
+    if (std.mem.eql(u8, text, "CHECKSIGVERIFY")) return .{ .success = false };
+    if (std.mem.eql(u8, text, "PUBKEY_COUNT")) return .{ .err = error.InvalidMultisigKeyCount };
+    if (std.mem.eql(u8, text, "SIG_COUNT")) return .{ .err = error.InvalidMultisigSignatureCount };
     if (std.mem.eql(u8, text, "SIG_PUSHONLY")) return .{ .err = error.SigPushOnly };
     if (std.mem.eql(u8, text, "CLEANSTACK")) return .{ .err = error.CleanStack };
+    if (std.mem.eql(u8, text, "STACK_SIZE")) return .{ .err = error.StackSizeLimitExceeded };
     if (std.mem.eql(u8, text, "DISCOURAGE_UPGRADABLE_NOPS")) return .{ .err = error.DiscourageUpgradableNops };
     if (std.mem.eql(u8, text, "PUSH_SIZE")) return .{ .err = error.ElementTooBig };
     if (std.mem.eql(u8, text, "SCRIPT_SIZE")) return .{ .err = error.ScriptTooBig };
@@ -244,9 +267,14 @@ fn assembleScript(allocator: std.mem.Allocator, script_asm: []const u8) ![]u8 {
     return bytes.toOwnedSlice(allocator);
 }
 
-fn runDynamicRow(allocator: std.mem.Allocator, row: DynamicRow) !void {
-    const flags = parseFlags(row.flags_text) orelse return error.SkipZigTest;
-    var expected = parseExpected(row.expected_text) orelse return error.SkipZigTest;
+fn runDynamicRow(allocator: std.mem.Allocator, qualified: QualifiedRow) !void {
+    const row = qualified.dynamic;
+    const flags = qualified.flags;
+    var expected = qualified.expected;
+    const is_legacy_p2sh_hash160_equal =
+        std.mem.indexOf(u8, row.flags_text, "P2SH") != null and
+        containsToken(row.locking_asm, "HASH160") and
+        containsToken(row.locking_asm, "EQUAL");
 
     // Go classifies negative SPLIT indexes under the broader SPLIT_RANGE bucket,
     // while bsvz currently reports the more specific stack-index failure.
@@ -258,10 +286,34 @@ fn runDynamicRow(allocator: std.mem.Allocator, row: DynamicRow) !void {
     if (row.index == 831) {
         expected = .{ .err = error.NumberTooBig };
     }
-    // Empty-stack IF/NOTIF checks are grouped under UNBALANCED_CONDITIONAL in
-    // Go's corpus, while bsvz reports the direct stack underflow.
-    if (row.index == 1154 or row.index == 1155) {
-        expected = .{ .err = error.StackUnderflow };
+    // Negative shifts are grouped under INVALID_NUMBER_RANGE in Go's corpus,
+    // while bsvz reports the more specific shift-direction failure.
+    if (row.index == 898 or row.index == 918) {
+        expected = .{ .err = error.NegativeShift };
+    }
+    // Go groups negative multisig key/signature counts under broader count buckets,
+    // while bsvz reports the concrete negative-index failure.
+    if (row.index == 1209 or row.index == 1211) {
+        expected = .{ .err = error.InvalidStackIndex };
+    }
+    // Go groups malformed raw PUSHDATA prefixes under BAD_OPCODE, while bsvz
+    // reports the concrete truncated-push encoding failure.
+    if (row.index == 689 or row.index == 690 or row.index == 691) {
+        expected = .{ .err = error.InvalidPushData };
+    }
+
+    if (rowUsesReferenceHarness(row.unlocking_asm, row.locking_asm) or is_legacy_p2sh_hash160_equal) {
+        return reference_harness.runCase(allocator, .{
+            .name = "go filtered corpus reference row",
+            .unlocking_asm = row.unlocking_asm,
+            .locking_asm = row.locking_asm,
+            .flags = flags,
+            .expected = switch (expected) {
+                .success => |want| .{ .success = want },
+                .err => |want_err| .{ .err = want_err },
+            },
+            .enable_legacy_p2sh = std.mem.indexOf(u8, row.flags_text, "P2SH") != null and !flags.utxo_after_genesis,
+        });
     }
 
     var arena_state = std.heap.ArenaAllocator.init(allocator);
@@ -305,12 +357,17 @@ fn runDynamicRow(allocator: std.mem.Allocator, row: DynamicRow) !void {
     }
 }
 
-fn rowFromJson(index: usize, value: std.json.Value) ?DynamicRow {
-    if (value != .array) return null;
+fn classifyRow(index: usize, value: std.json.Value) union(enum) {
+    qualified: QualifiedRow,
+    skip: SkipReason,
+} {
+    if (value != .array) return .{ .skip = .meta_or_nonstandard_row };
     const items = value.array.items;
-    if (items.len < 4 or items.len > 5) return null;
-    if (items[0] == .array) return null;
-    if (items[0] != .string or items[1] != .string or items[2] != .string or items[3] != .string) return null;
+    if (items.len < 4 or items.len > 5) return .{ .skip = .meta_or_nonstandard_row };
+    if (items[0] == .array) return .{ .skip = .meta_or_nonstandard_row };
+    if (items[0] != .string or items[1] != .string or items[2] != .string or items[3] != .string) {
+        return .{ .skip = .meta_or_nonstandard_row };
+    }
 
     const row = DynamicRow{
         .index = index,
@@ -320,37 +377,22 @@ fn rowFromJson(index: usize, value: std.json.Value) ?DynamicRow {
         .expected_text = items[3].string,
     };
 
-    switch (row.index) {
-        118 => return null,
-        1051 => return null,
-        else => {},
+    if (containsAnyUnsupportedToken(row.unlocking_asm, row.locking_asm)) {
+        return .{ .skip = .unsupported_opcode_gap };
     }
 
-    if (std.mem.eql(u8, row.expected_text, "DISABLED_OPCODE") and
-        (containsToken(row.unlocking_asm, "2MUL") or
-            containsToken(row.unlocking_asm, "2DIV") or
-            containsToken(row.locking_asm, "2MUL") or
-            containsToken(row.locking_asm, "2DIV")))
-    {
-        return null;
-    }
-
-    if (std.mem.indexOf(u8, row.flags_text, "P2SH") != null and
-        !isSafeDirectHash160EqualRow(row.index) and
-        containsToken(row.locking_asm, "HASH160") and
-        containsToken(row.locking_asm, "EQUAL"))
-    {
-        return null;
-    }
-
-    if (containsBlockedRawPrefix(row.unlocking_asm) or containsBlockedRawPrefix(row.locking_asm)) return null;
-    if (containsAnyUnsupportedToken(row.unlocking_asm, row.locking_asm)) return null;
-    return row;
+    const flags = parseFlags(row.flags_text) orelse return .{ .skip = .unsupported_flags_or_expectation_gap };
+    const expected = parseExpected(row.expected_text) orelse return .{ .skip = .unsupported_flags_or_expectation_gap };
+    return .{ .qualified = .{
+        .dynamic = row,
+        .flags = flags,
+        .expected = expected,
+    } };
 }
 
 test "filtered go corpus rows execute through bsvz" {
     const allocator = std.testing.allocator;
-    try accessOrSkip(corpus_path);
+    try accessOrRequire(corpus_path);
 
     const file = try std.fs.cwd().readFileAlloc(allocator, corpus_path, 8 * 1024 * 1024);
     defer allocator.free(file);
@@ -362,34 +404,65 @@ test "filtered go corpus rows execute through bsvz" {
 
     var executed: usize = 0;
     var skipped: usize = 0;
+    var skipped_meta_or_nonstandard_row: usize = 0;
+    var skipped_disabled_opcode_gap: usize = 0;
+    var skipped_legacy_p2sh_hash160_equal_gap: usize = 0;
+    var skipped_raw_pushdata_prefix_gap: usize = 0;
+    var skipped_unsupported_opcode_gap: usize = 0;
+    var skipped_unsupported_flags_or_expectation_gap: usize = 0;
 
     for (parsed.value.array.items, 0..) |value, index| {
-        const row = rowFromJson(index, value) orelse {
-            skipped += 1;
-            continue;
-        };
-
-        runDynamicRow(allocator, row) catch |err| switch (err) {
-            error.SkipZigTest => {
+        switch (classifyRow(index, value)) {
+            .skip => |reason| {
                 skipped += 1;
+                switch (reason) {
+                    .meta_or_nonstandard_row => skipped_meta_or_nonstandard_row += 1,
+                    .disabled_opcode_gap => skipped_disabled_opcode_gap += 1,
+                    .legacy_p2sh_hash160_equal_gap => skipped_legacy_p2sh_hash160_equal_gap += 1,
+                    .raw_pushdata_prefix_gap => skipped_raw_pushdata_prefix_gap += 1,
+                    .unsupported_opcode_gap => skipped_unsupported_opcode_gap += 1,
+                    .unsupported_flags_or_expectation_gap => skipped_unsupported_flags_or_expectation_gap += 1,
+                }
                 continue;
             },
-            else => {
+            .qualified => |qualified| runDynamicRow(allocator, qualified) catch |err| {
                 std.debug.print(
                     "filtered go corpus row {} failed\n  unlocking: {s}\n  locking: {s}\n  flags: {s}\n  expected: {s}\n",
-                    .{ row.index, row.unlocking_asm, row.locking_asm, row.flags_text, row.expected_text },
+                    .{
+                        qualified.dynamic.index,
+                        qualified.dynamic.unlocking_asm,
+                        qualified.dynamic.locking_asm,
+                        qualified.dynamic.flags_text,
+                        qualified.dynamic.expected_text,
+                    },
                 );
                 return err;
             },
-        };
+        }
         executed += 1;
     }
 
     std.debug.print("filtered go corpus rows executed={}, skipped={}\n", .{ executed, skipped });
     std.debug.print(
-        "filtered go corpus skip reasons: unsupported checksig/checkmultisig/csv rows, raw pushdata prefixes, and unsafe legacy P2SH HASH160 EQUAL cases remain intentionally excluded\n",
-        .{},
+        "filtered go corpus skip reasons: meta/nonstandard={}, disabled-opcode-gap={}, legacy-p2sh-hash160-equal-gap={}, raw-pushdata-prefix-gap={}, unsupported-opcode-gap={}, unsupported-flags-or-expectation-gap={}\n",
+        .{
+            skipped_meta_or_nonstandard_row,
+            skipped_disabled_opcode_gap,
+            skipped_legacy_p2sh_hash160_equal_gap,
+            skipped_raw_pushdata_prefix_gap,
+            skipped_unsupported_opcode_gap,
+            skipped_unsupported_flags_or_expectation_gap,
+        },
     );
-    try std.testing.expectEqual(@as(usize, 1099), executed);
-    try std.testing.expectEqual(@as(usize, 400), skipped);
+    try std.testing.expectEqual(@as(usize, 1435), executed);
+    try std.testing.expectEqual(@as(usize, 64), skipped);
+    try std.testing.expectEqual(
+        skipped,
+        skipped_meta_or_nonstandard_row +
+            skipped_disabled_opcode_gap +
+            skipped_legacy_p2sh_hash160_equal_gap +
+            skipped_raw_pushdata_prefix_gap +
+            skipped_unsupported_opcode_gap +
+            skipped_unsupported_flags_or_expectation_gap,
+    );
 }
