@@ -45,28 +45,17 @@ Go SDK feature parity across crypto, keys, script, transactions, SPV, BEEF, and 
 
 **Requirements:** Zig `0.15.2`
 
-Add `bsvz` to your `build.zig.zon`:
+Fetch the dependency:
 
-```zig
-.dependencies = .{
-    .bsvz = .{
-        .url = "https://github.com/b-open-io/bsvz/archive/<commit>.tar.gz",
-        .hash = "<hash>",
-    },
-},
+```bash
+zig fetch --save git+https://github.com/b-open-io/bsvz.git
 ```
 
-Then add it to your `build.zig`:
+Then expose the module in your `build.zig`:
 
 ```zig
 const bsvz = b.dependency("bsvz", .{ .target = target, .optimize = optimize });
 exe.root_module.addImport("bsvz", bsvz.module("bsvz"));
-```
-
-Run tests:
-
-```bash
-zig build test
 ```
 
 ## Module Layout
