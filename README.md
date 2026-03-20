@@ -50,7 +50,7 @@ Add `bsvz` to your `build.zig.zon`:
 ```zig
 .dependencies = .{
     .bsvz = .{
-        .url = "https://github.com/bsv-blockchain/bsvz/archive/<commit>.tar.gz",
+        .url = "https://github.com/b-open-io/bsvz/archive/<commit>.tar.gz",
         .hash = "<hash>",
     },
 },
