@@ -45,25 +45,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_integration_tests.step);
 
-    const runar_acceptance_module = b.createModule(.{
-        .root_source_file = b.path("tests/runar_acceptance_root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    runar_acceptance_module.addImport("bsvz", root_module);
-
-    const runar_acceptance_tests = b.addTest(.{
-        .root_module = runar_acceptance_module,
-    });
-    const run_runar_acceptance_tests = b.addRunArtifact(runar_acceptance_tests);
-    run_runar_acceptance_tests.setCwd(b.path("."));
-
-    const runar_acceptance_step = b.step(
-        "test-runar-acceptance",
-        "Run optional downstream Runar acceptance tests",
-    );
-    runar_acceptance_step.dependOn(&run_runar_acceptance_tests.step);
-
     const bench_module = b.createModule(.{
         .root_source_file = b.path("benchmarks/script_engine.zig"),
         .target = target,

@@ -1597,7 +1597,7 @@ test "engine executes arithmetic over script numbers larger than i64" {
     try std.testing.expect(result.success);
 }
 
-test "engine supports runar critical byte ops" {
+test "engine supports critical byte ops" {
     const allocator = std.testing.allocator;
     const script = Script.init(&[_]u8{
         0x01,                                    0x2a,
@@ -1792,7 +1792,7 @@ test "engine matches go-sdk OP_RSHIFT vectors" {
     }
 }
 
-test "engine executes runar-style dispatch branches" {
+test "engine executes nested dispatch branches" {
     const allocator = std.testing.allocator;
     const select_first = Script.init(&[_]u8{
         @intFromEnum(opcode.Opcode.OP_1),

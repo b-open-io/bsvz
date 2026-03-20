@@ -13,12 +13,6 @@ const external_inputs = [_]ExternalInput{
         .path = "../go-sdk/script/interpreter/data/script_tests.json",
         .purpose = "exact/filtered Go interpreter corpus suites",
     },
-    .{
-        .name = "Runar compiler dist",
-        .path = "../runar/packages/runar-compiler/dist/index.js",
-        .purpose = "optional downstream Runar acceptance coverage",
-        .optional_step = "zig build test-runar-acceptance",
-    },
 };
 
 fn envRequiresExternalCoverage(allocator: std.mem.Allocator) bool {

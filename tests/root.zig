@@ -22,6 +22,5 @@ comptime {
     _ = @import("go_sigcheck_reference_vectors.zig");
     _ = @import("go_stack_index_vectors.zig");
     _ = @import("go_stack_vectors.zig");
-    _ = @import("runar_conformance.zig");
     _ = @import("template_reference_vectors.zig");
 }

@@ -262,7 +262,6 @@ const hash_all = try bsvz.transaction.Output.hashAll(allocator, &[_]bsvz.transac
 | Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding enforced where Go applies `MINIMALDATA` |
 | `CODESEPARATOR` parity | implemented | legacy and ForkID scriptCode behavior, chained separator tests, parser/scanner coverage |
 | BSV script test vectors | full | all 1,499 Go corpus rows are accounted for across exact, filtered, reference, and specialized suites; all 1,435 executable rows pass; 64 meta/non-executable rows are audited |
-| Runar conformance | smoke lane | `zig build test` runs `tests/runar_conformance.zig`; full acceptance suite is `zig build test-runar-acceptance` |
 
 **Scope:**
 
@@ -310,7 +309,6 @@ Benchmarks use prebuilt fixtures. Key generation and per-iteration signing are e
 | P2PKH sighash only | ~0.35 us/op |
 | P2PKH secp verify only | ~433.8 us/op |
 | P2PKH verify (synthetic fixture) | ~456.5 us/op |
-| Runar arithmetic verify | ~0.57 us/op |
 
 **Live corpus pipeline (JungleBus-style, via bsvz-autotrainer):**
 
