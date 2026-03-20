@@ -2,7 +2,7 @@
 
 # bsvz
 
-BSV foundation library for Zig. Full Go SDK parity: keys, scripts, transactions, SPV, BEEF, and broadcast.
+BSV foundation library for Zig.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ BSV foundation library for Zig. Full Go SDK parity: keys, scripts, transactions,
 
 ## Status
 
-Go SDK feature parity across crypto, keys, script, transactions, SPV, BEEF, and broadcast. 27 BRC standards covered.
+Crypto, keys, script, transactions, SPV, BEEF, and broadcast. 27 BRC standards covered.
 
 <details>
 <summary>Details</summary>
@@ -28,15 +28,15 @@ Go SDK feature parity across crypto, keys, script, transactions, SPV, BEEF, and 
 - `crypto`: sha256, sha512, hash256, ripemd160, hash160, hmacSha256, hmacSha512, secp256k1 private/public keys, secp256k1 point API, DER signatures, compact signatures with recovery, ECIES (Electrum + Bitcore), tx-signature helpers
 - `compat`: P2PKH address, WIF encode/decode, Bitcoin Signed Message (sign/verify/recover), ECIES
 - `transaction`: parse/serialize (standard + extended format), txid, sighash/preimage, P2PKH spend helpers, BEEF V1/V2/Atomic, transaction builder (addInput/addOutput/payToAddress/sign), fee calculation with pluggable models, change distribution
-- `script`: ScriptNum, parser/chunks, broad opcode set, execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, Go-shaped policy enforcement, ASM encode/decode, script builder (appendPushData/appendOpcodes), type detection (isP2PKH/isP2PK/isData/isMultiSigOut), templates (P2PKH, OP_RETURN, PushDrop, R-puzzle, OP_TRUE, Push TX), script clone/ownership
+- `script`: ScriptNum, parser/chunks, broad opcode set, execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, configurable policy enforcement, ASM encode/decode, script builder (appendPushData/appendOpcodes), type detection (isP2PKH/isP2PK/isData/isMultiSigOut), templates (P2PKH, OP_RETURN, PushDrop, R-puzzle, OP_TRUE, Push TX), script clone/ownership
 - `spv`: MerklePath parse/serialize/computeRoot/combine/verify, MerkleTreeParent, ancestor traversal, BEEF verification, pluggable chain tracker interface
 - `message`: BRC-77 signed messages (sign/verify) and BRC-78 encrypted messages (encrypt/decrypt)
 - `broadcast`: WhatsOnChain, TAAL, and Arc HTTP broadcast clients
 
-**Go corpus accounting:**
+**Script interpreter test corpus:**
 
-- All 1,499 rows in Go's `script_tests.json` are accounted for
-- 1,435 executable rows passing in the filtered corpus lane
+- 1,499 test vectors from the BSV script corpus
+- 1,435 executable rows passing
 - 64 rows tracked as meta/non-executable
 
 </details>
@@ -115,7 +115,7 @@ exe.root_module.addImport("bsvz", bsvz.module("bsvz"));
 | BRC&#8209;32 | [BIP32 Key Derivation](https://bsv.brc.dev/key-derivation/0032) | `primitives.bip32` |
 | BRC&#8209;36 | [Format for Bitcoin Outpoints](https://bsv.brc.dev/outpoints/0036) | `transaction.OutPoint` |
 | BRC&#8209;42 | [BSV Key Derivation Scheme (Type&#8209;42)](https://bsv.brc.dev/key-derivation/0042) | `primitives.ec` (`deriveChild`, `deriveSharedSecret`) |
-| BRC&#8209;43 | [Security Levels, Protocol IDs, Key IDs](https://bsv.brc.dev/key-derivation/0043) | `primitives.brc43` (parity with go-sdk `wallet/key_deriver.go` / ts-sdk `KeyDeriver`), `primitives.ec` (`deriveChild`) |
+| BRC&#8209;43 | [Security Levels, Protocol IDs, Key IDs](https://bsv.brc.dev/key-derivation/0043) | `primitives.brc43`, `primitives.ec` (`deriveChild`) |
 | BRC&#8209;47 | [Bare Multi-Signature](https://bsv.brc.dev/scripts/0047) | `script` |
 | BRC&#8209;48 | [Pay to Push Drop](https://bsv.brc.dev/scripts/0048) | `script.templates.pushdrop` |
 | BRC&#8209;61 | [Compound Merkle Path Format](https://bsv.brc.dev/transactions/0061) | `spv.MerklePath` |
@@ -261,7 +261,7 @@ const hash_all = try bsvz.transaction.Output.hashAll(allocator, &[_]bsvz.transac
 | CLTV / CSV / upgradable NOPs | partial | tx-aware legacy/reference semantics behind explicit flags; modern BSV profile treats them as inert unless policy enables them |
 | Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding enforced where Go applies `MINIMALDATA` |
 | `CODESEPARATOR` parity | broad | legacy and ForkID scriptCode behavior, chained separator tests, parser/scanner coverage |
-| Go parity vectors | full | all 1,499 rows in Go's `script_tests.json` accounted for; 1,435 executable rows passing; 64 meta/non-executable rows tracked |
+| BSV script test vectors | full | 1,499 vectors from the BSV script corpus; 1,435 executable rows passing; 64 meta/non-executable rows tracked |
 | Runar conformance | smoke lane | `zig build test` runs `tests/runar_conformance.zig`; full acceptance suite is `zig build test-runar-acceptance` |
 | SPV / proof tooling | implemented | MerklePath parse/serialize/computeRoot/combine/verify, ancestor traversal, BEEF verification, pluggable chain tracker |
 
@@ -334,3 +334,11 @@ The remaining cost sits in secp verification. `bsvz` now uses Zig stdlib prehash
 These numbers are a local baseline on one machine; your results will vary with allocator configuration, CPU microarchitecture, and corpus mix.
 
 </details>
+
+## Related SDKs
+
+| Language | Repository |
+| --- | --- |
+| TypeScript | [bsv-blockchain/ts-sdk](https://github.com/bsv-blockchain/ts-sdk) |
+| Go | [bsv-blockchain/go-sdk](https://github.com/bsv-blockchain/go-sdk) |
+| Python | [bsv-blockchain/py-sdk](https://github.com/bsv-blockchain/py-sdk) |
