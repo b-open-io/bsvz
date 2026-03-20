@@ -100,10 +100,10 @@ zig build test
 
 ## Documentation
 
-- [docs/README.md](./docs/README.md)
-- [docs/examples/README.md](./docs/examples/README.md)
-- [docs/concepts/README.md](./docs/concepts/README.md)
-- [docs/low-level/README.md](./docs/low-level/README.md)
+- [Overview](./docs/README.md)
+- [Examples and Usage Guides](./docs/examples/README.md)
+- [Concepts](./docs/concepts/README.md) — ownership, allocators, lifecycle
+- [Low-Level Notes](./docs/low-level/README.md) — module internals, implementation details
 
 ## Standards Coverage
 
