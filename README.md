@@ -242,26 +242,26 @@ const hash_all = try bsvz.transaction.Output.hashAll(allocator, &[_]bsvz.transac
 <details>
 <summary>Coverage map</summary>
 
-| Area | Status | Notes |
-| --- | --- | --- |
-| Script bytes, chunks, parser, serializer | implemented | direct pushes, `PUSHDATA1/2/4`, chunk roundtrip, malformed pushdata rejection |
-| Script thread / seam orchestration | implemented | separates seam behavior from the opcode loop; owns the "full previous locking script for sighash, executable prefix for execution" split |
-| Push-only and script inspection helpers | implemented | `isPushOnly`, `hasCodeSeparator`, top-level `OP_RETURN` tail handling |
-| Execution core | implemented | stack, altstack, condition stack, truthiness, op counting, stack limits |
-| Control flow | implemented | `IF`, `NOTIF`, `ELSE`, `ENDIF`, `VERIFY`, legacy vs post-Genesis multi-`ELSE`, post-Genesis `OP_RETURN`, `CODESEPARATOR` |
-| Stack ops | complete | `DUP`, `DROP`, `SWAP`, `ROT`, `ROLL`, `PICK`, `2DUP`, `2DROP`, `2OVER`, `2ROT`, `2SWAP`, `3DUP`, `IFDUP`, `TOALTSTACK`, `FROMALTSTACK`, `TUCK` |
-| Byte/splice ops | implemented | `CAT`, `SPLIT`, `NUM2BIN`, `BIN2NUM`, `SIZE` |
-| Bitwise ops | implemented | `INVERT`, `AND`, `OR`, `XOR`, `LSHIFT`, `RSHIFT` |
-| Numeric and boolean ops | implemented | `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, comparisons, min/max, within, boolean logic |
-| Hash ops | implemented | `RIPEMD160`, `SHA1`, `SHA256`, `HASH160`, `HASH256` |
-| `ScriptNum` | implemented | small-or-big numeric core using Zig stdlib bigint for promoted values |
-| `CHECKSIG` | implemented | transaction-aware, legacy and ForkID paths, `CODESEPARATOR` handling, scriptCode normalization |
-| `CHECKMULTISIG` | implemented | transaction-aware, post-Genesis behavior, early-exit, `NULLDUMMY`/`NULLFAIL`/ForkID policy |
-| Policy flags | implemented | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if`, `discourage_upgradable_nops`, `verify_check_locktime`, `verify_check_sequence` |
-| CLTV / CSV / upgradable NOPs | implemented | tx-aware legacy/reference verify semantics behind explicit flags; post-Genesis BSV profile treats them as NOP-family ops unless policy discourages them |
-| Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding enforced where Go applies `MINIMALDATA` |
-| `CODESEPARATOR` parity | implemented | legacy and ForkID scriptCode behavior, chained separator tests, parser/scanner coverage |
-| BSV script test vectors | full | all 1,499 Go corpus rows are accounted for across exact, filtered, reference, and specialized suites; all 1,435 executable rows pass; 64 meta/non-executable rows are audited |
+| Area | Notes |
+| --- | --- |
+| Script bytes, chunks, parser, serializer | direct pushes, `PUSHDATA1/2/4`, chunk roundtrip, malformed pushdata rejection |
+| Script thread / seam orchestration | separates seam behavior from the opcode loop; owns the "full previous locking script for sighash, executable prefix for execution" split |
+| Push-only and script inspection helpers | `isPushOnly`, `hasCodeSeparator`, top-level `OP_RETURN` tail handling |
+| Execution core | stack, altstack, condition stack, truthiness, op counting, stack limits |
+| Control flow | `IF`, `NOTIF`, `ELSE`, `ENDIF`, `VERIFY`, legacy vs post-Genesis multi-`ELSE`, post-Genesis `OP_RETURN`, `CODESEPARATOR` |
+| Stack ops | `DUP`, `DROP`, `SWAP`, `ROT`, `ROLL`, `PICK`, `2DUP`, `2DROP`, `2OVER`, `2ROT`, `2SWAP`, `3DUP`, `IFDUP`, `TOALTSTACK`, `FROMALTSTACK`, `TUCK` |
+| Byte/splice ops | `CAT`, `SPLIT`, `NUM2BIN`, `BIN2NUM`, `SIZE` |
+| Bitwise ops | `INVERT`, `AND`, `OR`, `XOR`, `LSHIFT`, `RSHIFT` |
+| Numeric and boolean ops | `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, comparisons, min/max, within, boolean logic |
+| Hash ops | `RIPEMD160`, `SHA1`, `SHA256`, `HASH160`, `HASH256` |
+| `ScriptNum` | small-or-big numeric core using Zig stdlib bigint for promoted values |
+| `CHECKSIG` | transaction-aware, legacy and ForkID paths, `CODESEPARATOR` handling, scriptCode normalization |
+| `CHECKMULTISIG` | transaction-aware, post-Genesis behavior, early-exit, `NULLDUMMY`/`NULLFAIL`/ForkID policy |
+| Policy flags | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if`, `discourage_upgradable_nops`, `verify_check_locktime`, `verify_check_sequence` |
+| CLTV / CSV / upgradable NOPs | tx-aware legacy/reference verify semantics behind explicit flags; post-Genesis BSV profile treats them as NOP-family ops unless policy discourages them |
+| Numeric minimal-encoding parity | minimal push and minimal numeric decoding enforced where Go applies `MINIMALDATA` |
+| `CODESEPARATOR` parity | legacy and ForkID scriptCode behavior, chained separator tests, parser/scanner coverage |
+| BSV script test vectors | all 1,499 Go corpus rows are accounted for across exact, filtered, reference, and specialized suites; all 1,435 executable rows pass; 64 meta/non-executable rows are audited |
 
 **Scope:**
 
