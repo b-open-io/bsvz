@@ -16,16 +16,14 @@ fn invoiceEncryptionAlloc(allocator: std.mem.Allocator, key_id: *const [32]u8) !
     return out;
 }
 
-/// Encrypt for `recipient`'s public key. Caller frees returned buffer.
-pub fn encryptAlloc(
+/// Encrypt with a fixed `key_id` (for tests / parity with captured go-sdk blobs).
+pub fn encryptAllocWithKeyId(
     allocator: std.mem.Allocator,
     message: []const u8,
     sender: ec.PrivateKey,
     recipient: ec.PublicKey,
+    key_id: [32]u8,
 ) ![]u8 {
-    var key_id: [32]u8 = undefined;
-    std.crypto.random.bytes(&key_id);
-
     const invoice = try invoiceEncryptionAlloc(allocator, &key_id);
     defer allocator.free(invoice);
 
@@ -51,6 +49,18 @@ pub fn encryptAlloc(
     @memcpy(out[70..102], &key_id);
     @memcpy(out[102..], ciphertext);
     return out;
+}
+
+/// Encrypt for `recipient`'s public key. Caller frees returned buffer.
+pub fn encryptAlloc(
+    allocator: std.mem.Allocator,
+    message: []const u8,
+    sender: ec.PrivateKey,
+    recipient: ec.PublicKey,
+) ![]u8 {
+    var key_id: [32]u8 = undefined;
+    std.crypto.random.bytes(&key_id);
+    return encryptAllocWithKeyId(allocator, message, sender, recipient, key_id);
 }
 
 pub const DecryptError = error{

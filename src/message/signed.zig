@@ -21,18 +21,16 @@ fn invoiceSigningAlloc(allocator: std.mem.Allocator, key_id: *const [32]u8) ![]u
     return out;
 }
 
-/// Build a BRC-77 signature. Caller frees returned slice. `recipient` null → anyone can verify.
-pub fn signAlloc(
+/// Deterministic signing for tests / cross-runtime vectors (`key_id` matches go-sdk `rand` replacement).
+pub fn signAllocWithKeyId(
     allocator: std.mem.Allocator,
     message: []const u8,
     signer: ec.PrivateKey,
     recipient: ?ec.PublicKey,
+    key_id: [32]u8,
 ) ![]u8 {
     const recipient_anyone = recipient == null;
     const verifier = recipient orelse try (try anyonePrivateKey()).publicKey();
-
-    var key_id: [32]u8 = undefined;
-    std.crypto.random.bytes(&key_id);
 
     const invoice = try invoiceSigningAlloc(allocator, &key_id);
     defer allocator.free(invoice);
@@ -65,6 +63,18 @@ pub fn signAlloc(
     off += 32;
     @memcpy(sig[off..][0..der_slice.len], der_slice);
     return sig;
+}
+
+/// Build a BRC-77 signature. Caller frees returned slice. `recipient` null → anyone can verify.
+pub fn signAlloc(
+    allocator: std.mem.Allocator,
+    message: []const u8,
+    signer: ec.PrivateKey,
+    recipient: ?ec.PublicKey,
+) ![]u8 {
+    var key_id: [32]u8 = undefined;
+    std.crypto.random.bytes(&key_id);
+    return signAllocWithKeyId(allocator, message, signer, recipient, key_id);
 }
 
 pub const VerifyError = error{
