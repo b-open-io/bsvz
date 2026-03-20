@@ -2004,6 +2004,22 @@ fn appendEncodedPushForTest(
     try bytes.appendSlice(allocator, push);
 }
 
+fn encodeScriptNumBytesForTest(allocator: std.mem.Allocator, value: i128) ![]u8 {
+    var script_num = try num.ScriptNum.fromValue(allocator, value);
+    defer script_num.deinit();
+    return script_num.encodeOwned(allocator);
+}
+
+fn appendScriptNumPushForTest(
+    allocator: std.mem.Allocator,
+    bytes: *std.ArrayListUnmanaged(u8),
+    value: i128,
+) !void {
+    const encoded = try encodeScriptNumBytesForTest(allocator, value);
+    defer allocator.free(encoded);
+    try appendEncodedPushForTest(allocator, bytes, encoded);
+}
+
 fn executeLockingScriptToStateForTest(
     allocator: std.mem.Allocator,
     script_bytes: []const u8,
@@ -4027,6 +4043,138 @@ test "engine surfaces malformed control flow and bounds errors" {
         0x02,                             0xaa,                                 0xbb,
         @intFromEnum(opcode.Opcode.OP_3), @intFromEnum(opcode.Opcode.OP_SPLIT),
     })));
+}
+
+test "engine byte and splice ops preserve exact boundary semantics" {
+    const allocator = std.testing.allocator;
+
+    var cat_script: std.ArrayListUnmanaged(u8) = .empty;
+    defer cat_script.deinit(allocator);
+    try appendEncodedPushForTest(allocator, &cat_script, "ab");
+    try appendEncodedPushForTest(allocator, &cat_script, "cd");
+    try cat_script.append(allocator, @intFromEnum(opcode.Opcode.OP_CAT));
+
+    var cat_state = try executeLockingScriptToStateForTest(allocator, cat_script.items);
+    defer cat_state.deinit(allocator);
+    try expectExactStackItems(cat_state.stack.items, &.{ "abcd" });
+
+    var split_at_zero_script: std.ArrayListUnmanaged(u8) = .empty;
+    defer split_at_zero_script.deinit(allocator);
+    try appendEncodedPushForTest(allocator, &split_at_zero_script, "abc");
+    try split_at_zero_script.append(allocator, @intFromEnum(opcode.Opcode.OP_0));
+    try split_at_zero_script.append(allocator, @intFromEnum(opcode.Opcode.OP_SPLIT));
+
+    var split_at_zero_state = try executeLockingScriptToStateForTest(allocator, split_at_zero_script.items);
+    defer split_at_zero_state.deinit(allocator);
+    try expectExactStackItems(split_at_zero_state.stack.items, &.{ "", "abc" });
+
+    var split_at_len_script: std.ArrayListUnmanaged(u8) = .empty;
+    defer split_at_len_script.deinit(allocator);
+    try appendEncodedPushForTest(allocator, &split_at_len_script, "abc");
+    try split_at_len_script.append(allocator, @intFromEnum(opcode.Opcode.OP_3));
+    try split_at_len_script.append(allocator, @intFromEnum(opcode.Opcode.OP_SPLIT));
+
+    var split_at_len_state = try executeLockingScriptToStateForTest(allocator, split_at_len_script.items);
+    defer split_at_len_state.deinit(allocator);
+    try expectExactStackItems(split_at_len_state.stack.items, &.{ "abc", "" });
+}
+
+test "engine numeric ops keep division modulo and range semantics exact" {
+    const allocator = std.testing.allocator;
+
+    const div_cases = [_]struct {
+        name: []const u8,
+        left: i128,
+        right: i128,
+        expected: i128,
+    }{
+        .{ .name = "division truncates positive operands toward zero", .left = 7, .right = 3, .expected = 2 },
+        .{ .name = "division truncates negative left operand toward zero", .left = -7, .right = 3, .expected = -2 },
+        .{ .name = "division truncates negative right operand toward zero", .left = 7, .right = -3, .expected = -2 },
+        .{ .name = "division truncates two negative operands toward zero", .left = -7, .right = -3, .expected = 2 },
+    };
+
+    for (div_cases) |case| {
+        var script_bytes: std.ArrayListUnmanaged(u8) = .empty;
+        defer script_bytes.deinit(allocator);
+        try appendScriptNumPushForTest(allocator, &script_bytes, case.left);
+        try appendScriptNumPushForTest(allocator, &script_bytes, case.right);
+        try script_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_DIV));
+
+        var state = try executeLockingScriptToStateForTest(allocator, script_bytes.items);
+        defer state.deinit(allocator);
+        const expected = try encodeScriptNumBytesForTest(allocator, case.expected);
+        defer allocator.free(expected);
+        try expectExactStackItems(state.stack.items, &.{expected});
+    }
+
+    const mod_cases = [_]struct {
+        name: []const u8,
+        left: i128,
+        right: i128,
+        expected: i128,
+    }{
+        .{ .name = "mod keeps positive remainder", .left = 7, .right = 3, .expected = 1 },
+        .{ .name = "mod keeps left-hand sign for negative dividend", .left = -7, .right = 3, .expected = -1 },
+        .{ .name = "mod ignores negative divisor sign", .left = 7, .right = -3, .expected = 1 },
+        .{ .name = "mod keeps left-hand sign when both operands are negative", .left = -7, .right = -3, .expected = -1 },
+    };
+
+    for (mod_cases) |case| {
+        var script_bytes: std.ArrayListUnmanaged(u8) = .empty;
+        defer script_bytes.deinit(allocator);
+        try appendScriptNumPushForTest(allocator, &script_bytes, case.left);
+        try appendScriptNumPushForTest(allocator, &script_bytes, case.right);
+        try script_bytes.append(allocator, @intFromEnum(opcode.Opcode.OP_MOD));
+
+        var state = try executeLockingScriptToStateForTest(allocator, script_bytes.items);
+        defer state.deinit(allocator);
+        const expected = try encodeScriptNumBytesForTest(allocator, case.expected);
+        defer allocator.free(expected);
+        try expectExactStackItems(state.stack.items, &.{expected});
+    }
+
+    var min_script: std.ArrayListUnmanaged(u8) = .empty;
+    defer min_script.deinit(allocator);
+    try appendScriptNumPushForTest(allocator, &min_script, -5);
+    try appendScriptNumPushForTest(allocator, &min_script, 2);
+    try min_script.append(allocator, @intFromEnum(opcode.Opcode.OP_MIN));
+    var min_state = try executeLockingScriptToStateForTest(allocator, min_script.items);
+    defer min_state.deinit(allocator);
+    const min_expected = try encodeScriptNumBytesForTest(allocator, -5);
+    defer allocator.free(min_expected);
+    try expectExactStackItems(min_state.stack.items, &.{min_expected});
+
+    var max_script: std.ArrayListUnmanaged(u8) = .empty;
+    defer max_script.deinit(allocator);
+    try appendScriptNumPushForTest(allocator, &max_script, -5);
+    try appendScriptNumPushForTest(allocator, &max_script, 2);
+    try max_script.append(allocator, @intFromEnum(opcode.Opcode.OP_MAX));
+    var max_state = try executeLockingScriptToStateForTest(allocator, max_script.items);
+    defer max_state.deinit(allocator);
+    const max_expected = try encodeScriptNumBytesForTest(allocator, 2);
+    defer allocator.free(max_expected);
+    try expectExactStackItems(max_state.stack.items, &.{max_expected});
+
+    var within_inclusive_lower: std.ArrayListUnmanaged(u8) = .empty;
+    defer within_inclusive_lower.deinit(allocator);
+    try appendScriptNumPushForTest(allocator, &within_inclusive_lower, 3);
+    try appendScriptNumPushForTest(allocator, &within_inclusive_lower, 3);
+    try appendScriptNumPushForTest(allocator, &within_inclusive_lower, 5);
+    try within_inclusive_lower.append(allocator, @intFromEnum(opcode.Opcode.OP_WITHIN));
+    var within_inclusive_lower_state = try executeLockingScriptToStateForTest(allocator, within_inclusive_lower.items);
+    defer within_inclusive_lower_state.deinit(allocator);
+    try expectExactStackItems(within_inclusive_lower_state.stack.items, &.{&[_]u8{0x01}});
+
+    var within_exclusive_upper: std.ArrayListUnmanaged(u8) = .empty;
+    defer within_exclusive_upper.deinit(allocator);
+    try appendScriptNumPushForTest(allocator, &within_exclusive_upper, 5);
+    try appendScriptNumPushForTest(allocator, &within_exclusive_upper, 3);
+    try appendScriptNumPushForTest(allocator, &within_exclusive_upper, 5);
+    try within_exclusive_upper.append(allocator, @intFromEnum(opcode.Opcode.OP_WITHIN));
+    var within_exclusive_upper_state = try executeLockingScriptToStateForTest(allocator, within_exclusive_upper.items);
+    defer within_exclusive_upper_state.deinit(allocator);
+    try expectExactStackItems(within_exclusive_upper_state.stack.items, &.{""});
 }
 
 test "engine treats OP_RETURN as post-genesis early success at top level" {
@@ -6260,6 +6408,114 @@ test "engine multisig uses per-signature scriptCode normalization" {
         @intFromEnum(opcode.Opcode.OP_3),
         @intFromEnum(opcode.Opcode.OP_CHECKMULTISIG),
     }, forkid_code.bytes);
+}
+
+test "engine verifies checkmultisig through an active codeseparator in legacy and forkid modes" {
+    const allocator = std.testing.allocator;
+
+    var key_bytes_a = [_]u8{0} ** 32;
+    key_bytes_a[31] = 1;
+    var key_bytes_b = [_]u8{0} ** 32;
+    key_bytes_b[31] = 2;
+
+    const private_key_a = try crypto.PrivateKey.fromBytes(key_bytes_a);
+    const private_key_b = try crypto.PrivateKey.fromBytes(key_bytes_b);
+    const public_key_a = try private_key_a.publicKey();
+    const public_key_b = try private_key_b.publicKey();
+
+    const multisig_tail = buildTwoOfTwoLockingScript(public_key_a, public_key_b);
+    const locking_script_bytes = [_]u8{@intFromEnum(opcode.Opcode.OP_CODESEPARATOR)} ++ multisig_tail;
+    const locking_script = Script.init(&locking_script_bytes);
+    const subscript = Script.init(locking_script_bytes[1..]);
+
+    const tx = Transaction{
+        .version = 2,
+        .inputs = &[_]Input{
+            .{
+                .previous_outpoint = .{
+                    .txid = .{ .bytes = [_]u8{0x66} ** 32 },
+                    .index = 0,
+                },
+                .unlocking_script = .{ .bytes = "" },
+                .sequence = 0xffff_fffe,
+            },
+        },
+        .outputs = &[_]Output{
+            .{
+                .satoshis = 1_400,
+                .locking_script = locking_script,
+            },
+        },
+        .lock_time = 0,
+    };
+
+    const p2pkh_spend = @import("../transaction/templates/p2pkh_spend.zig");
+
+    const legacy_scope: u32 = @intCast(sighash.SigHashType.all);
+    const legacy_sig_a = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        subscript,
+        1_500,
+        private_key_a,
+        legacy_scope,
+    );
+    const legacy_sig_b = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        subscript,
+        1_500,
+        private_key_b,
+        legacy_scope,
+    );
+    const legacy_unlocking = try buildMultisigUnlockingScript(allocator, &[_]crypto.TxSignature{ legacy_sig_a, legacy_sig_b });
+    defer allocator.free(legacy_unlocking.bytes);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = blk: {
+            var flags = ExecutionFlags.legacyReference();
+            flags.strict_encoding = false;
+            flags.der_signatures = false;
+            break :blk flags;
+        },
+    }, legacy_unlocking, locking_script));
+
+    const forkid_sig_a = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        subscript,
+        1_500,
+        private_key_a,
+        p2pkh_spend.default_scope,
+    );
+    const forkid_sig_b = try p2pkh_spend.signInput(
+        allocator,
+        &tx,
+        0,
+        subscript,
+        1_500,
+        private_key_b,
+        p2pkh_spend.default_scope,
+    );
+    const forkid_unlocking = try buildMultisigUnlockingScript(allocator, &[_]crypto.TxSignature{ forkid_sig_a, forkid_sig_b });
+    defer allocator.free(forkid_unlocking.bytes);
+
+    try std.testing.expect(try verifyScripts(.{
+        .allocator = allocator,
+        .tx = &tx,
+        .input_index = 0,
+        .previous_locking_script = locking_script,
+        .previous_satoshis = 1_500,
+        .flags = ExecutionFlags.postGenesisBsv(),
+    }, forkid_unlocking, locking_script));
 }
 
 test "engine treats equivalent pushdata forms equally at 75-byte and 255-byte boundaries" {

@@ -28,7 +28,7 @@ Crypto, keys, script, transactions, SPV, BEEF, and broadcast. 27 BRC standards c
 - `crypto`: sha256, sha512, hash256, ripemd160, hash160, hmacSha256, hmacSha512, secp256k1 private/public keys, secp256k1 point API, DER signatures, compact signatures with recovery, ECIES (Electrum + Bitcore), tx-signature helpers
 - `compat`: P2PKH address, WIF encode/decode, Bitcoin Signed Message (sign/verify/recover), ECIES
 - `transaction`: parse/serialize (standard + extended format), txid, sighash/preimage, P2PKH spend helpers, BEEF V1/V2/Atomic, transaction builder (addInput/addOutput/payToAddress/sign), fee calculation with pluggable models, change distribution
-- `script`: ScriptNum, parser/chunks, broad opcode set, execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, configurable policy enforcement, ASM encode/decode, script builder (appendPushData/appendOpcodes), type detection (isP2PKH/isP2PK/isData/isMultiSigOut), templates (P2PKH, OP_RETURN, PushDrop, R-puzzle, OP_TRUE, Push TX), script clone/ownership
+- `script`: ScriptNum, parser/chunks, full modern BSV opcode surface plus legacy/reference semantics, execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, configurable policy enforcement, ASM encode/decode, script builder (appendPushData/appendOpcodes), type detection (isP2PKH/isP2PK/isData/isMultiSigOut), templates (P2PKH, OP_RETURN, PushDrop, R-puzzle, OP_TRUE, Push TX), script clone/ownership
 - `spv`: MerklePath parse/serialize/computeRoot/combine/verify, MerkleTreeParent, ancestor traversal, BEEF verification, pluggable chain tracker interface
 - `message`: BRC-77 signed messages (sign/verify) and BRC-78 encrypted messages (encrypt/decrypt)
 - `broadcast`: WhatsOnChain, TAAL, and Arc HTTP broadcast clients
@@ -250,24 +250,23 @@ const hash_all = try bsvz.transaction.Output.hashAll(allocator, &[_]bsvz.transac
 | Execution core | implemented | stack, altstack, condition stack, truthiness, op counting, stack limits |
 | Control flow | implemented | `IF`, `NOTIF`, `ELSE`, `ENDIF`, `VERIFY`, legacy vs post-Genesis multi-`ELSE`, post-Genesis `OP_RETURN`, `CODESEPARATOR` |
 | Stack ops | complete | `DUP`, `DROP`, `SWAP`, `ROT`, `ROLL`, `PICK`, `2DUP`, `2DROP`, `2OVER`, `2ROT`, `2SWAP`, `3DUP`, `IFDUP`, `TOALTSTACK`, `FROMALTSTACK`, `TUCK` |
-| Byte/splice ops | broad | `CAT`, `SPLIT`, `NUM2BIN`, `BIN2NUM`, `SIZE` |
+| Byte/splice ops | implemented | `CAT`, `SPLIT`, `NUM2BIN`, `BIN2NUM`, `SIZE` |
 | Bitwise ops | implemented | `INVERT`, `AND`, `OR`, `XOR`, `LSHIFT`, `RSHIFT` |
-| Numeric and boolean ops | broad | `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, comparisons, min/max, within, boolean logic |
+| Numeric and boolean ops | implemented | `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, comparisons, min/max, within, boolean logic |
 | Hash ops | implemented | `RIPEMD160`, `SHA1`, `SHA256`, `HASH160`, `HASH256` |
 | `ScriptNum` | implemented | small-or-big numeric core using Zig stdlib bigint for promoted values |
 | `CHECKSIG` | implemented | transaction-aware, legacy and ForkID paths, `CODESEPARATOR` handling, scriptCode normalization |
 | `CHECKMULTISIG` | implemented | transaction-aware, post-Genesis behavior, early-exit, `NULLDUMMY`/`NULLFAIL`/ForkID policy |
-| Policy flags | broad | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if`, `discourage_upgradable_nops`, `verify_check_locktime`, `verify_check_sequence` |
-| CLTV / CSV / upgradable NOPs | partial | tx-aware legacy/reference semantics behind explicit flags; modern BSV profile treats them as inert unless policy enables them |
+| Policy flags | implemented | `strict_encoding`, `der_signatures`, `low_s`, `strict_pubkey_encoding`, `null_dummy`, `null_fail`, `sig_push_only`, `clean_stack`, `minimal_data`, `minimal_if`, `discourage_upgradable_nops`, `verify_check_locktime`, `verify_check_sequence` |
+| CLTV / CSV / upgradable NOPs | implemented | tx-aware legacy/reference verify semantics behind explicit flags; post-Genesis BSV profile treats them as NOP-family ops unless policy discourages them |
 | Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding enforced where Go applies `MINIMALDATA` |
-| `CODESEPARATOR` parity | broad | legacy and ForkID scriptCode behavior, chained separator tests, parser/scanner coverage |
-| BSV script test vectors | full | 1,499 vectors from the BSV script corpus; 1,435 executable rows passing; 64 meta/non-executable rows tracked |
+| `CODESEPARATOR` parity | implemented | legacy and ForkID scriptCode behavior, chained separator tests, parser/scanner coverage |
+| BSV script test vectors | full | all 1,499 Go corpus rows are accounted for across exact, filtered, reference, and specialized suites; all 1,435 executable rows pass; 64 meta/non-executable rows are audited |
 | Runar conformance | smoke lane | `zig build test` runs `tests/runar_conformance.zig`; full acceptance suite is `zig build test-runar-acceptance` |
-| SPV / proof tooling | implemented | MerklePath parse/serialize/computeRoot/combine/verify, ancestor traversal, BEEF verification, pluggable chain tracker |
 
 **Scope:**
 
-- Modern BSV script execution and post-Genesis behavior
+- Modern post-Genesis BSV script execution by default, plus legacy-reference semantics and opt-in legacy P2SH for compatibility and corpus parity
 
 </details>
 

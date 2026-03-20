@@ -25,10 +25,12 @@ const master = try bsvz.primitives.bip32.masterFromMnemonic(
     bsvz.primitives.bip32.Versions.mainnet,
 );
 
-const child = try master.derivePath("m/44'/0'/0'/0/0");
+const child = try master.derivePath("44'/0'/0'/0/0");
 const xpub = try (try child.neuter()).toStringAlloc(allocator);
 defer allocator.free(xpub);
 ```
+
+`derivePath(...)` expects path segments relative to the current key, so do not include a leading `m/`.
 
 ## Type-42 and ECDH
 

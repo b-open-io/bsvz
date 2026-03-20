@@ -20,6 +20,91 @@ pub const confirmed: ArcStatus = "CONFIRMED";
 pub const double_spend_attempted: ArcStatus = "DOUBLE_SPEND_ATTEMPTED";
 pub const seen_in_orphan_mempool: ArcStatus = "SEEN_IN_ORPHAN_MEMPOOL";
 
+fn statusCodeAlloc(allocator: std.mem.Allocator, status: std.http.Status) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{d}", .{@intFromEnum(status)});
+}
+
+fn broadcastError(allocator: std.mem.Allocator, status: std.http.Status, description: []const u8) !types.BroadcastResult {
+    const code = try statusCodeAlloc(allocator, status);
+    errdefer allocator.free(code);
+    const desc = try allocator.dupe(u8, description);
+    return .{ .err = .{ .code = code, .description = desc } };
+}
+
+fn parseBroadcastResult(
+    allocator: std.mem.Allocator,
+    status: std.http.Status,
+    body: []const u8,
+) !types.BroadcastResult {
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, body, .{}) catch {
+        return broadcastError(allocator, status, body);
+    };
+    defer parsed.deinit();
+
+    const obj = switch (parsed.value) {
+        .object => |o| o,
+        else => return broadcastError(allocator, status, body),
+    };
+
+    const tx_status_opt = obj.get("txStatus");
+    if (tx_status_opt) |ts| {
+        const ts_str: []const u8 = switch (ts) {
+            .string => |s| s,
+            else => "",
+        };
+        if (std.mem.eql(u8, ts_str, rejected)) {
+            const extra = obj.get("extraInfo") orelse std.json.Value{ .string = "" };
+            const extra_info: []const u8 = switch (extra) {
+                .string => |s| s,
+                else => "",
+            };
+            const desc_text = if (extra_info.len > 0) extra_info else body;
+            return broadcastError(allocator, .bad_request, desc_text);
+        }
+    }
+
+    const status_val = obj.get("status") orelse return broadcastError(allocator, status, body);
+    const status_int: i32 = switch (status_val) {
+        .integer => |i| @intCast(i),
+        .float => |f| @intFromFloat(f),
+        else => -1,
+    };
+
+    if (status_int == 200) {
+        const title_v = obj.get("title") orelse std.json.Value{ .string = "" };
+        const title: []const u8 = switch (title_v) {
+            .string => |s| s,
+            else => "",
+        };
+        const txid_v = obj.get("txid") orelse std.json.Value{ .string = "" };
+        const txid_s: []const u8 = switch (txid_v) {
+            .string => |s| s,
+            else => "",
+        };
+        if (txid_s.len == 0) {
+            return broadcastError(allocator, .internal_server_error, "empty txid in arc response");
+        }
+        const txid_owned = try allocator.dupe(u8, txid_s);
+        errdefer allocator.free(txid_owned);
+        var msg_owned: []u8 = &[_]u8{};
+        if (title.len > 0) {
+            msg_owned = try allocator.dupe(u8, title);
+        }
+        return .{ .ok = .{ .txid = txid_owned, .message = msg_owned } };
+    }
+
+    const title_v = obj.get("title") orelse std.json.Value{ .string = "" };
+    const title: []const u8 = switch (title_v) {
+        .string => |s| s,
+        else => "",
+    };
+    const code = try std.fmt.allocPrint(allocator, "{d}", .{status_int});
+    errdefer allocator.free(code);
+    const desc_text = if (title.len > 0) title else body;
+    const desc = try allocator.dupe(u8, desc_text);
+    return .{ .err = .{ .code = code, .description = desc } };
+}
+
 pub const Arc = struct {
     api_url: []const u8,
     api_key: []const u8 = "",
@@ -52,12 +137,11 @@ pub const Arc = struct {
         return tx.serializeExtended(allocator);
     }
 
-    /// POST /tx — returns parsed JSON tree (caller `deinit`s).
-    pub fn arcBroadcast(
+    fn arcPost(
         self: *const Arc,
         allocator: std.mem.Allocator,
         tx: *const transaction.Transaction,
-    ) !std.json.Parsed(std.json.Value) {
+    ) !http_post.PostResult {
         const payload = try self.arcPayload(allocator, tx);
         defer allocator.free(payload);
 
@@ -111,7 +195,16 @@ pub const Arc = struct {
             try hdrs.append(allocator, .{ .name = "X-WaitFor", .value = self.wait_for });
         }
 
-        const post = try http_post.postBodyAlloc(allocator, url, hdrs.items, payload);
+        return try http_post.postBodyAlloc(allocator, url, hdrs.items, payload);
+    }
+
+    /// POST /tx — returns parsed JSON tree (caller `deinit`s).
+    pub fn arcBroadcast(
+        self: *const Arc,
+        allocator: std.mem.Allocator,
+        tx: *const transaction.Transaction,
+    ) !std.json.Parsed(std.json.Value) {
+        const post = try self.arcPost(allocator, tx);
         defer allocator.free(post.body);
 
         if (self.verbose) {
@@ -126,84 +219,16 @@ pub const Arc = struct {
         allocator: std.mem.Allocator,
         tx: *const transaction.Transaction,
     ) !types.BroadcastResult {
-        const parsed = self.arcBroadcast(allocator, tx) catch |err| {
-            const code = try allocator.dupe(u8, "500");
-            const desc = try std.fmt.allocPrint(allocator, "{s}", .{@errorName(err)});
-            return .{ .err = .{ .code = code, .description = desc } };
+        const post = self.arcPost(allocator, tx) catch |err| {
+            return broadcastError(allocator, .internal_server_error, @errorName(err));
         };
-        defer parsed.deinit();
+        defer allocator.free(post.body);
 
-        const obj = switch (parsed.value) {
-            .object => |o| o,
-            else => {
-                const code = try allocator.dupe(u8, "500");
-                const desc = try allocator.dupe(u8, "invalid json");
-                return .{ .err = .{ .code = code, .description = desc } };
-            },
-        };
-
-        const tx_status_opt = obj.get("txStatus");
-        if (tx_status_opt) |ts| {
-            const ts_str: []const u8 = switch (ts) {
-                .string => |s| s,
-                else => "",
-            };
-            if (std.mem.eql(u8, ts_str, rejected)) {
-                const extra = obj.get("extraInfo") orelse std.json.Value{ .string = "" };
-                const extra_info: []const u8 = switch (extra) {
-                    .string => |s| s,
-                    else => "",
-                };
-                const code = try allocator.dupe(u8, "400");
-                const desc = try allocator.dupe(u8, extra_info);
-                return .{ .err = .{ .code = code, .description = desc } };
-            }
+        if (self.verbose) {
+            std.debug.print("arc broadcast msg {s}\n", .{post.body});
         }
 
-        const status_val = obj.get("status") orelse {
-            const code = try allocator.dupe(u8, "500");
-            const desc = try allocator.dupe(u8, "missing status");
-            return .{ .err = .{ .code = code, .description = desc } };
-        };
-        const status_int: i32 = switch (status_val) {
-            .integer => |i| @intCast(i),
-            .float => |f| @intFromFloat(f),
-            else => -1,
-        };
-
-        if (status_int == 200) {
-            const title_v = obj.get("title") orelse std.json.Value{ .string = "" };
-            const title: []const u8 = switch (title_v) {
-                .string => |s| s,
-                else => "",
-            };
-            const txid_v = obj.get("txid") orelse std.json.Value{ .string = "" };
-            const txid_s: []const u8 = switch (txid_v) {
-                .string => |s| s,
-                else => "",
-            };
-            if (txid_s.len == 0) {
-                const code = try allocator.dupe(u8, "500");
-                const desc = try allocator.dupe(u8, "empty txid in arc response");
-                return .{ .err = .{ .code = code, .description = desc } };
-            }
-            const txid_owned = try allocator.dupe(u8, txid_s);
-            errdefer allocator.free(txid_owned);
-            var msg_owned: []u8 = &[_]u8{};
-            if (title.len > 0) {
-                msg_owned = try allocator.dupe(u8, title);
-            }
-            return .{ .ok = .{ .txid = txid_owned, .message = msg_owned } };
-        }
-
-        const title_v = obj.get("title") orelse std.json.Value{ .string = "" };
-        const title: []const u8 = switch (title_v) {
-            .string => |s| s,
-            else => "",
-        };
-        const code = try std.fmt.allocPrint(allocator, "{d}", .{status_int});
-        const desc = try allocator.dupe(u8, title);
-        return .{ .err = .{ .code = code, .description = desc } };
+        return parseBroadcastResult(allocator, post.status, post.body);
     }
 
     /// GET `{api_url}/tx/{txid}` — returns parsed JSON (caller `deinit`s).
@@ -253,4 +278,33 @@ test "arc extended payload when all inputs have source" {
     const ext = try tx.serializeExtended(allocator);
     defer allocator.free(ext);
     try std.testing.expect(ext.len > 0);
+}
+
+test "arc parseBroadcastResult preserves raw non-json body and http status" {
+    const allocator = std.testing.allocator;
+    var result = try parseBroadcastResult(allocator, .unauthorized, "unauthorized");
+    defer result.deinit(allocator);
+
+    switch (result) {
+        .ok => return error.TestUnexpectedResult,
+        .err => |failure| {
+            try std.testing.expectEqualStrings("401", failure.code);
+            try std.testing.expectEqualStrings("unauthorized", failure.description);
+        },
+    }
+}
+
+test "arc parseBroadcastResult rejects malformed success payload with explicit error" {
+    const allocator = std.testing.allocator;
+    const body = "{\"status\":200,\"title\":\"ok\"}";
+    var result = try parseBroadcastResult(allocator, .ok, body);
+    defer result.deinit(allocator);
+
+    switch (result) {
+        .ok => return error.TestUnexpectedResult,
+        .err => |failure| {
+            try std.testing.expectEqualStrings("500", failure.code);
+            try std.testing.expectEqualStrings("empty txid in arc response", failure.description);
+        },
+    }
 }

@@ -4,19 +4,32 @@ const crypto = @import("../crypto/lib.zig");
 const Opcode = @import("opcode.zig").Opcode;
 const Script = @import("script.zig").Script;
 const parser = @import("parser.zig");
-const chunk = @import("chunk.zig");
 const templates = @import("templates/p2pkh.zig");
 
 pub const Error = parser.Error || error{ NotP2PKH, EmptyScript, InvalidScriptTemplate };
 
-fn allocScratch() std.mem.Allocator {
-    const buf: [16384]u8 = undefined;
-    var fba = std.heap.stackFallback(buf.len, std.heap.page_allocator);
-    return fba.get();
-}
-
-fn isSmallIntOpByte(b: u8) bool {
-    return b == 0x00 or (b >= @intFromEnum(Opcode.OP_1) and b <= @intFromEnum(Opcode.OP_16));
+fn smallIntFromOpcode(op: Opcode) ?u8 {
+    return switch (op) {
+        .OP_0 => 0,
+        .OP_1NEGATE => null,
+        .OP_1 => 1,
+        .OP_2 => 2,
+        .OP_3 => 3,
+        .OP_4 => 4,
+        .OP_5 => 5,
+        .OP_6 => 6,
+        .OP_7 => 7,
+        .OP_8 => 8,
+        .OP_9 => 9,
+        .OP_10 => 10,
+        .OP_11 => 11,
+        .OP_12 => 12,
+        .OP_13 => 13,
+        .OP_14 => 14,
+        .OP_15 => 15,
+        .OP_16 => 16,
+        else => null,
+    };
 }
 
 /// go-sdk `(*Script).IsP2PKH`.
@@ -42,7 +55,9 @@ pub fn isData(script: Script) bool {
 
 /// go-sdk `(*Script).IsP2PK` (DecodeScript-based).
 pub fn isP2PK(script: Script) bool {
-    const a = allocScratch();
+    var buf: [16384]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const a = fba.allocator();
     const parts = parser.parseAlloc(a, script) catch return false;
     defer a.free(parts);
     if (parts.len != 2) return false;
@@ -60,28 +75,34 @@ pub fn isP2PK(script: Script) bool {
 
 /// go-sdk `(*Script).IsMultiSigOut`.
 pub fn isMultiSigOut(script: Script) bool {
-    const a = allocScratch();
+    var buf: [16384]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const a = fba.allocator();
     const parts = parser.parseAlloc(a, script) catch return false;
     defer a.free(parts);
     if (parts.len < 3) return false;
 
-    const first: u8 = switch (parts[0]) {
-        .opcode => |op| op.toByte(),
-        .push_data => |p| pushChunkTag(p),
+    const required_sigs: u8 = switch (parts[0]) {
+        .opcode => |op| smallIntFromOpcode(op) orelse return false,
+        .push_data => return false,
         .op_return_data => return false,
     };
-    if (!isSmallIntOpByte(first)) return false;
 
     const n = parts.len;
-    const pen: u8 = switch (parts[n - 2]) {
-        .opcode => |op| op.toByte(),
-        .push_data => |p| pushChunkTag(p),
+    const pubkey_total: u8 = switch (parts[n - 2]) {
+        .opcode => |op| smallIntFromOpcode(op) orelse return false,
+        .push_data => return false,
         .op_return_data => return false,
     };
-    if (!isSmallIntOpByte(pen)) return false;
 
     const last = parts[n - 1];
     if (last != .opcode or last.opcode != .OP_CHECKMULTISIG) return false;
+
+    const pushed_pubkeys = n - 3;
+    if (required_sigs == 0) return false;
+    if (pubkey_total == 0) return false;
+    if (required_sigs > pubkey_total) return false;
+    if (pushed_pubkeys != pubkey_total) return false;
 
     var i: usize = 1;
     while (i < n - 2) : (i += 1) {
@@ -93,15 +114,6 @@ pub fn isMultiSigOut(script: Script) bool {
         }
     }
     return true;
-}
-
-fn pushChunkTag(p: chunk.PushData) u8 {
-    return switch (p.encoding) {
-        .direct => @intCast(p.data.len),
-        .OP_PUSHDATA1 => @intFromEnum(Opcode.OP_PUSHDATA1),
-        .OP_PUSHDATA2 => @intFromEnum(Opcode.OP_PUSHDATA2),
-        .OP_PUSHDATA4 => @intFromEnum(Opcode.OP_PUSHDATA4),
-    };
 }
 
 /// go-sdk `(*Script).PublicKeyHash`.
@@ -133,4 +145,22 @@ test "standard vectors match go-sdk script tests" {
     var pkh_script: [25]u8 = undefined;
     _ = try std.fmt.hexToBytes(&pkh_script, "76a91404d03f746652cfcb6cb55119ab473a045137d26588ac");
     try std.testing.expectEqual(pkh_expect, (try publicKeyHash(Script.init(&pkh_script))).bytes);
+}
+
+test "isMultiSigOut rejects mismatched declared key count" {
+    var ms: [9]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&ms, "5201110122013352ae");
+    try std.testing.expect(!isMultiSigOut(Script.init(&ms)));
+}
+
+test "isMultiSigOut rejects m greater than n" {
+    var ms: [8]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&ms, "520111012251ae");
+    try std.testing.expect(!isMultiSigOut(Script.init(&ms)));
+}
+
+test "isMultiSigOut rejects zero of n" {
+    var ms: [8]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&ms, "000111012251ae");
+    try std.testing.expect(!isMultiSigOut(Script.init(&ms)));
 }
