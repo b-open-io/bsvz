@@ -73,7 +73,7 @@ zig build test
 | --- | --- |
 | `bsvz.primitives` | Hex, varint, base58, base58check, version-byte helpers |
 | `bsvz.primitives.chainhash` | Display-order (reverse hex) hash type, single/double hash helpers |
-| `bsvz.primitives.ec` | EC curve wrapper, PrivateKey, PublicKey, key generation, WIF import |
+| `bsvz.primitives.ec` | EC curve wrapper, PrivateKey, PublicKey, key generation, ECDH, Type-42 derivation |
 | `bsvz.primitives.ecdsa` | ECDSA signature type with DER encoding and low-S normalization |
 | `bsvz.primitives.schnorr` | Schnorr DLEQ proof generation and verification |
 | `bsvz.primitives.keyshares` | Shamir secret sharing: polynomial, key shares, backup format |
@@ -86,11 +86,12 @@ zig build test
 | `bsvz.crypto` | SHA256, SHA512, RIPEMD160, HASH160, HASH256, HMAC-SHA256, HMAC-SHA512, secp256k1 keys and point API, DER and compact signatures, ECIES |
 | `bsvz.script` | Script parser, opcode set, execution engine, policy flags, ASM encode/decode, script builder, type detection |
 | `bsvz.transaction` | Parse, serialize (standard + extended format), sighash, P2PKH spend helpers |
+| `bsvz.transaction.builder` | Transaction builder: addInput, addOutput, payToAddress, sign, applyFee |
 | `bsvz.transaction.beef` | BEEF V1/V2/Atomic parse, serialize, and transaction extraction |
 | `bsvz.transaction.fees` | Fee calculation, change distribution, total input/output satoshis |
 | `bsvz.transaction.fee_model` | Pluggable fee models (satoshis-per-kilobyte) |
 | `bsvz.compat` | P2PKH address, WIF encode/decode, Bitcoin Signed Message, ECIES |
-| `bsvz.spv` | MerklePath, MerkleTreeParent, BlockHeader, transaction verification |
+| `bsvz.spv` | MerklePath, MerkleTreeParent, BlockHeader, SPV and BEEF verification |
 | `bsvz.broadcast` | WhatsOnChain, TAAL, Arc HTTP broadcast clients |
 
 ## Standards Coverage
@@ -256,14 +257,13 @@ const hash_all = try bsvz.transaction.Output.hashAll(allocator, &[_]bsvz.transac
 | CLTV / CSV / upgradable NOPs | partial | tx-aware legacy/reference semantics behind explicit flags; modern BSV profile treats them as inert unless policy enables them |
 | Numeric minimal-encoding parity | implemented | minimal push and minimal numeric decoding enforced where Go applies `MINIMALDATA` |
 | `CODESEPARATOR` parity | broad | legacy and ForkID scriptCode behavior, chained separator tests, parser/scanner coverage |
-| Go parity vectors | full | all 1,499 rows in Go's `script_tests.json` accounted for; 1,438 executable exact-row references; 61 non-executable rows explicitly tracked |
+| Go parity vectors | full | all 1,499 rows in Go's `script_tests.json` accounted for; 1,435 executable rows passing; 64 meta/non-executable rows tracked |
 | Runar conformance | smoke lane | `zig build test` runs `tests/runar_conformance.zig`; full acceptance suite is `zig build test-runar-acceptance` |
-| SPV / proof tooling | partial | MerklePath parse/serialize/computeRoot/combine/verify with pluggable chain tracker; block header chain validation not yet present |
+| SPV / proof tooling | implemented | MerklePath parse/serialize/computeRoot/combine/verify, ancestor traversal, BEEF verification, pluggable chain tracker |
 
 **Scope:**
 
 - Modern BSV script execution and post-Genesis behavior
-- HD wallet derivation is out of scope for the core library
 
 </details>
 
