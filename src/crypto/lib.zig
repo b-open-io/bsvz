@@ -1,6 +1,7 @@
 pub const hash = @import("hash.zig");
 pub const secp256k1 = @import("secp256k1.zig");
 pub const signature = @import("signature.zig");
+pub const compact = @import("compact.zig");
 
 pub const Hash160 = hash.Hash160;
 pub const Hash256 = hash.Hash256;
@@ -14,3 +15,9 @@ pub const verifyDigest256Sec1 = secp256k1.verifyDigest256Sec1;
 pub const verifyDigest256RelaxedSec1 = secp256k1.verifyDigest256RelaxedSec1;
 pub const DerSignature = signature.DerSignature;
 pub const TxSignature = signature.TxSignature;
+
+pub const CompactError = compact.CompactError;
+pub const compact_sig_len = compact.compact_sig_len;
+pub const RecoveredPubkey = compact.RecoveredPubkey;
+pub const signCompactDigest256 = compact.signCompactDigest256;
+pub const recoverCompactDigest256 = compact.recoverCompactDigest256;

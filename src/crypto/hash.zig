@@ -78,6 +78,24 @@ pub fn sha256(data: []const u8) Hash256 {
     return .{ .bytes = out };
 }
 
+pub fn sha512(data: []const u8) [64]u8 {
+    var out: [64]u8 = undefined;
+    std.crypto.hash.sha2.Sha512.hash(data, &out, .{});
+    return out;
+}
+
+pub fn hmacSha256(data: []const u8, key: []const u8) [32]u8 {
+    var out: [32]u8 = undefined;
+    std.crypto.auth.hmac.sha2.HmacSha256.create(&out, data, key);
+    return out;
+}
+
+pub fn hmacSha512(data: []const u8, key: []const u8) [64]u8 {
+    var out: [64]u8 = undefined;
+    std.crypto.auth.hmac.sha2.HmacSha512.create(&out, data, key);
+    return out;
+}
+
 pub fn hash256(data: []const u8) Hash256 {
     const first = sha256(data);
     return sha256(&first.bytes);

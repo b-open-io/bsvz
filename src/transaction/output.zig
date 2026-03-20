@@ -6,6 +6,7 @@ const primitives = @import("../primitives/lib.zig");
 pub const Output = struct {
     satoshis: primitives.money.Satoshis,
     locking_script: Script,
+    change: bool = false,
 
     pub const Parsed = struct {
         output: Output,
@@ -14,6 +15,26 @@ pub const Output = struct {
 
     pub fn serializedLen(self: *const Output) usize {
         return 8 + primitives.varint.VarInt.encodedLen(self.locking_script.bytes.len) + self.locking_script.bytes.len;
+    }
+
+    pub fn empty() Output {
+        return .{
+            .satoshis = 0,
+            .locking_script = Script.empty(),
+        };
+    }
+
+    pub fn clone(self: Output, allocator: std.mem.Allocator) !Output {
+        return .{
+            .satoshis = self.satoshis,
+            .locking_script = try self.locking_script.clone(allocator),
+            .change = self.change,
+        };
+    }
+
+    pub fn deinit(self: *Output, allocator: std.mem.Allocator) void {
+        self.locking_script.deinit(allocator);
+        self.* = Output.empty();
     }
 
     pub fn writeInto(self: *const Output, out: []u8) usize {
@@ -39,7 +60,7 @@ pub const Output = struct {
         return finalizeDoubleSha256(&state);
     }
 
-    pub fn parse(bytes_: []const u8) !Parsed {
+    pub fn parse(allocator: std.mem.Allocator, bytes_: []const u8) !Parsed {
         var cursor: usize = 0;
         if (bytes_.len < 8) return error.EndOfStream;
 
@@ -54,7 +75,7 @@ pub const Output = struct {
         return .{
             .output = .{
                 .satoshis = satoshis,
-                .locking_script = .{ .bytes = bytes_[cursor .. cursor + script_len] },
+                .locking_script = try Script.init(bytes_[cursor .. cursor + script_len]).clone(allocator),
             },
             .len = cursor + script_len,
         };
@@ -120,13 +141,15 @@ test "output hash256 matches serialized bytes hash" {
 }
 
 test "output parse returns output and consumed length" {
+    const allocator = std.testing.allocator;
     const raw = [_]u8{
         0x2a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x02, 0x51, 0x51,
         0xff,
     };
 
-    const parsed = try Output.parse(&raw);
+    var parsed = try Output.parse(allocator, &raw);
+    defer parsed.output.deinit(allocator);
 
     try std.testing.expectEqual(@as(i64, 42), parsed.output.satoshis);
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0x51, 0x51 }, parsed.output.locking_script.bytes);
