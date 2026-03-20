@@ -123,6 +123,7 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | BRC&#8209;75 | [Mnemonic for Master Private Key](https://bsv.brc.dev/key-derivation/0075) | `primitives.bip39` |
 | BRC&#8209;74 | [BSV Unified Merkle Path (BUMP)](https://bsv.brc.dev/transactions/0074) | `spv.MerklePath` |
 | BRC&#8209;77 | [Message Signature Creation and Verification](https://bsv.brc.dev/peer-to-peer/0077) | `compat.bsm`, `crypto.compact` |
+| BRC&#8209;78 | [Portable Encrypted Messages](https://bsv.brc.dev/peer-to-peer/0078) | `crypto.ecies` |
 | BRC&#8209;94 | [Schnorr Shared Secret Revelation](https://bsv.brc.dev/key-derivation/0094) | `primitives.schnorr` |
 | BRC&#8209;95 | [Atomic BEEF Transactions](https://bsv.brc.dev/transactions/0095) | `transaction.beef` |
 | BRC&#8209;96 | [BEEF V2 Txid Only Extension](https://bsv.brc.dev/transactions/0096) | `transaction.beef` |
@@ -134,7 +135,6 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | --- | --- | --- |
 | BRC&#8209;9 | [Simplified Payment Verification](https://bsv.brc.dev/transactions/0009) | Full ancestor chain traversal for SPV proofs |
 | BRC&#8209;48 | [Pay to Push Drop](https://bsv.brc.dev/scripts/0048) | PushDrop script template |
-| BRC&#8209;78 | [Portable Encrypted Messages](https://bsv.brc.dev/peer-to-peer/0078) | ECIES single/shared/electrum encryption |
 
 </details>
 
