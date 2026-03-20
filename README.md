@@ -2,7 +2,7 @@
 
 # bsvz
 
-BSV foundation library for Zig. Covers primitives, crypto, script execution, and transaction handling.
+BSV foundation library for Zig. Full Go SDK parity: keys, scripts, transactions, SPV, BEEF, and broadcast.
 
 ## Table of Contents
 
@@ -16,7 +16,7 @@ BSV foundation library for Zig. Covers primitives, crypto, script execution, and
 
 ## Status
 
-The script engine, crypto primitives, and transaction handling are the mature core. SPV has merkle path verification. Broadcast supports WhatsOnChain, TAAL, and Arc.
+Go SDK feature parity across crypto, keys, script, transactions, SPV, BEEF, and broadcast. 27 BRC standards covered.
 
 <details>
 <summary>Details</summary>
@@ -24,23 +24,18 @@ The script engine, crypto primitives, and transaction handling are the mature co
 **Implemented:**
 
 - `primitives`: hex, varint, base58, base58check, network/version-byte helpers, chainhash (display-order hash type), EC curve wrapper with ECDH and Type-42 key derivation, ECDSA signatures with low-S normalization, Schnorr proofs, AES-CBC, AES-GCM, symmetric key encryption, Shamir secret sharing (key shares, backup format), HMAC-DRBG, BIP32 HD keys (xpriv/xpub, child derivation), BIP39 mnemonics (English wordlist, PBKDF2 seed)
-- `crypto`: sha256, sha512, hash256, ripemd160, hash160, hmacSha256, hmacSha512, secp256k1 private/public keys, secp256k1 point API, DER signatures, compact signatures with recovery, tx-signature helpers
-- `compat`: P2PKH address, WIF encode/decode, Bitcoin Signed Message (sign/verify/recover)
-- `transaction`: transaction parse/serialize (standard and extended format), txid, replay-protected sighash/preimage helpers, P2PKH spend helpers, BEEF V1/V2/Atomic parse and serialize, fee calculation with pluggable fee models, change distribution
-- `script`: ScriptNum, byte helpers, script parser/chunks, broad opcode set, execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, Go-shaped policy enforcement, P2PKH and OP_RETURN templates, script clone/ownership
-- `spv`: MerklePath parse/serialize/computeRoot/combine/verify, MerkleTreeParent, pluggable chain tracker interface
-- `broadcast`: WhatsOnChain, TAAL, and Arc HTTP broadcast clients with shared helpers
+- `crypto`: sha256, sha512, hash256, ripemd160, hash160, hmacSha256, hmacSha512, secp256k1 private/public keys, secp256k1 point API, DER signatures, compact signatures with recovery, ECIES (Electrum + Bitcore), tx-signature helpers
+- `compat`: P2PKH address, WIF encode/decode, Bitcoin Signed Message (sign/verify/recover), ECIES
+- `transaction`: parse/serialize (standard + extended format), txid, sighash/preimage, P2PKH spend helpers, BEEF V1/V2/Atomic, transaction builder (addInput/addOutput/payToAddress/sign), fee calculation with pluggable models, change distribution
+- `script`: ScriptNum, parser/chunks, broad opcode set, execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, Go-shaped policy enforcement, ASM encode/decode, script builder (appendPushData/appendOpcodes), type detection (isP2PKH/isP2PK/isData/isMultiSigOut), templates (P2PKH, OP_RETURN, PushDrop, R-puzzle, OP_TRUE), script clone/ownership
+- `spv`: MerklePath parse/serialize/computeRoot/combine/verify, MerkleTreeParent, ancestor traversal, BEEF verification, pluggable chain tracker interface
+- `broadcast`: WhatsOnChain, TAAL, and Arc HTTP broadcast clients
 
 **Go corpus accounting:**
 
 - All 1,499 rows in Go's `script_tests.json` are accounted for
-- 1,438 executable exact-row references are in the suite
-- 61 rows are explicitly tracked as non-executable header/comment/meta rows
-- A 1,099-row filtered bulk-corpus lane and focused sigcheck/multisig lanes are also active
-
-**Construction zones:**
-
-- Runar local acceptance is broad but not complete
+- 1,435 executable rows passing in the filtered corpus lane
+- 64 rows tracked as meta/non-executable
 
 </details>
 
