@@ -167,6 +167,10 @@ test "filtered go sigcheck reference rows execute through bsvz" {
     }
 
     std.debug.print("filtered go sigcheck rows executed={}, skipped={}\n", .{ executed, skipped });
+    std.debug.print(
+        "filtered go sigcheck skip reasons: only the legacy sigcheck subset with mapped flags/expectations is exercised here\n",
+        .{},
+    );
     try std.testing.expectEqual(@as(usize, 80), executed);
     try std.testing.expectEqual(@as(usize, 1419), skipped);
 }

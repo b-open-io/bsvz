@@ -5,6 +5,7 @@ pub const Input = @import("input.zig").Input;
 pub const Output = @import("output.zig").Output;
 const MerklePath = @import("../spv/merkle_path.zig").MerklePath;
 const PathElement = @import("../spv/merkle_path.zig").PathElement;
+const fees = @import("fees.zig");
 
 pub const Transaction = struct {
     version: i32,
@@ -265,6 +266,28 @@ pub const Transaction = struct {
         return crypto.hash.hash256(serialized);
     }
 
+    pub fn isCoinbase(self: *const Transaction) bool {
+        if (self.inputs.len != 1) return false;
+        const input = self.inputs[0];
+        return input.previous_outpoint.txid.eql(.zero()) and input.previous_outpoint.index == std.math.maxInt(u32);
+    }
+
+    pub fn totalInputSatoshis(self: *const Transaction) !u64 {
+        return fees.totalInputSatoshis(self);
+    }
+
+    pub fn totalOutputSatoshis(self: *const Transaction) !u64 {
+        return fees.totalOutputSatoshis(self);
+    }
+
+    pub fn getFee(self: *const Transaction) !u64 {
+        return fees.getFee(self);
+    }
+
+    pub fn applyFee(self: *Transaction, allocator: std.mem.Allocator, model: anytype, dist: fees.ChangeDistribution) !void {
+        try fees.fee(self, allocator, model, dist);
+    }
+
     pub fn hex(self: *const Transaction, allocator: std.mem.Allocator) ![]u8 {
         const raw = try self.serialize(allocator);
         defer allocator.free(raw);
@@ -468,6 +491,8 @@ test "transaction hex helpers round trip" {
     const allocator = std.testing.allocator;
     const raw_hex =
         "01000000011111111111111111111111111111111111111111111111111111111111111111000000000151ffffffff010500000000000000015100000000";
+    const expected_extended_hex =
+        "010000000000000000ef011111111111111111111111111111111111111111111111111111111111111111000000000151ffffffff000000000000000000010500000000000000015100000000";
 
     var tx = try Transaction.parseHex(allocator, raw_hex);
     defer tx.deinit(allocator);
@@ -475,12 +500,6 @@ test "transaction hex helpers round trip" {
     const hex_text = try tx.hex(allocator);
     defer allocator.free(hex_text);
     try std.testing.expectEqualStrings(raw_hex, hex_text);
-
-    const extended_bytes = try tx.serializeExtended(allocator);
-    defer allocator.free(extended_bytes);
-    const expected_extended_hex = try allocator.alloc(u8, extended_bytes.len * 2);
-    defer allocator.free(expected_extended_hex);
-    _ = try primitives.hex.encodeLower(extended_bytes, expected_extended_hex);
 
     const extended_hex = try tx.extendedHex(allocator);
     defer allocator.free(extended_hex);
@@ -639,4 +658,38 @@ test "transaction clones detach non-owning ancestry pointers" {
     try std.testing.expect(tx.inputs[0].source_transaction != null);
     try std.testing.expect(shallow.inputs[0].source_transaction == null);
     try std.testing.expect(deep.inputs[0].source_transaction == null);
+}
+
+test "transaction convenience wrappers expose coinbase and fee helpers" {
+    const allocator = std.testing.allocator;
+
+    const inputs = try allocator.alloc(Input, 1);
+    const outputs = try allocator.alloc(Output, 2);
+    var tx = Transaction{
+        .version = 1,
+        .inputs = inputs,
+        .outputs = outputs,
+        .lock_time = 0,
+    };
+    defer tx.deinit(allocator);
+
+    inputs[0] = .{
+        .previous_outpoint = .{
+            .txid = .zero(),
+            .index = std.math.maxInt(u32),
+        },
+        .unlocking_script = .empty(),
+        .sequence = 0xffff_ffff,
+        .source_output = .{
+            .satoshis = 1000,
+            .locking_script = .{ .bytes = &[_]u8{0x51} },
+        },
+    };
+    outputs[0] = .{ .satoshis = 900, .locking_script = .{ .bytes = &[_]u8{0x51} } };
+    outputs[1] = .{ .satoshis = 50, .locking_script = .{ .bytes = &[_]u8{0x51} } };
+
+    try std.testing.expect(tx.isCoinbase());
+    try std.testing.expectEqual(@as(u64, 1000), try tx.totalInputSatoshis());
+    try std.testing.expectEqual(@as(u64, 950), try tx.totalOutputSatoshis());
+    try std.testing.expectEqual(@as(u64, 50), try tx.getFee());
 }

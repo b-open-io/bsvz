@@ -166,6 +166,10 @@ test "filtered go multisig reference rows execute through bsvz" {
     }
 
     std.debug.print("filtered go multisig rows executed={}, skipped={}\n", .{ executed, skipped });
+    std.debug.print(
+        "filtered go multisig skip reasons: only the mapped multisig subset is exercised here; unsupported flags/expectations are still excluded\n",
+        .{},
+    );
     try std.testing.expectEqual(@as(usize, 110), executed);
     try std.testing.expectEqual(@as(usize, 1389), skipped);
 }

@@ -133,9 +133,6 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | Standard | Title | What it needs |
 | --- | --- | --- |
 | BRC&#8209;9 | [Simplified Payment Verification](https://bsv.brc.dev/transactions/0009) | Full ancestor chain traversal for SPV proofs |
-| BRC&#8209;17 | [Pay to R Puzzle Hash](https://bsv.brc.dev/scripts/0017) | R-puzzle script template |
-| BRC&#8209;19 | [Pay to True Return](https://bsv.brc.dev/scripts/0019) | OP_TRUE OP_RETURN template |
-| BRC&#8209;21 | [Push TX](https://bsv.brc.dev/scripts/0021) | Push TX script template |
 | BRC&#8209;48 | [Pay to Push Drop](https://bsv.brc.dev/scripts/0048) | PushDrop script template |
 | BRC&#8209;78 | [Portable Encrypted Messages](https://bsv.brc.dev/peer-to-peer/0078) | ECIES single/shared/electrum encryption |
 

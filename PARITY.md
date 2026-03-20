@@ -32,6 +32,15 @@ Legend:
 - **missing**: not implemented
 - **out-of-scope**: intentionally excluded (for now)
 
+## Test harness notes
+
+- `zig build test` now emits an explicit external-coverage notice for optional sibling inputs such as `../go-sdk/script/interpreter/data/script_tests.json` and `../runar/packages/runar-compiler/dist/index.js`.
+- Set `BSVZ_REQUIRE_EXTERNAL_CORPORA=1` to make the default test run fail if those optional external inputs are missing.
+- The filtered Go corpus lanes are intentionally partial:
+  - `go_corpus_filtered_vectors.zig` excludes unsupported checksig/checkmultisig/CSV rows, raw pushdata-prefix rows, and unsafe legacy `P2SH HASH160 EQUAL` cases.
+  - `go_sigcheck_reference_vectors.zig` and `go_multisig_reference_vectors.zig` exercise mapped subsets only and print executed/skipped counts in stderr.
+- `zig build test-runar-acceptance` remains separate from the default `test` step.
+
 | Go SDK path | bsvz module | Status | Tests / notes |
 | --- | --- | --- | --- |
 | `chainhash/*` | `crypto/hash.zig` + `primitives/*` | partial | No dedicated `chainhash.Hash` type or display byte-order helpers |
@@ -49,7 +58,7 @@ Legend:
 | `script/address.go` | `compat/address.zig` | partial | Address kinds + parity rules missing |
 | `script/addressvalidation.go` | (none) | missing | Validation rules |
 | `script/bip276.go` | (none) | missing | BIP276 format |
-| `transaction/*` core | `transaction/*` | partial | Parsed txs now own script data, support `clone`/`shallowClone`, and can derive prevouts from non-owning ancestry links; still no fully owned recursive source-transaction graph |
+| `transaction/*` core | `transaction/*` | partial | Parsed txs now own script data, support `clone`/`shallowClone`, can derive prevouts from non-owning ancestry links, and expose a first builder/signing surface (`Builder`, P2PKH-first) |
 | `transaction/beef*.go` | `transaction/beef.zig` | partial | BEEF v1/v2 + AtomicBEEF parse/serialize, clone-safe ownership, ParsedBeef deinit, V2 source-output/source-transaction hydration, duplicate/trailing-input rejection, structural validation + root verification |
 | `transaction/merklepath.go` | `spv/merkle_path.zig` | partial | `clone`, `verify`, `findLeafByOffset`, `addLeaf`, `computeMissingHashes`, hardened `combine` |
 | `transaction/merkletreeparent.go` | `spv/merkle_tree_parent.zig` | done | Helper exported and used by MerklePath |
@@ -72,7 +81,7 @@ Roadmap derived from Go SDK parity review. Use this section for planning; the ma
 
 | Area | Go-style API | bsvz status |
 | --- | --- | --- |
-| Transaction | `AddInput` / `AddOutput` / `PayToAddress` / `Sign` / `Fee` / totals | Missing — builder + signing pipeline |
+| Transaction | `AddInput` / `AddOutput` / `PayToAddress` / `Sign` / `Fee` / totals | Partial — `Builder` now supports input/output append, `PayToAddress`, `addInputFromTx`, and P2PKH signing; fee orchestration and broader template/signer parity still missing |
 | Keys | `PrivateKey.DeriveSharedSecret`, `PublicKey.DeriveSharedSecret` | Missing — ECDH |
 | Keys | `PrivateKey.DeriveChild` / `PublicKey.DeriveChild` (Type-42 / BRC-42) | Missing |
 | Compat | `compat/bsm` sign / verify / recover | Missing |

@@ -2,6 +2,7 @@ pub const OutPoint = @import("outpoint.zig").OutPoint;
 pub const Input = @import("input.zig").Input;
 pub const Output = @import("output.zig").Output;
 pub const Transaction = @import("transaction.zig").Transaction;
+pub const Builder = @import("builder.zig").Builder;
 pub const beef = @import("beef.zig");
 pub const Beef = beef.Beef;
 pub const BeefTx = beef.BeefTx;

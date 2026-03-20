@@ -21,7 +21,7 @@ pub fn verify(
     allocator: std.mem.Allocator,
     tx: *const txmod.Transaction,
     chain_tracker: anytype,
-    fee_model: anytype,
+    fee_model: ?txmod.fee_model.SatoshisPerKilobyte,
 ) !bool {
     var verified = std.AutoHashMap(@import("../primitives/lib.zig").chainhash.Hash, void).init(allocator);
     defer verified.deinit();
@@ -29,9 +29,9 @@ pub fn verify(
     defer queue.deinit(allocator);
     try queue.append(allocator, tx);
 
-    if (fee_model != null) {
+    if (fee_model) |model| {
         const paid_fee = try txmod.fees.getFee(tx);
-        const required_fee = try fee_model.?.computeFee(tx);
+        const required_fee = try model.computeFee(tx);
         if (paid_fee < required_fee) return error.FeeTooLow;
     }
 
@@ -81,14 +81,14 @@ pub fn verifyBeef(
     beef: *const txmod.Beef,
     root_txid: @import("../primitives/lib.zig").chainhash.Hash,
     chain_tracker: anytype,
-    fee_model: anytype,
+    fee_model: ?txmod.fee_model.SatoshisPerKilobyte,
 ) !bool {
     if (!try beef.isValid(allocator, false)) return error.InvalidBeef;
 
     const root_tx = beef.findTransaction(root_txid) orelse return error.MissingTransaction;
-    if (fee_model != null) {
+    if (fee_model) |model| {
         const paid_fee = try txmod.fees.getFee(root_tx);
-        const required_fee = try fee_model.?.computeFee(root_tx);
+        const required_fee = try model.computeFee(root_tx);
         if (paid_fee < required_fee) return error.FeeTooLow;
     }
 
@@ -140,6 +140,9 @@ pub fn verifyBeef(
 pub fn verifyScripts(allocator: std.mem.Allocator, tx: *const txmod.Transaction) !bool {
     return verify(allocator, tx, GullibleChainTracker{}, null);
 }
+
+const go_brc62_hex =
+    "0100beef01fe636d0c0007021400fe507c0c7aa754cef1f7889d5fd395cf1f785dd7de98eed895dbedfe4e5bc70d1502ac4e164f5bc16746bb0868404292ac8318bbac3800e4aad13a014da427adce3e010b00bc4ff395efd11719b277694cface5aa50d085a0bb81f613f70313acd28cf4557010400574b2d9142b8d28b61d88e3b2c3f44d858411356b49a28a4643b6d1a6a092a5201030051a05fc84d531b5d250c23f4f886f6812f9fe3f402d61607f977b4ecd2701c19010000fd781529d58fc2523cf396a7f25440b409857e7e221766c57214b1d38c7b481f01010062f542f45ea3660f86c013ced80534cb5fd4c19d66c56e7e8c5d4bf2d40acc5e010100b121e91836fd7cd5102b654e9f72f3cf6fdbfd0b161c53a9c54b12c841126331020100000001cd4e4cac3c7b56920d1e7655e7e260d31f29d9a388d04910f1bbd72304a79029010000006b483045022100e75279a205a547c445719420aa3138bf14743e3f42618e5f86a19bde14bb95f7022064777d34776b05d816daf1699493fcdf2ef5a5ab1ad710d9c97bfb5b8f7cef3641210263e2dee22b1ddc5e11f6fab8bcd2378bdd19580d640501ea956ec0e786f93e76ffffffff013e660000000000001976a9146bfd5c7fbe21529d45803dbcf0c87dd3c71efbc288ac0000000001000100000001ac4e164f5bc16746bb0868404292ac8318bbac3800e4aad13a014da427adce3e000000006a47304402203a61a2e931612b4bda08d541cfb980885173b8dcf64a3471238ae7abcd368d6402204cbf24f04b9aa2256d8901f0ed97866603d2be8324c2bfb7a37bf8fc90edd5b441210263e2dee22b1ddc5e11f6fab8bcd2378bdd19580d640501ea956ec0e786f93e76ffffffff013c660000000000001976a9146bfd5c7fbe21529d45803dbcf0c87dd3c71efbc288ac0000000000";
 
 test "verify accepts merkle path with gullible tracker" {
     const allocator = std.testing.allocator;
@@ -293,6 +296,66 @@ test "verifyBeef walks ancestor transactions from root txid" {
         .{ .bytes = child_txid.bytes },
         GullibleChainTracker{},
         null,
+    ));
+}
+
+test "verify fee model paid vs required" {
+    const allocator = std.testing.allocator;
+    const FeeModel = txmod.fee_model.SatoshisPerKilobyte;
+    const locking = [_]u8{0x51};
+
+    const inputs = try allocator.alloc(txmod.Input, 1);
+    errdefer allocator.free(inputs);
+    inputs[0] = .{
+        .previous_outpoint = .{
+            .txid = .{ .bytes = [_]u8{0xab} ** 32 },
+            .index = 0,
+        },
+        .unlocking_script = .{ .bytes = &[_]u8{0x51} },
+        .sequence = 0xffff_ffff,
+        .source_output = .{
+            .satoshis = 50_000,
+            .locking_script = .{ .bytes = &locking },
+        },
+    };
+    const outputs = try allocator.alloc(txmod.Output, 1);
+    errdefer allocator.free(outputs);
+    outputs[0] = .{
+        .satoshis = 49_900,
+        .locking_script = .{ .bytes = &locking },
+    };
+
+    var tx = txmod.Transaction{
+        .version = 2,
+        .inputs = inputs,
+        .outputs = outputs,
+        .lock_time = 0,
+    };
+    defer tx.deinit(allocator);
+
+    const txid = try tx.txid(allocator);
+    var path = MerklePath{
+        .block_height = 1,
+        .path = try allocator.alloc([]PathElement, 1),
+    };
+    path.path[0] = try allocator.alloc(PathElement, 1);
+    path.path[0][0] = .{
+        .offset = 0,
+        .hash = txid,
+        .txid = true,
+    };
+    tx.merkle_path = path;
+    tx.owns_merkle_path = true;
+
+    const paid = try txmod.fees.getFee(&tx);
+    try std.testing.expectEqual(@as(u64, 100), paid);
+
+    try std.testing.expect(try verify(allocator, &tx, GullibleChainTracker{}, FeeModel{ .satoshis = 1 }));
+    try std.testing.expectError(error.FeeTooLow, verify(
+        allocator,
+        &tx,
+        GullibleChainTracker{},
+        FeeModel{ .satoshis = 2_000_000 },
     ));
 }
 

@@ -47,7 +47,10 @@ pub fn buildUnlockingScript(
     bytes[1 + checksig_sig.len] = pubkey_sec1.len;
     @memcpy(bytes[2 + checksig_sig.len ..], &pubkey_sec1);
 
-    return .{ .bytes = bytes };
+    return .{
+        .bytes = bytes,
+        .owned = true,
+    };
 }
 
 pub fn signAndBuildUnlockingScript(

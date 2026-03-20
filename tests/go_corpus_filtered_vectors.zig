@@ -386,6 +386,10 @@ test "filtered go corpus rows execute through bsvz" {
     }
 
     std.debug.print("filtered go corpus rows executed={}, skipped={}\n", .{ executed, skipped });
+    std.debug.print(
+        "filtered go corpus skip reasons: unsupported checksig/checkmultisig/csv rows, raw pushdata prefixes, and unsafe legacy P2SH HASH160 EQUAL cases remain intentionally excluded\n",
+        .{},
+    );
     try std.testing.expectEqual(@as(usize, 1099), executed);
     try std.testing.expectEqual(@as(usize, 400), skipped);
 }
