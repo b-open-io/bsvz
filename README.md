@@ -9,6 +9,7 @@ BSV foundation library for Zig. Full Go SDK parity: keys, scripts, transactions,
 - [Status](#status)
 - [Getting Started](#getting-started)
 - [Module Layout](#module-layout)
+- [Documentation](#documentation)
 - [Standards Coverage](#standards-coverage)
 - [Script Verification APIs](#script-verification-apis)
 - [Interpreter Coverage](#interpreter-coverage)
@@ -96,6 +97,13 @@ zig build test
 | `bsvz.compat` | P2PKH address, WIF encode/decode, Bitcoin Signed Message, ECIES |
 | `bsvz.spv` | MerklePath, MerkleTreeParent, BlockHeader, SPV and BEEF verification |
 | `bsvz.broadcast` | WhatsOnChain, TAAL, Arc HTTP broadcast clients |
+
+## Documentation
+
+- [docs/README.md](./docs/README.md)
+- [docs/examples/README.md](./docs/examples/README.md)
+- [docs/concepts/README.md](./docs/concepts/README.md)
+- [docs/low-level/README.md](./docs/low-level/README.md)
 
 ## Standards Coverage
 
