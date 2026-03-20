@@ -99,7 +99,8 @@ zig build test
 
 ## Standards Coverage
 
-BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.dev](https://bsv.brc.dev/).
+<details>
+<summary>27 BRC standards covered — full spec index at bsv.brc.dev</summary>
 
 | Standard | Title | Module |
 | --- | --- | --- |
@@ -130,6 +131,8 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | BRC&#8209;94 | [Schnorr Shared Secret Revelation](https://bsv.brc.dev/key-derivation/0094) | `primitives.schnorr` |
 | BRC&#8209;95 | [Atomic BEEF Transactions](https://bsv.brc.dev/transactions/0095) | `transaction.beef` |
 | BRC&#8209;96 | [BEEF V2 Txid Only Extension](https://bsv.brc.dev/transactions/0096) | `transaction.beef` |
+
+</details>
 
 ## Script Verification APIs
 
