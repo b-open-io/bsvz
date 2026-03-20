@@ -43,6 +43,6 @@ Zig gives you what you'd reach for C for, with memory safety you can actually re
 
 It compiles to a static binary with no dependencies. Cross-compile to any target from any host. Link it into C, C++, Rust, or anything with a C ABI. That's how BSV primitives get into embedded systems, WASM, game engines, or anywhere a Node runtime doesn't belong.
 
-The secp256k1 implementation uses Zig's built-in curve primitives with a custom double-base verification fast path, which brought full P2PKH verification down from ~433 us/op to ~199 us/op without touching any external library.
+The secp256k1 implementation uses Zig's built-in verifier directly. The code stays pure Zig stdlib with no vendored C, OpenSSL, or libsecp256k1.
 
 https://github.com/b-open-io/bsvz

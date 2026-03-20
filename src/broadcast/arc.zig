@@ -7,6 +7,18 @@ const helpers = @import("helpers.zig");
 pub const ArcStatus = []const u8;
 
 pub const rejected: ArcStatus = "REJECTED";
+pub const queued: ArcStatus = "QUEUED";
+pub const received: ArcStatus = "RECEIVED";
+pub const stored: ArcStatus = "STORED";
+pub const announced_to_network: ArcStatus = "ANNOUNCED_TO_NETWORK";
+pub const requested_by_network: ArcStatus = "REQUESTED_BY_NETWORK";
+pub const sent_to_network: ArcStatus = "SENT_TO_NETWORK";
+pub const accepted_by_network: ArcStatus = "ACCEPTED_BY_NETWORK";
+pub const seen_on_network: ArcStatus = "SEEN_ON_NETWORK";
+pub const mined: ArcStatus = "MINED";
+pub const confirmed: ArcStatus = "CONFIRMED";
+pub const double_spend_attempted: ArcStatus = "DOUBLE_SPEND_ATTEMPTED";
+pub const seen_in_orphan_mempool: ArcStatus = "SEEN_IN_ORPHAN_MEMPOOL";
 
 pub const Arc = struct {
     api_url: []const u8,

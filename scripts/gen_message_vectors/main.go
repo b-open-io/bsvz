@@ -79,14 +79,14 @@ func encryptFixed(message []byte, sender *ec.PrivateKey, recipient *ec.PublicKey
 }
 
 type vec77 struct {
-	Case                string `json:"case"`
-	MessageHex          string `json:"message_hex"`
-	SenderPrivHex       string `json:"sender_priv_hex"`
-	RecipientPrivHex    string `json:"recipient_priv_hex,omitempty"`
-	Anyone              bool   `json:"anyone"`
-	KeyIDHex            string `json:"key_id_hex"`
-	SignatureHex        string `json:"signature_hex"`
-	ExpectedInvoiceB64  string `json:"expected_invoice_suffix_b64"`
+	Case               string `json:"case"`
+	MessageHex         string `json:"message_hex"`
+	SenderPrivHex      string `json:"sender_priv_hex"`
+	RecipientPrivHex   string `json:"recipient_priv_hex,omitempty"`
+	Anyone             bool   `json:"anyone"`
+	KeyIDHex           string `json:"key_id_hex"`
+	SignatureHex       string `json:"signature_hex"`
+	ExpectedInvoiceB64 string `json:"expected_invoice_suffix_b64"`
 }
 
 type vec78 struct {

@@ -232,6 +232,7 @@ const hash_all = try bsvz.transaction.Output.hashAll(allocator, &[_]bsvz.transac
 - Plain script trace: [./examples/script_trace_demo.zig](./examples/script_trace_demo.zig)
 - Prevout spend trace: [./examples/prevout_trace_demo.zig](./examples/prevout_trace_demo.zig)
 - Hash demo: [./examples/hash_demo.zig](./examples/hash_demo.zig)
+- GorillaPool ARC broadcast: [./examples/gorillapool_arc_demo.zig](./examples/gorillapool_arc_demo.zig)
 
 ### secp256k1 point API
 
@@ -304,16 +305,16 @@ Benchmarks use prebuilt fixtures. Key generation and per-iteration signing are e
 | SHA256 verify | ~0.11 us/op | ~3.9 us/op |
 | HASH160 verify | ~0.28 us/op | ~4.0 us/op |
 | stack ops verify | ~0.30 us/op | ~12.7 us/op |
-| P2PKH verify (Go reference tx) | ~219.0 us/op | ~227.4 us/op |
+| P2PKH verify (Go reference tx) | ~476.1 us/op | ~227.4 us/op |
 
 **bsvz diagnostics:**
 
 | Workload | `bsvz` |
 | --- | --- |
-| P2PKH sighash only | ~0.30 us/op |
-| P2PKH secp verify only | ~179.9 us/op |
-| P2PKH verify (synthetic fixture) | ~208.7 us/op |
-| Runar arithmetic verify | ~0.55 us/op |
+| P2PKH sighash only | ~0.35 us/op |
+| P2PKH secp verify only | ~433.8 us/op |
+| P2PKH verify (synthetic fixture) | ~456.5 us/op |
+| Runar arithmetic verify | ~0.57 us/op |
 
 **Live corpus pipeline (JungleBus-style, via bsvz-autotrainer):**
 
@@ -331,7 +332,7 @@ Phase split:
 | tx hex decode | ~38 ms | ~59 ms |
 | spend verify | ~1146 ms | ~1224 ms |
 
-The remaining cost sits in secp verification. `bsvz` uses a secp256k1 double-base verification fast path built on Zig stdlib curve primitives, which moved full P2PKH verification from ~433 us/op down to ~199 us/op.
+The remaining cost sits in secp verification. `bsvz` now uses Zig stdlib prehashed verification directly rather than a custom secp256k1 fast path.
 
 These numbers are a local baseline on one machine; your results will vary with allocator configuration, CPU microarchitecture, and corpus mix.
 
