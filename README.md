@@ -23,9 +23,9 @@ The script engine, crypto primitives, and transaction handling are the mature co
 
 **Implemented:**
 
-- `primitives`: hex, varint, base58, base58check, network/version-byte helpers, chainhash (display-order hash type), EC curve wrapper, ECDSA signatures with low-S normalization, Schnorr proofs, AES-CBC, AES-GCM, symmetric key encryption, Shamir secret sharing (key shares, backup format), HMAC-DRBG
-- `crypto`: sha256, sha512, hash256, ripemd160, hash160, hmacSha256, hmacSha512, secp256k1 private/public keys, secp256k1 point API, DER signatures, tx-signature helpers
-- `compat`: P2PKH address and WIF encode/decode
+- `primitives`: hex, varint, base58, base58check, network/version-byte helpers, chainhash (display-order hash type), EC curve wrapper with ECDH and Type-42 key derivation, ECDSA signatures with low-S normalization, Schnorr proofs, AES-CBC, AES-GCM, symmetric key encryption, Shamir secret sharing (key shares, backup format), HMAC-DRBG, BIP32 HD keys (xpriv/xpub, child derivation), BIP39 mnemonics (English wordlist, PBKDF2 seed)
+- `crypto`: sha256, sha512, hash256, ripemd160, hash160, hmacSha256, hmacSha512, secp256k1 private/public keys, secp256k1 point API, DER signatures, compact signatures with recovery, tx-signature helpers
+- `compat`: P2PKH address, WIF encode/decode, Bitcoin Signed Message (sign/verify/recover)
 - `transaction`: transaction parse/serialize (standard and extended format), txid, replay-protected sighash/preimage helpers, P2PKH spend helpers, BEEF V1/V2/Atomic parse and serialize, fee calculation with pluggable fee models, change distribution
 - `script`: ScriptNum, byte helpers, script parser/chunks, broad opcode set, execution engine, transaction-aware CHECKSIG/CHECKMULTISIG, Go-shaped policy enforcement, P2PKH and OP_RETURN templates, script clone/ownership
 - `spv`: MerklePath parse/serialize/computeRoot/combine/verify, MerkleTreeParent, pluggable chain tracker interface
@@ -86,13 +86,15 @@ zig build test
 | `bsvz.primitives.aesgcm` | AES-GCM encrypt/decrypt with authentication tags (128/256-bit keys) |
 | `bsvz.primitives.symmetric` | Symmetric key wrapper with encrypt/decrypt |
 | `bsvz.primitives.drbg` | HMAC-DRBG deterministic random bit generator |
-| `bsvz.crypto` | SHA256, SHA512, RIPEMD160, HASH160, HASH256, HMAC-SHA256, HMAC-SHA512, secp256k1 keys and point API, DER signatures |
+| `bsvz.primitives.bip32` | HD key derivation: ExtendedKey, xpriv/xpub, child paths, mainnet/testnet |
+| `bsvz.primitives.bip39` | Mnemonic generation, English wordlist, entropy, PBKDF2 seed derivation |
+| `bsvz.crypto` | SHA256, SHA512, RIPEMD160, HASH160, HASH256, HMAC-SHA256, HMAC-SHA512, secp256k1 keys and point API, DER and compact signatures |
 | `bsvz.script` | Script parser, opcode set, execution engine, policy flags |
 | `bsvz.transaction` | Parse, serialize (standard + extended format), sighash, P2PKH spend helpers |
 | `bsvz.transaction.beef` | BEEF V1/V2/Atomic parse, serialize, and transaction extraction |
 | `bsvz.transaction.fees` | Fee calculation, change distribution, total input/output satoshis |
 | `bsvz.transaction.fee_model` | Pluggable fee models (satoshis-per-kilobyte) |
-| `bsvz.compat` | P2PKH address and WIF encode/decode |
+| `bsvz.compat` | P2PKH address, WIF encode/decode, Bitcoin Signed Message |
 | `bsvz.spv` | MerklePath, MerkleTreeParent, BlockHeader, transaction verification |
 | `bsvz.broadcast` | WhatsOnChain, TAAL, Arc HTTP broadcast clients |
 
@@ -107,6 +109,7 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | BRC&#8209;8 | [Everett-style Transaction Envelopes](https://bsv.brc.dev/transactions/0008) | `transaction` |
 | BRC&#8209;12 | [Raw Transaction Format](https://bsv.brc.dev/transactions/0012) | `transaction` |
 | BRC&#8209;14 | [Script Binary, Hex, and ASM Formats](https://bsv.brc.dev/scripts/0014) | `script` |
+| BRC&#8209;32 | [BIP32 Key Derivation](https://bsv.brc.dev/key-derivation/0032) | `primitives.bip32` |
 | BRC&#8209;16 | [Pay to Public Key Hash](https://bsv.brc.dev/scripts/0016) | `script.templates.p2pkh`, `compat.address` |
 | BRC&#8209;18 | [Pay to False Return](https://bsv.brc.dev/scripts/0018) | `script.templates.op_return` |
 | BRC&#8209;30 | [Transaction Extended Format (EF)](https://bsv.brc.dev/transactions/0030) | `transaction` |
@@ -117,6 +120,7 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | BRC&#8209;61 | [Compound Merkle Path Format](https://bsv.brc.dev/transactions/0061) | `spv.MerklePath` |
 | BRC&#8209;62 | [BEEF Transactions](https://bsv.brc.dev/transactions/0062) | `transaction.beef` |
 | BRC&#8209;67 | [Simplified Payment Verification](https://bsv.brc.dev/transactions/0067) | `spv` |
+| BRC&#8209;75 | [Mnemonic for Master Private Key](https://bsv.brc.dev/key-derivation/0075) | `primitives.bip39` |
 | BRC&#8209;74 | [BSV Unified Merkle Path (BUMP)](https://bsv.brc.dev/transactions/0074) | `spv.MerklePath` |
 | BRC&#8209;77 | [Message Signature Creation and Verification](https://bsv.brc.dev/peer-to-peer/0077) | `compat.bsm`, `crypto.compact` |
 | BRC&#8209;94 | [Schnorr Shared Secret Revelation](https://bsv.brc.dev/key-derivation/0094) | `primitives.schnorr` |
@@ -132,9 +136,7 @@ BRC standards implemented or supported by `bsvz`. Full spec index at [bsv.brc.de
 | BRC&#8209;17 | [Pay to R Puzzle Hash](https://bsv.brc.dev/scripts/0017) | R-puzzle script template |
 | BRC&#8209;19 | [Pay to True Return](https://bsv.brc.dev/scripts/0019) | OP_TRUE OP_RETURN template |
 | BRC&#8209;21 | [Push TX](https://bsv.brc.dev/scripts/0021) | Push TX script template |
-| BRC&#8209;32 | [BIP32 Key Derivation](https://bsv.brc.dev/key-derivation/0032) | HD key derivation, xpriv/xpub, child paths |
 | BRC&#8209;48 | [Pay to Push Drop](https://bsv.brc.dev/scripts/0048) | PushDrop script template |
-| BRC&#8209;75 | [Mnemonic for Master Private Key](https://bsv.brc.dev/key-derivation/0075) | BIP39 mnemonic generation and seed derivation |
 | BRC&#8209;78 | [Portable Encrypted Messages](https://bsv.brc.dev/peer-to-peer/0078) | ECIES single/shared/electrum encryption |
 
 </details>
