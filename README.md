@@ -339,3 +339,4 @@ These numbers are a local baseline on one machine; your results will vary with a
 | TypeScript | [bsv-blockchain/ts-sdk](https://github.com/bsv-blockchain/ts-sdk) |
 | Go | [bsv-blockchain/go-sdk](https://github.com/bsv-blockchain/go-sdk) |
 | Python | [bsv-blockchain/py-sdk](https://github.com/bsv-blockchain/py-sdk) |
+| Rust | [b1narydt/bsv-rust-sdk](https://github.com/b1narydt/bsv-rust-sdk) |
