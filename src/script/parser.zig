@@ -6,65 +6,95 @@ const Script = @import("script.zig").Script;
 
 pub const Error = errors.ScriptError || error{OutOfMemory};
 
-fn updateConditionalDepth(op: Opcode, depth: *usize) bool {
-    switch (op) {
-        .OP_IF, .OP_NOTIF => depth.* += 1,
-        .OP_ENDIF => {
-            if (depth.* > 0) depth.* -= 1;
-        },
-        .OP_RETURN => return depth.* == 0,
-        else => {},
+pub const ScriptIterator = struct {
+    bytes: []const u8,
+    cursor: usize = 0,
+    conditional_depth: usize = 0,
+    done: bool = false,
+
+    pub fn init(script: Script) ScriptIterator {
+        return .{ .bytes = script.bytes };
     }
-    return false;
-}
 
-fn countChunks(script: Script) Error!usize {
-    var count: usize = 0;
-    var cursor: usize = 0;
-    var conditional_depth: usize = 0;
-    while (cursor < script.bytes.len) {
-        const opcode_byte = script.bytes[cursor];
-        cursor += 1;
+    pub fn initBytes(bytes: []const u8) ScriptIterator {
+        return .{ .bytes = bytes };
+    }
+
+    pub fn next(self: *ScriptIterator) errors.ScriptError!?chunk.ScriptChunk {
+        if (self.done or self.cursor >= self.bytes.len) return null;
+
+        const opcode_byte = self.bytes[self.cursor];
+        self.cursor += 1;
         const op = Opcode.fromByte(opcode_byte);
-        count += 1;
 
-        if (updateConditionalDepth(op, &conditional_depth)) return count;
+        switch (op) {
+            .OP_IF, .OP_NOTIF => self.conditional_depth += 1,
+            .OP_ENDIF => {
+                if (self.conditional_depth > 0) self.conditional_depth -= 1;
+            },
+            .OP_RETURN => {
+                if (self.conditional_depth == 0) {
+                    self.done = true;
+                    return .{ .op_return_data = self.bytes[self.cursor..] };
+                }
+            },
+            else => {},
+        }
 
         if (opcode_byte >= 0x01 and opcode_byte <= 0x4b) {
-            if (script.bytes.len < cursor + opcode_byte) return error.InvalidPushData;
-            cursor += opcode_byte;
-            continue;
+            const len: usize = opcode_byte;
+            if (self.bytes.len < self.cursor + len) return error.InvalidPushData;
+            const data = self.bytes[self.cursor .. self.cursor + len];
+            self.cursor += len;
+            return .{ .push_data = .{ .data = data, .encoding = .direct } };
         }
 
         if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA1)) {
-            if (cursor >= script.bytes.len) return error.InvalidPushData;
-            const len = script.bytes[cursor];
-            cursor += 1;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            cursor += len;
-            continue;
+            if (self.cursor >= self.bytes.len) return error.InvalidPushData;
+            const len = self.bytes[self.cursor];
+            self.cursor += 1;
+            if (self.bytes.len < self.cursor + len) return error.InvalidPushData;
+            const data = self.bytes[self.cursor .. self.cursor + len];
+            self.cursor += len;
+            return .{ .push_data = .{ .data = data, .encoding = .OP_PUSHDATA1 } };
         }
 
         if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA2)) {
-            if (script.bytes.len < cursor + 2) return error.InvalidPushData;
-            const len = std.mem.readInt(u16, script.bytes[cursor..][0..2], .little);
-            cursor += 2;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            cursor += len;
-            continue;
+            if (self.bytes.len < self.cursor + 2) return error.InvalidPushData;
+            const len = std.mem.readInt(u16, self.bytes[self.cursor..][0..2], .little);
+            self.cursor += 2;
+            if (self.bytes.len < self.cursor + len) return error.InvalidPushData;
+            const data = self.bytes[self.cursor .. self.cursor + len];
+            self.cursor += len;
+            return .{ .push_data = .{ .data = data, .encoding = .OP_PUSHDATA2 } };
         }
 
         if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA4)) {
-            if (script.bytes.len < cursor + 4) return error.InvalidPushData;
-            const len32 = std.mem.readInt(u32, script.bytes[cursor..][0..4], .little);
+            if (self.bytes.len < self.cursor + 4) return error.InvalidPushData;
+            const len32 = std.mem.readInt(u32, self.bytes[self.cursor..][0..4], .little);
             const len = std.math.cast(usize, len32) orelse return error.Overflow;
-            cursor += 4;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            cursor += len;
-            continue;
+            self.cursor += 4;
+            if (self.bytes.len < self.cursor + len) return error.InvalidPushData;
+            const data = self.bytes[self.cursor .. self.cursor + len];
+            self.cursor += len;
+            return .{ .push_data = .{ .data = data, .encoding = .OP_PUSHDATA4 } };
         }
+
+        return .{ .opcode = op };
     }
 
+    /// Current byte position in the script.
+    pub fn pos(self: ScriptIterator) usize {
+        return self.cursor;
+    }
+};
+
+fn countChunks(script: Script) Error!usize {
+    var count: usize = 0;
+    var iter = ScriptIterator.init(script);
+    while (try iter.next()) |_| {
+        count += 1;
+    }
     return count;
 }
 
@@ -77,80 +107,9 @@ pub fn parseAlloc(allocator: std.mem.Allocator, script: Script) Error![]chunk.Sc
     errdefer chunks.deinit(allocator);
     try chunks.ensureTotalCapacityPrecise(allocator, try countChunks(script));
 
-    var cursor: usize = 0;
-    var conditional_depth: usize = 0;
-    while (cursor < script.bytes.len) {
-        const opcode_byte = script.bytes[cursor];
-        cursor += 1;
-        const op = Opcode.fromByte(opcode_byte);
-
-        if (updateConditionalDepth(op, &conditional_depth)) {
-            try chunks.append(allocator, .{
-                .op_return_data = script.bytes[cursor..],
-            });
-            return try chunks.toOwnedSlice(allocator);
-        }
-
-        if (opcode_byte >= 0x01 and opcode_byte <= 0x4b) {
-            const len: usize = opcode_byte;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            try chunks.append(allocator, .{
-                .push_data = .{
-                    .data = script.bytes[cursor .. cursor + len],
-                    .encoding = .direct,
-                },
-            });
-            cursor += len;
-            continue;
-        }
-
-        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA1)) {
-            if (cursor >= script.bytes.len) return error.InvalidPushData;
-            const len = script.bytes[cursor];
-            cursor += 1;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            try chunks.append(allocator, .{
-                .push_data = .{
-                    .data = script.bytes[cursor .. cursor + len],
-                    .encoding = .OP_PUSHDATA1,
-                },
-            });
-            cursor += len;
-            continue;
-        }
-
-        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA2)) {
-            if (script.bytes.len < cursor + 2) return error.InvalidPushData;
-            const len = std.mem.readInt(u16, script.bytes[cursor..][0..2], .little);
-            cursor += 2;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            try chunks.append(allocator, .{
-                .push_data = .{
-                    .data = script.bytes[cursor .. cursor + len],
-                    .encoding = .OP_PUSHDATA2,
-                },
-            });
-            cursor += len;
-            continue;
-        }
-
-        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA4)) {
-            if (script.bytes.len < cursor + 4) return error.InvalidPushData;
-            const len32 = std.mem.readInt(u32, script.bytes[cursor..][0..4], .little);
-            const len = std.math.cast(usize, len32) orelse return error.Overflow;
-            cursor += 4;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            try chunks.append(allocator, .{
-                .push_data = .{
-                    .data = script.bytes[cursor .. cursor + len],
-                    .encoding = .OP_PUSHDATA4,
-                },
-            });
-            cursor += len;
-            continue;
-        }
-
-        try chunks.append(allocator, .{ .opcode = op });
+    var iter = ScriptIterator.init(script);
+    while (try iter.next()) |c| {
+        try chunks.append(allocator, c);
     }
 
     return try chunks.toOwnedSlice(allocator);
@@ -226,106 +185,33 @@ pub fn serializeAlloc(allocator: std.mem.Allocator, chunks: []const chunk.Script
 }
 
 pub fn isPushOnly(script: Script) Error!bool {
-    var cursor: usize = 0;
-    var conditional_depth: usize = 0;
-    while (cursor < script.bytes.len) {
-        const opcode_byte = script.bytes[cursor];
-        cursor += 1;
-        const op = Opcode.fromByte(opcode_byte);
-
-        if (op == .OP_RETURN and conditional_depth == 0) return false;
-        _ = updateConditionalDepth(op, &conditional_depth);
-
-        if (opcode_byte >= 0x01 and opcode_byte <= 0x4b) {
-            if (script.bytes.len < cursor + opcode_byte) return error.InvalidPushData;
-            cursor += opcode_byte;
-            continue;
-        }
-
-        switch (opcode_byte) {
-            0x00, 0x4c, 0x4d, 0x4e, 0x4f, 0x51...0x60 => {},
-            else => return false,
-        }
-
-        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA1)) {
-            if (cursor >= script.bytes.len) return error.InvalidPushData;
-            const len = script.bytes[cursor];
-            cursor += 1;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            cursor += len;
-            continue;
-        }
-
-        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA2)) {
-            if (script.bytes.len < cursor + 2) return error.InvalidPushData;
-            const len = std.mem.readInt(u16, script.bytes[cursor..][0..2], .little);
-            cursor += 2;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            cursor += len;
-            continue;
-        }
-
-        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA4)) {
-            if (script.bytes.len < cursor + 4) return error.InvalidPushData;
-            const len32 = std.mem.readInt(u32, script.bytes[cursor..][0..4], .little);
-            const len = std.math.cast(usize, len32) orelse return error.Overflow;
-            cursor += 4;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            cursor += len;
-            continue;
+    var iter = ScriptIterator.init(script);
+    while (try iter.next()) |c| {
+        switch (c) {
+            .push_data => {},
+            .op_return_data => return false,
+            .opcode => |op| {
+                switch (op) {
+                    .OP_0, .OP_1NEGATE, .OP_RESERVED,
+                    .OP_1, .OP_2, .OP_3, .OP_4, .OP_5, .OP_6, .OP_7, .OP_8,
+                    .OP_9, .OP_10, .OP_11, .OP_12, .OP_13, .OP_14, .OP_15, .OP_16,
+                    => {},
+                    else => return false,
+                }
+            },
         }
     }
-
     return true;
 }
 
 pub fn hasCodeSeparator(script: Script) Error!bool {
-    var cursor: usize = 0;
-    var conditional_depth: usize = 0;
-    while (cursor < script.bytes.len) {
-        const opcode_byte = script.bytes[cursor];
-        cursor += 1;
-        const op = Opcode.fromByte(opcode_byte);
-
-        if (updateConditionalDepth(op, &conditional_depth)) return false;
-
-        if (opcode_byte >= 0x01 and opcode_byte <= 0x4b) {
-            if (script.bytes.len < cursor + opcode_byte) return error.InvalidPushData;
-            cursor += opcode_byte;
-            continue;
+    var iter = ScriptIterator.init(script);
+    while (try iter.next()) |c| {
+        switch (c) {
+            .opcode => |op| if (op == .OP_CODESEPARATOR) return true,
+            else => {},
         }
-
-        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA1)) {
-            if (cursor >= script.bytes.len) return error.InvalidPushData;
-            const len = script.bytes[cursor];
-            cursor += 1;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            cursor += len;
-            continue;
-        }
-
-        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA2)) {
-            if (script.bytes.len < cursor + 2) return error.InvalidPushData;
-            const len = std.mem.readInt(u16, script.bytes[cursor..][0..2], .little);
-            cursor += 2;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            cursor += len;
-            continue;
-        }
-
-        if (opcode_byte == @intFromEnum(Opcode.OP_PUSHDATA4)) {
-            if (script.bytes.len < cursor + 4) return error.InvalidPushData;
-            const len32 = std.mem.readInt(u32, script.bytes[cursor..][0..4], .little);
-            const len = std.math.cast(usize, len32) orelse return error.Overflow;
-            cursor += 4;
-            if (script.bytes.len < cursor + len) return error.InvalidPushData;
-            cursor += len;
-            continue;
-        }
-
-        if (opcode_byte == @intFromEnum(Opcode.OP_CODESEPARATOR)) return true;
     }
-
     return false;
 }
 
