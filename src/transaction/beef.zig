@@ -31,7 +31,7 @@ pub const ParsedBeef = struct {
         if (self.tx) |tx| tx.deinit(self.beef.allocator);
         self.beef.deinit();
         self.* = .{
-            .beef = Beef.init(self.beef.allocator, self.beef.version),
+            .beef = Beef.init(self.beef.allocator),
             .tx = null,
             .txid = null,
         };
@@ -83,14 +83,12 @@ const VerifyResult = struct {
 
 pub const Beef = struct {
     allocator: std.mem.Allocator,
-    version: u32,
     bumps: []MerklePath,
     transactions: std.AutoHashMap(primitives.chainhash.Hash, BeefTx),
 
-    pub fn init(allocator: std.mem.Allocator, version: u32) Beef {
+    pub fn init(allocator: std.mem.Allocator) Beef {
         return .{
             .allocator = allocator,
-            .version = version,
             .bumps = &.{},
             .transactions = std.AutoHashMap(primitives.chainhash.Hash, BeefTx).init(allocator),
         };
@@ -104,11 +102,11 @@ pub const Beef = struct {
         self.transactions.deinit();
         for (self.bumps) |*bump| bump.deinit(self.allocator);
         if (self.bumps.len > 0) self.allocator.free(self.bumps);
-        self.* = Beef.init(self.allocator, self.version);
+        self.* = Beef.init(self.allocator);
     }
 
     pub fn clone(self: *const Beef, allocator: std.mem.Allocator) !Beef {
-        var cloned = Beef.init(allocator, self.version);
+        var cloned = Beef.init(allocator);
         errdefer cloned.deinit();
 
         cloned.bumps = try allocator.alloc(MerklePath, self.bumps.len);
@@ -141,11 +139,7 @@ pub const Beef = struct {
     }
 
     pub fn bytes(self: *const Beef) ![]u8 {
-        return switch (self.version) {
-            BEEF_V1 => self.bytesV1(),
-            BEEF_V2 => self.bytesV2(),
-            else => error.InvalidEncoding,
-        };
+        return self.bytesV2();
     }
 
     pub fn findTransaction(self: *const Beef, txid: primitives.chainhash.Hash) ?*const txmod.Transaction {
@@ -399,37 +393,6 @@ pub const Beef = struct {
         return result;
     }
 
-    fn bytesV1(self: *const Beef) ![]u8 {
-        var out = std.ArrayList(u8).initCapacity(self.allocator, 128) catch return error.OutOfMemory;
-        defer out.deinit(self.allocator);
-
-        try writeVersionAndBUMPs(self, &out);
-
-        var buf: [9]u8 = undefined;
-        const tx_len = try primitives.varint.VarInt.encodeInto(&buf, self.transactions.count());
-        try out.appendSlice(self.allocator, buf[0..tx_len]);
-
-        const keys = try collectKeys(self.allocator, &self.transactions);
-        defer self.allocator.free(keys);
-
-        for (keys) |txid| {
-            const entry = self.transactions.get(txid) orelse continue;
-            const tx = entry.transaction orelse continue;
-            const tx_bytes = try tx.serialize(self.allocator);
-            defer self.allocator.free(tx_bytes);
-            try out.appendSlice(self.allocator, tx_bytes);
-            if (entry.bump_index) |idx| {
-                try out.append(self.allocator, 1);
-                const idx_len = try primitives.varint.VarInt.encodeInto(&buf, idx);
-                try out.appendSlice(self.allocator, buf[0..idx_len]);
-            } else {
-                try out.append(self.allocator, 0);
-            }
-        }
-
-        return out.toOwnedSlice(self.allocator);
-    }
-
     fn bytesV2(self: *const Beef) ![]u8 {
         var out = std.ArrayList(u8).initCapacity(self.allocator, 128) catch return error.OutOfMemory;
         defer out.deinit(self.allocator);
@@ -474,11 +437,11 @@ pub const Beef = struct {
 };
 
 pub fn newBeefV1(allocator: std.mem.Allocator) Beef {
-    return Beef.init(allocator, BEEF_V1);
+    return Beef.init(allocator);
 }
 
 pub fn newBeefV2(allocator: std.mem.Allocator) Beef {
-    return Beef.init(allocator, BEEF_V2);
+    return Beef.init(allocator);
 }
 
 pub fn newBeefFromHex(allocator: std.mem.Allocator, hex_text: []const u8) !Beef {
@@ -496,7 +459,7 @@ pub fn newBeefFromBytes(allocator: std.mem.Allocator, bytes: []const u8) !Beef {
 
     var cursor: usize = 0;
     const version = try readVersion(bytes, &cursor);
-    var beef = Beef.init(allocator, version);
+    var beef = Beef.init(allocator);
     errdefer beef.deinit();
 
     beef.bumps = try readBUMPs(allocator, bytes, &cursor);
@@ -616,7 +579,7 @@ pub fn atomicBeefFromTransaction(
     var seen = std.AutoHashMap(primitives.chainhash.Hash, void).init(allocator);
     defer seen.deinit();
 
-    var beef = Beef.init(allocator, BEEF_V2);
+    var beef = Beef.init(allocator);
     defer beef.deinit();
 
     const txid = try txidFor(allocator, tx);
@@ -687,7 +650,7 @@ pub fn fromBeefInto(
 
 fn writeVersionAndBUMPs(self: *const Beef, out: *std.ArrayList(u8)) !void {
     var ver_buf: [4]u8 = undefined;
-    std.mem.writeInt(u32, &ver_buf, self.version, .little);
+    std.mem.writeInt(u32, &ver_buf, BEEF_V2, .little);
     try out.appendSlice(self.allocator, &ver_buf);
 
     var buf: [9]u8 = undefined;
@@ -1068,7 +1031,6 @@ test "go-sdk BRC62Hex parses and atomic BEEF round trips" {
     var beef = try newBeefFromHex(allocator, go_brc62_hex);
     defer beef.deinit();
 
-    try std.testing.expectEqual(BEEF_V1, beef.version);
     try std.testing.expectEqual(@as(usize, 1), beef.bumps.len);
     try std.testing.expectEqual(@as(usize, 2), beef.transactions.count());
 
@@ -1563,7 +1525,6 @@ test "go-sdk BEEFSet parses known counts and transaction lookup" {
     var beef = try newBeefFromHex(allocator, go_beef_set);
     defer beef.deinit();
 
-    try std.testing.expectEqual(BEEF_V2, beef.version);
     try std.testing.expectEqual(@as(usize, 3), beef.bumps.len);
     try std.testing.expectEqual(@as(usize, 3), beef.transactions.count());
 
