@@ -22,6 +22,21 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(lib);
 
+    // C-compatible static library with exported symbols
+    const c_module = b.createModule(.{
+        .root_source_file = b.path("src/exports.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    c_module.addImport("bsvz", root_module);
+
+    const c_lib = b.addLibrary(.{
+        .name = "bsvz_c",
+        .root_module = c_module,
+        .linkage = .static,
+    });
+    b.installArtifact(c_lib);
+
     const lib_unit_tests = b.addTest(.{
         .root_module = root_module,
     });
