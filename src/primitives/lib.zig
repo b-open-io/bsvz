@@ -16,3 +16,4 @@ pub const drbg = @import("drbg.zig");
 pub const bip39 = @import("bip39.zig");
 pub const bip32 = @import("bip32.zig");
 pub const brc43 = @import("brc43.zig");
+pub const key_deriver = @import("key_deriver.zig");
